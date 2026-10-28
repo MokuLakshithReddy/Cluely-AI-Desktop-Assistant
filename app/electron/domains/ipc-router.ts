@@ -1,5 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent, IpcMainEvent, session, desktopCapturer, app } from 'electron';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { stateManager } from './state';
 import { screenshotService } from './screenshot';
 import { windowCoordinator } from './windows';
@@ -25,6 +26,14 @@ const ALLOWED_STATE_KEYS = new Set([
 ]);
 
 export class IpcRouter {
+  private customTrustedHtmlPath?: string;
+
+  constructor(customTrustedHtmlPath?: string) {
+    if (customTrustedHtmlPath) {
+      this.customTrustedHtmlPath = path.normalize(customTrustedHtmlPath).toLowerCase();
+    }
+  }
+
   public init() {
     this.setupDisplayMediaHandler();
     this.registerHandlers();
@@ -58,6 +67,23 @@ export class IpcRouter {
   }
 
   /**
+   * Resolves the canonical, normalized file path to the production index.html.
+   */
+  public getTrustedAppHtmlPath(): string {
+    if (this.customTrustedHtmlPath) {
+      return this.customTrustedHtmlPath;
+    }
+    try {
+      if (app && typeof app.getAppPath === 'function') {
+        return path.normalize(path.join(app.getAppPath(), 'dist', 'index.html')).toLowerCase();
+      }
+    } catch {
+      // fallback
+    }
+    return path.normalize(path.join(process.cwd(), 'dist', 'index.html')).toLowerCase();
+  }
+
+  /**
    * Strict sender frame origin verification.
    * Fails closed: Rejects missing senderFrame, unparseable URLs, or origins outside the trusted app bundle.
    */
@@ -68,39 +94,56 @@ export class IpcRouter {
     }
 
     const rawUrl = frame.url;
-
-    // Allow dev server in development mode
-    if (process.env.VITE_DEV_SERVER_URL && rawUrl.startsWith(process.env.VITE_DEV_SERVER_URL)) {
-      return;
-    }
-    if (rawUrl.startsWith('http://localhost:5173')) {
-      return;
-    }
-
-    // In production, must strictly match local app html
-    let expectedHtml = '';
+    let parsedUrl: URL;
     try {
-      if (app && typeof app.getAppPath === 'function') {
-        expectedHtml = path.normalize(path.join(app.getAppPath(), 'dist/index.html')).toLowerCase();
-      }
-    } catch {
-      expectedHtml = '';
-    }
-
-    let parsedPath = '';
-    try {
-      if (rawUrl.startsWith('file://')) {
-        const u = new URL(rawUrl);
-        parsedPath = path.normalize(decodeURIComponent(u.pathname.replace(/^\/([a-zA-Z]:)/, '$1'))).toLowerCase();
-      }
+      parsedUrl = new URL(rawUrl);
     } catch {
       throw new Error(`[IpcRouter] Rejected malformed URL: ${rawUrl}`);
     }
 
-    if ((expectedHtml && parsedPath === expectedHtml) || rawUrl.toLowerCase().includes('dist/index.html')) {
+    // 1. Development Mode Validation:
+    // If VITE_DEV_SERVER_URL is configured, match its exact origin (protocol, hostname, port)
+    if (process.env.VITE_DEV_SERVER_URL) {
+      try {
+        const devServer = new URL(process.env.VITE_DEV_SERVER_URL);
+        if (
+          parsedUrl.protocol === devServer.protocol &&
+          parsedUrl.hostname === devServer.hostname &&
+          parsedUrl.port === devServer.port
+        ) {
+          return;
+        }
+      } catch {
+        // Fall through if VITE_DEV_SERVER_URL is unparseable
+      }
+    }
+
+    // Standard local Vite dev server check:
+    // Protocol must be strictly http:, hostname strictly 'localhost' or '127.0.0.1', and port strictly '5173'
+    if (
+      parsedUrl.protocol === 'http:' &&
+      (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') &&
+      parsedUrl.port === '5173'
+    ) {
       return;
     }
 
+    // 2. Production Mode Validation:
+    // Protocol MUST be file:
+    if (parsedUrl.protocol === 'file:') {
+      try {
+        const normalizedFilePath = path.normalize(fileURLToPath(parsedUrl)).toLowerCase();
+        const expectedHtmlPath = this.getTrustedAppHtmlPath();
+
+        if (normalizedFilePath === expectedHtmlPath) {
+          return;
+        }
+      } catch {
+        // Any unparseable or non-absolute file URL falls through to unauthorized rejection
+      }
+    }
+
+    // Zero substring fallbacks! Reject any lookalikes or untrusted domains.
     throw new Error(`[IpcRouter] Rejected unauthorized origin: ${rawUrl}`);
   }
 

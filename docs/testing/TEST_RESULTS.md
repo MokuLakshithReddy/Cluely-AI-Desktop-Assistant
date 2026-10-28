@@ -3,7 +3,7 @@
 **Target Environment**: Windows 11 x64  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  
-**Test Status**: 44/44 Passing (100% Pass Rate)  
+**Test Status**: 50/50 Passing (100% Pass Rate)  
 **Verification Date**: 2026-10-28  
 
 ---
@@ -16,12 +16,12 @@
 | `screen-capture.test.ts` | 1080p Passthrough, 4K Proportional Downscaling, Ultrawide Aspect Preservation, Buffer Validation, Missing Display Guard | 5 | 5 | 0 | ~4ms | **PASSED** |
 | `ai-context.test.ts` | Dual-Speaker Transcript Tagging, Error Filtering, 5 Operating Mode Guidance, RAG Context Grounding, Multiline Inputs | 7 | 7 | 0 | ~8ms | **PASSED** |
 | `knowledge-rag.test.ts` | PDF Token Parsing, Multi-file Text Ingestion, Section-Aware Overlapping Chunks, TF-IDF / BM25 Ranking, Empty Query Fallback | 6 | 6 | 0 | ~6ms | **PASSED** |
-| `ipc-security.test.ts` | Sender Frame Null Rejection, Malformed URL Blocking, Strict App-Origin Verification, Whitelist Sanitization, Injection Blocking | 6 | 6 | 0 | ~4ms | **PASSED** |
-| `credential-vault.test.ts` | OS-Backed / AES-256-GCM Vault Encryption, Nonexistent Provider Handling, Boolean `hasKeys()` Masking, Key Deletion, Input Validation | 5 | 5 | 0 | ~360ms | **PASSED** |
-| `session-archive.test.ts` | Multi-Session Persistence, Chronological Indexing, Retrieval by ID, Session Deletion, Bulk Session Purge | 5 | 5 | 0 | ~20ms | **PASSED** |
+| `ipc-security.test.ts` | Sender Frame Null Rejection, Malformed URL Blocking, Strict App-Origin Verification, Lookalike Domain Blocking, `dist/index.html` Substring Bypass Defense, Rogue File URL Blocking, Whitelist Sanitization, Injection Blocking | 12 | 12 | 0 | ~8ms | **PASSED** |
+| `credential-vault.test.ts` | OS-Backed / AES-256-GCM Vault Encryption, Nonexistent Provider Handling, Boolean `hasKeys()` Masking, Key Deletion, Input Validation | 5 | 5 | 0 | ~500ms | **PASSED** |
+| `session-archive.test.ts` | Multi-Session Persistence, Chronological Indexing, Retrieval by ID, Session Deletion, Bulk Session Purge | 5 | 5 | 0 | ~89ms | **PASSED** |
 | `ai-streaming.test.ts` | Non-Destructive Token Accumulation, Multi-Turn History Preservation, AbortController Cancellation, State Immutability | 4 | 4 | 0 | ~5ms | **PASSED** |
 | `electron-smoke.cjs` | Desktop Runtime Boot, Window Coordinator Initialization, Safe Storage Binding, Clean Shutdown | 1 | 1 | 0 | ~4000ms | **PASSED** |
-| **Total** | **All Core Domains & Subsystems** | **45** | **45** | **0** | **~5.6s** | **100% PASS** |
+| **Total** | **All Core Domains & Subsystems** | **51** | **51** | **0** | **~5.8s** | **100% PASS** |
 
 ---
 
@@ -67,11 +67,17 @@
 ✓ handles search queries with no matching terms gracefully
 ```
 
-### 5. IPC Security & Origin Guard (`tests/ipc-security.test.ts`)
+### 5. IPC Security, Origin Guard & Adversarial Bypass Defense (`tests/ipc-security.test.ts`)
 ```text
 ✓ rejects IPC invocation when senderFrame is null or undefined
 ✓ rejects IPC invocation when senderFrame.url is empty or invalid
 ✓ rejects untrusted external website origins (e.g. https://evil-site.com)
+✓ rejects lookalike development hostnames attempting prefix or domain spoofing (http://localhost-evil.com:5173, http://localhost.evil.com:5173, http://127.0.0.1.attacker.com:5173, etc.)
+✓ rejects external URLs attempting to bypass validation via dist/index.html substring (https://evil.com/dist/index.html, http://attacker.com/app/dist/index.html, etc.)
+✓ rejects rogue file:// URLs attempting to load dist/index.html from outside the trusted app directory (file:///C:/attacker/fake/dist/index.html, file:///tmp/rogue/dist/index.html, etc.)
+✓ accepts valid production file:// URL matching the exact trusted app bundle (pathToFileURL and route hashes)
+✓ accepts exact legitimate development server origins (localhost:5173 and 127.0.0.1:5173)
+✓ respects exact origin when VITE_DEV_SERVER_URL is configured
 ✓ sanitizes patch-shared-state payloads to only allow whitelisted keys
 ✓ rejects patch-shared-state payloads containing unwhitelisted or sensitive fields
 ✓ rejects non-object patch payloads (e.g. strings, arrays, null)

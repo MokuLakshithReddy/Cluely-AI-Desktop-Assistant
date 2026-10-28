@@ -148,7 +148,7 @@ flowchart TD
 │   │   └── IMPLEMENTATION_PLAN.md      # Milestones and ordered stages (01-07)
 │   ├── testing/
 │   │   ├── TEST_PLAN.md                # 5-tier testing strategy
-│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results (44 tests)
+│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results (50 tests)
 │   ├── security/
 │   │   └── SECURITY_AND_PRIVACY.md     # Permissions, stealth & safeStorage vault
 │   └── production/
@@ -193,7 +193,7 @@ flowchart TD
 │       ├── screen-capture.test.ts      # Aspect-ratio downscaling tests (5 tests)
 │       ├── ai-context.test.ts          # Prompt synthesis & speaker tagging tests (7 tests)
 │       ├── knowledge-rag.test.ts       # PDF operator parsing & TF-IDF retrieval tests (6 tests)
-│       ├── ipc-security.test.ts        # Sender frame validation & patch sanitization (6 tests)
+│       ├── ipc-security.test.ts        # Origin validation & adversarial bypass defense tests (12 tests)
 │       ├── credential-vault.test.ts    # OS keyring & AES-256-GCM vault tests (5 tests)
 │       ├── session-archive.test.ts     # Multi-session persistence & query tests (5 tests)
 │       ├── ai-streaming.test.ts        # Non-destructive token accumulation tests (4 tests)
@@ -222,14 +222,14 @@ npm install
 cd app
 npm test
 ```
-Runs the 44-test Vitest suite across 8 core subsystems:
+Runs the 50-test Vitest suite across 8 core subsystems:
 * 48kHz to 16kHz resampling, RMS energy, and Zero-Crossing Rate (ZCR) human voice detection
 * Voice Activity Detection state transitions, silence redemption, and crosstalk suppression
 * 16-bit PCM RIFF WAV binary encoding
 * Aspect-ratio thumbnail downscaling (1080p, 4K, Ultrawide, Portrait)
 * Dual-speaker transcript formatting (`[You]` and `[Speaker]`) and 5 operating mode guidance
 * PDF token stream parsing, document chunking, and TF-IDF search relevance
-* Strict IPC sender frame validation and whitelist state sanitization
+* Strict IPC sender frame origin verification, lookalike hostname blocking, `dist/index.html` substring bypass defense, and whitelist state sanitization
 * OS-backed credential vault encryption and key deletion
 * Multi-session chronological indexing, retrieval, and purging
 * AI response token accumulation without message history loss
