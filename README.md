@@ -148,7 +148,7 @@ flowchart TD
 │   │   └── IMPLEMENTATION_PLAN.md      # Milestones and ordered stages (01-07)
 │   ├── testing/
 │   │   ├── TEST_PLAN.md                # 5-tier testing strategy
-│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results (59 tests)
+│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results (62 tests)
 │   ├── security/
 │   │   └── SECURITY_AND_PRIVACY.md     # Permissions, stealth & safeStorage vault
 │   └── production/
@@ -196,9 +196,9 @@ flowchart TD
 │       ├── screen-capture.test.ts      # Aspect-ratio downscaling tests (5 tests)
 │       ├── ai-context.test.ts          # Prompt synthesis & speaker tagging tests (7 tests)
 │       ├── knowledge-rag.test.ts       # PDF operator parsing & TF-IDF retrieval tests (6 tests)
-│       ├── ipc-security.test.ts        # Origin validation & adversarial bypass defense tests (12 tests)
-│       ├── credential-vault.test.ts    # OS keyring & AES-256-GCM vault tests (5 tests)
-│       ├── session-archive.test.ts     # Multi-session persistence & query tests (5 tests)
+│       ├── ipc-security.test.ts        # Origin validation & adversarial bypass defense tests (20 tests)
+│       ├── credential-vault.test.ts    # OS keyring & AES-256-GCM vault tests (7 tests)
+│       ├── session-archive.test.ts     # Multi-session persistence & query tests (6 tests)
 │       ├── ai-streaming.test.ts        # Non-destructive token accumulation tests (4 tests)
 │       └── electron-smoke.cjs          # Native desktop launch & lifecycle smoke test (1 test)
 ├── LICENSE                             # MIT License
@@ -225,7 +225,7 @@ npm install
 cd app
 npm test
 ```
-Runs the 58-test Vitest suite across 8 core subsystems:
+Runs the 61-test Vitest suite across 8 core subsystems:
 * 48kHz to 16kHz resampling, RMS energy, and Zero-Crossing Rate (ZCR) human voice detection
 * Voice Activity Detection state transitions, silence redemption, and crosstalk suppression
 * 16-bit PCM RIFF WAV binary encoding

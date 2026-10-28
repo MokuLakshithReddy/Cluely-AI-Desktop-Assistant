@@ -111,3 +111,4 @@ md += `\`\`\`\n`;
 
 fs.writeFileSync(resultsPath, md, 'utf8');
 console.log(`Successfully generated verified test report at: ${resultsPath}`);
+

@@ -3,7 +3,7 @@
 **Target Environment**: Windows 11 x64  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  
-**Test Status**: 59/59 Passing (100% Pass Rate)  
+**Test Status**: 62/62 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
 **Verification Date**: 2026-10-28  
 
@@ -17,12 +17,12 @@
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `audio-vad.test.ts` | Audio Processing, VAD & Crosstalk Subsystem | 6 | 6 | 0 | **PASSED** |
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 7 | 7 | 0 | **PASSED** |
-| `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 17 | 17 | 0 | **PASSED** |
+| `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 20 | 20 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 6 | 6 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 6 | 6 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Native Electron Desktop Runtime Smoke Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **59** | **59** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **62** | **62** | **0** | **100% PASS** |
 
 ---
 
@@ -87,6 +87,9 @@
 ✓ validates shortcuts map structure and accelerator strings
 ✓ validates session structure and rejects invalid session IDs
 ✓ validates knowledgeDocs structure and document schemas
+✓ enforces nested schema validation and size limits on session transcript items
+✓ enforces nested schema validation on session chat messages
+✓ enforces size limits and schema validation on knowledge documents
 ```
 
 ### 6. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)

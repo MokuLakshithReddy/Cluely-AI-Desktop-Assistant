@@ -18,7 +18,7 @@ const child = spawn(electronBinary, [appPath], {
 });
 
 let appReadyObserved = false;
-let cleanTerminationRequested = false;
+let terminationSignalDelivered = false;
 let stdoutCaptured = '';
 let stderrCaptured = '';
 
@@ -35,17 +35,19 @@ child.stdout.on('data', data => {
   if (str.includes('[APP_READY]') && !appReadyObserved) {
     appReadyObserved = true;
     console.log('✓ Verified application-ready event observed from Electron runtime.');
-    cleanTerminationRequested = true;
 
-    // Gracefully terminate after readiness confirmation
+    // Wait a brief stabilization tick before delivering SIGTERM
     setTimeout(() => {
-      console.log('Sending SIGTERM for clean shutdown verification...');
+      // Set flag immediately prior to kill invocation
+      terminationSignalDelivered = true;
+      console.log('Delivering SIGTERM to initiate clean shutdown verification...');
       try {
         child.kill('SIGTERM');
       } catch (e) {
-        console.error('Error sending SIGTERM:', e);
+        console.error('Error delivering SIGTERM to child process:', e);
+        process.exit(1);
       }
-    }, 500);
+    }, 400);
   }
 });
 
@@ -55,7 +57,7 @@ child.stderr.on('data', data => {
   console.log('[Electron stderr]:', str.trim());
 });
 
-// Maximum timeout of 15 seconds waiting for explicit readiness signal
+// Hard timeout of 15 seconds waiting for readiness
 const timeoutHandle = setTimeout(() => {
   console.error('Smoke test failure: Timed out waiting for [APP_READY] signal after 15 seconds.');
   try {
@@ -68,15 +70,21 @@ child.on('exit', (code, signal) => {
   clearTimeout(timeoutHandle);
   console.log(`Process exited with code: ${code}, signal: ${signal}`);
 
-  // Must have observed explicit application readiness signal
+  // 1. Fail if exited before [APP_READY] was observed
   if (!appReadyObserved) {
-    console.error('Smoke test failure: Process exited unexpectedly before [APP_READY] signal was emitted!');
+    console.error(`Smoke test failure: Process exited unexpectedly before [APP_READY] signal was emitted (code: ${code}, signal: ${signal})!`);
     process.exit(1);
   }
 
-  // Must have been terminated as part of the verified test flow
-  if (!cleanTerminationRequested) {
-    console.error('Smoke test failure: Process crashed or exited unexpectedly after ready signal without clean termination!');
+  // 2. Fail if exited after [APP_READY] but before SIGTERM was deliberately delivered (i.e. crashed in the interval!)
+  if (!terminationSignalDelivered) {
+    console.error(`Smoke test failure: Process crashed unexpectedly after [APP_READY] before SIGTERM was delivered (code: ${code}, signal: ${signal})!`);
+    process.exit(1);
+  }
+
+  // 3. Fail if stderr contains fatal exceptions
+  if (stderrCaptured.includes('Uncaught Exception') || stderrCaptured.includes('Fatal error') || stderrCaptured.includes('Segmentation fault')) {
+    console.error('Smoke test failure: Uncaught exceptions or fatal errors detected in process output!');
     process.exit(1);
   }
 

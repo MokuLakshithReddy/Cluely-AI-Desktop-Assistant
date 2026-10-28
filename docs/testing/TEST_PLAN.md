@@ -18,7 +18,7 @@ To ensure strict functional equivalence, clean-room integrity, and real-world de
 | **Screen Capture** | `tests/screen-capture.test.ts` | Aspect-ratio downscaling logic, max-1920 clamp, 4K/ultrawide preservation, PNG buffer validation | Automated (Vitest) |
 | **AI Context Assembly** | `tests/ai-context.test.ts` | Dual-speaker tagging ([You]/[Speaker]), 5 operating mode guidance, RAG grounding, error filtering | Automated (Vitest) |
 | **Knowledge RAG** | `tests/knowledge-rag.test.ts` | PDF text extraction, document ingestion, overlapping chunking, TF-IDF / BM25 ranking relevance | Automated (Vitest) |
-| **IPC & Security** | `tests/ipc-security.test.ts` | Sender frame origin verification, lookalike hostname blocking, dist/index.html substring defense, per-field schema validation (17 tests) | Automated (Vitest) |
+| **IPC & Security** | `tests/ipc-security.test.ts` | Sender frame origin verification, lookalike hostname blocking, dist/index.html substring defense, nested schema & size validation (20 tests) | Automated (Vitest) |
 | **Credential Vault** | `tests/credential-vault.test.ts` | safeStorage OS keyring / AES-256-GCM encryption, fail-safe on missing keyring, write error propagation, boolean key masking (7 tests) | Automated (Vitest) |
 | **Session Archive** | `tests/session-archive.test.ts` | Multi-session persistence, path traversal containment protection, chronological index, query by ID (6 tests) | Automated (Vitest) |
 | **AI Streaming** | `tests/ai-streaming.test.ts` | Non-destructive token accumulation, multi-turn history preservation, abort cancellation, immutability (4 tests) | Automated (Vitest) |

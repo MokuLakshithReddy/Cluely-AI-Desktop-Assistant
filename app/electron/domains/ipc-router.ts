@@ -39,6 +39,15 @@ const ALLOWED_SHORTCUT_KEYS = new Set([
   'moveRight',
 ]);
 
+const MAX_TRANSCRIPT_ITEMS = 5000;
+const MAX_MESSAGES_ITEMS = 1000;
+const MAX_KNOWLEDGE_DOCS = 500;
+const MAX_CONTENT_LENGTH = 2000000; // 2MB max for doc content
+const VALID_TRANSCRIPT_ROLES = new Set(['me', 'them']);
+const VALID_TRANSCRIPT_STATUSES = new Set(['transcribing', 'ready', 'error']);
+const VALID_MESSAGE_ROLES = new Set(['user', 'assistant', 'system']);
+const VALID_DOC_SOURCE_TYPES = new Set(['pasted', 'file']);
+
 const ALLOWED_STATE_KEYS = new Set([
   ...BOOLEAN_STATE_KEYS,
   'activeMode',
@@ -229,7 +238,7 @@ export class IpcRouter {
         sanitized[key] = cleanShortcuts;
       }
 
-      // 5. Validate session record structure
+      // 5. Validate session record structure and nested fields
       else if (key === 'session') {
         if (val === null) {
           sanitized[key] = null;
@@ -241,31 +250,128 @@ export class IpcRouter {
           if (typeof sessObj.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(sessObj.id)) {
             throw new Error('[IpcRouter] Invalid session: Session ID must match /^[a-zA-Z0-9_-]{1,64}$/');
           }
-          if (typeof sessObj.createdAt !== 'string') {
-            throw new Error('[IpcRouter] Invalid session: Missing createdAt ISO timestamp');
+          if (typeof sessObj.createdAt !== 'string' || isNaN(Date.parse(sessObj.createdAt))) {
+            throw new Error('[IpcRouter] Invalid session: Missing or invalid createdAt ISO timestamp');
           }
-          if (!Array.isArray(sessObj.messages)) {
-            throw new Error('[IpcRouter] Invalid session: messages must be an array');
+          if (sessObj.updatedAt !== undefined && (typeof sessObj.updatedAt !== 'string' || isNaN(Date.parse(sessObj.updatedAt)))) {
+            throw new Error('[IpcRouter] Invalid session: Invalid updatedAt ISO timestamp');
           }
+          if (sessObj.title !== undefined && (typeof sessObj.title !== 'string' || sessObj.title.length > 255)) {
+            throw new Error('[IpcRouter] Invalid session: title must be string under 255 chars');
+          }
+          if (sessObj.durationSeconds !== undefined && (typeof sessObj.durationSeconds !== 'number' || !Number.isFinite(sessObj.durationSeconds) || sessObj.durationSeconds < 0)) {
+            throw new Error('[IpcRouter] Invalid session: durationSeconds must be non-negative finite number');
+          }
+          if (sessObj.mode !== undefined && (!ALLOWED_OPERATING_MODES.has(sessObj.mode))) {
+            throw new Error(`[IpcRouter] Invalid session: mode "${sessObj.mode}" is not a recognized operating mode`);
+          }
+
+          // Nested transcript validation
           if (!Array.isArray(sessObj.transcript)) {
             throw new Error('[IpcRouter] Invalid session: transcript must be an array');
           }
+          if (sessObj.transcript.length > MAX_TRANSCRIPT_ITEMS) {
+            throw new Error(`[IpcRouter] Invalid session: transcript exceeds maximum limit of ${MAX_TRANSCRIPT_ITEMS} items`);
+          }
+          for (let i = 0; i < sessObj.transcript.length; i++) {
+            const item = sessObj.transcript[i];
+            if (!item || typeof item !== 'object') throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: Expected object`);
+            if (typeof item.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(item.id)) {
+              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: ID must match /^[a-zA-Z0-9_-]{1,64}$/`);
+            }
+            if (typeof item.createdAt !== 'string' || isNaN(Date.parse(item.createdAt))) {
+              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: Invalid createdAt timestamp`);
+            }
+            if (typeof item.relativeMs !== 'number' || !Number.isFinite(item.relativeMs) || item.relativeMs < 0) {
+              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: relativeMs must be non-negative finite number`);
+            }
+            if (!VALID_TRANSCRIPT_ROLES.has(item.role)) {
+              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: role must be "me" or "them"`);
+            }
+            if (!VALID_TRANSCRIPT_STATUSES.has(item.status)) {
+              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: status must be transcribing, ready, or error`);
+            }
+            if (typeof item.text !== 'string' || item.text.length > 10000) {
+              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: text must be string under 10000 chars`);
+            }
+          }
+
+          // Nested messages validation
+          if (!Array.isArray(sessObj.messages)) {
+            throw new Error('[IpcRouter] Invalid session: messages must be an array');
+          }
+          if (sessObj.messages.length > MAX_MESSAGES_ITEMS) {
+            throw new Error(`[IpcRouter] Invalid session: messages exceeds maximum limit of ${MAX_MESSAGES_ITEMS} items`);
+          }
+          for (let i = 0; i < sessObj.messages.length; i++) {
+            const msg = sessObj.messages[i];
+            if (!msg || typeof msg !== 'object') throw new Error(`[IpcRouter] Invalid message at index ${i}: Expected object`);
+            if (typeof msg.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(msg.id)) {
+              throw new Error(`[IpcRouter] Invalid message at index ${i}: ID must match /^[a-zA-Z0-9_-]{1,64}$/`);
+            }
+            if (!VALID_MESSAGE_ROLES.has(msg.role)) {
+              throw new Error(`[IpcRouter] Invalid message at index ${i}: role must be user, assistant, or system`);
+            }
+            if (typeof msg.content !== 'string' || msg.content.length > 500000) {
+              throw new Error(`[IpcRouter] Invalid message at index ${i}: content exceeds 500,000 char limit`);
+            }
+            if (typeof msg.createdAt !== 'string' || isNaN(Date.parse(msg.createdAt))) {
+              throw new Error(`[IpcRouter] Invalid message at index ${i}: Invalid createdAt timestamp`);
+            }
+            if (msg.screenshot !== undefined && (typeof msg.screenshot !== 'string' || msg.screenshot.length > 15000000)) {
+              throw new Error(`[IpcRouter] Invalid message at index ${i}: screenshot exceeds 15MB size limit`);
+            }
+            if (msg.sources !== undefined) {
+              if (!Array.isArray(msg.sources) || msg.sources.length > 50) {
+                throw new Error(`[IpcRouter] Invalid message at index ${i}: sources must be an array under 50 items`);
+              }
+              for (const src of msg.sources) {
+                if (typeof src !== 'string' || src.length > 500) {
+                  throw new Error(`[IpcRouter] Invalid source entry at message ${i}: Expected string under 500 chars`);
+                }
+              }
+            }
+          }
+
           sanitized[key] = val;
         }
       }
 
-      // 6. Validate knowledgeDocs array
+      // 6. Validate knowledgeDocs array and nested schema
       else if (key === 'knowledgeDocs') {
         if (!Array.isArray(val)) {
           throw new Error('[IpcRouter] Invalid knowledgeDocs: Expected an array of documents');
+        }
+        if (val.length > MAX_KNOWLEDGE_DOCS) {
+          throw new Error(`[IpcRouter] Invalid knowledgeDocs: Exceeds maximum limit of ${MAX_KNOWLEDGE_DOCS} documents`);
         }
         for (let i = 0; i < val.length; i++) {
           const docObj = val[i] as any;
           if (!docObj || typeof docObj !== 'object') {
             throw new Error(`[IpcRouter] Invalid document at index ${i}: Expected object`);
           }
-          if (typeof docObj.id !== 'string' || typeof docObj.title !== 'string' || typeof docObj.content !== 'string') {
-            throw new Error(`[IpcRouter] Invalid document structure at index ${i}: Missing id, title, or content`);
+          if (typeof docObj.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(docObj.id)) {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: ID must match /^[a-zA-Z0-9_-]{1,64}$/`);
+          }
+          if (typeof docObj.title !== 'string' || docObj.title.trim().length === 0 || docObj.title.length > 255) {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: title must be between 1 and 255 chars`);
+          }
+          if (typeof docObj.content !== 'string') {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: Missing id, title, or content`);
+          }
+          if (docObj.content.length > MAX_CONTENT_LENGTH) {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: content exceeds ${MAX_CONTENT_LENGTH} char limit`);
+          }
+          if (docObj.sourceType !== undefined && !VALID_DOC_SOURCE_TYPES.has(docObj.sourceType)) {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: sourceType must be "pasted" or "file"`);
+          }
+          if (docObj.fileName !== undefined && (typeof docObj.fileName !== 'string' || docObj.fileName.length > 255)) {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: fileName must be string under 255 chars`);
+          }
+          if (docObj.chunks !== undefined) {
+            if (!Array.isArray(docObj.chunks) || docObj.chunks.length > 2000) {
+              throw new Error(`[IpcRouter] Invalid document at index ${i}: chunks must be array under 2000 items`);
+            }
           }
         }
         sanitized[key] = val;

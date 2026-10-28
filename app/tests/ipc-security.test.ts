@@ -248,5 +248,179 @@ describe('IPC Security & Origin Validation Subsystem', () => {
       })
     ).toThrow(/Missing id, title, or content/);
   });
+
+  it('enforces nested schema validation and size limits on session transcript items', () => {
+    const baseSession = {
+      id: 'sess_test_1',
+      createdAt: new Date().toISOString(),
+      messages: [],
+      transcript: [],
+    };
+
+    // Invalid role in transcript item
+    expect(() =>
+      router.sanitizePatchState({
+        session: {
+          ...baseSession,
+          transcript: [
+            {
+              id: 't1',
+              createdAt: new Date().toISOString(),
+              relativeMs: 100,
+              role: 'hacker' as any,
+              status: 'ready',
+              text: 'Hello',
+            },
+          ],
+        },
+      })
+    ).toThrow(/role must be "me" or "them"/);
+
+    // Invalid status in transcript item
+    expect(() =>
+      router.sanitizePatchState({
+        session: {
+          ...baseSession,
+          transcript: [
+            {
+              id: 't1',
+              createdAt: new Date().toISOString(),
+              relativeMs: 100,
+              role: 'me',
+              status: 'unknown_status' as any,
+              text: 'Hello',
+            },
+          ],
+        },
+      })
+    ).toThrow(/status must be transcribing, ready, or error/);
+
+    // Negative relativeMs
+    expect(() =>
+      router.sanitizePatchState({
+        session: {
+          ...baseSession,
+          transcript: [
+            {
+              id: 't1',
+              createdAt: new Date().toISOString(),
+              relativeMs: -50,
+              role: 'me',
+              status: 'ready',
+              text: 'Hello',
+            },
+          ],
+        },
+      })
+    ).toThrow(/relativeMs must be non-negative finite number/);
+
+    // Malformed transcript ID with special characters
+    expect(() =>
+      router.sanitizePatchState({
+        session: {
+          ...baseSession,
+          transcript: [
+            {
+              id: 'bad/id',
+              createdAt: new Date().toISOString(),
+              relativeMs: 100,
+              role: 'me',
+              status: 'ready',
+              text: 'Hello',
+            },
+          ],
+        },
+      })
+    ).toThrow(/ID must match/);
+  });
+
+  it('enforces nested schema validation on session chat messages', () => {
+    const baseSession = {
+      id: 'sess_test_2',
+      createdAt: new Date().toISOString(),
+      messages: [],
+      transcript: [],
+    };
+
+    // Invalid message role
+    expect(() =>
+      router.sanitizePatchState({
+        session: {
+          ...baseSession,
+          messages: [
+            {
+              id: 'm1',
+              role: 'superadmin' as any,
+              content: 'hello',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+      })
+    ).toThrow(/role must be user, assistant, or system/);
+
+    // Message ID exceeding 64 characters
+    expect(() =>
+      router.sanitizePatchState({
+        session: {
+          ...baseSession,
+          messages: [
+            {
+              id: 'm'.repeat(65),
+              role: 'user',
+              content: 'hello',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+      })
+    ).toThrow(/ID must match/);
+
+    // Invalid createdAt timestamp
+    expect(() =>
+      router.sanitizePatchState({
+        session: {
+          ...baseSession,
+          messages: [
+            {
+              id: 'm1',
+              role: 'user',
+              content: 'hello',
+              createdAt: 'invalid-date-format',
+            },
+          ],
+        },
+      })
+    ).toThrow(/Invalid createdAt timestamp/);
+  });
+
+  it('enforces size limits and schema validation on knowledge documents', () => {
+    // Document title empty
+    expect(() =>
+      router.sanitizePatchState({
+        knowledgeDocs: [{ id: 'd1', title: '   ', content: 'test' }],
+      })
+    ).toThrow(/title must be between 1 and 255 chars/);
+
+    // Document title exceeding 255 chars
+    expect(() =>
+      router.sanitizePatchState({
+        knowledgeDocs: [{ id: 'd1', title: 'a'.repeat(256), content: 'test' }],
+      })
+    ).toThrow(/title must be between 1 and 255 chars/);
+
+    // Invalid sourceType
+    expect(() =>
+      router.sanitizePatchState({
+        knowledgeDocs: [{ id: 'd1', title: 'Doc', content: 'test', sourceType: 'cloud_storage' as any }],
+      })
+    ).toThrow(/sourceType must be "pasted" or "file"/);
+
+    // Valid document with chunks
+    const valid = router.sanitizePatchState({
+      knowledgeDocs: [{ id: 'd1', title: 'Doc', content: 'test', sourceType: 'file', chunks: ['c1', 'c2'] }],
+    });
+    expect(valid.knowledgeDocs?.length).toBe(1);
+  });
 });
 
