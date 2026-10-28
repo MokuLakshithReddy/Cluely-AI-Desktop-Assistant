@@ -2,16 +2,16 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CredentialVault } from '../electron/services/vault';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 describe('Credential Vault & Secret Protection Subsystem', () => {
   let vault: CredentialVault;
+  const testKey = crypto.randomBytes(32);
   const testVaultFile = path.join(process.cwd(), 'test-credentials.vault');
 
   beforeEach(() => {
-    vault = new CredentialVault();
-    // Point to test file
-    (vault as any).vaultPath = testVaultFile;
     if (fs.existsSync(testVaultFile)) fs.unlinkSync(testVaultFile);
+    vault = new CredentialVault(testVaultFile, testKey);
   });
 
   afterEach(() => {
@@ -29,6 +29,25 @@ describe('Credential Vault & Secret Protection Subsystem', () => {
     const fileContent = fs.readFileSync(testVaultFile, 'utf8');
     expect(fileContent).not.toContain(rawKey);
     expect(fileContent).toMatch(/(aes:|safe:)/);
+  });
+
+  it('fails safely and refuses to persist credentials when OS keyring is unavailable and no test key is supplied', async () => {
+    // Vault initialized without testKey under headless node test runner where safeStorage is unavailable
+    const unkeyedVault = new CredentialVault(testVaultFile);
+    await expect(unkeyedVault.setKey('openai', 'sk-proj-secret')).rejects.toThrow(
+      /OS-backed secure storage \(safeStorage\) is unavailable/
+    );
+    expect(fs.existsSync(testVaultFile)).toBe(false);
+  });
+
+  it('propagates filesystem write errors to caller when persistence fails', async () => {
+    // Unwritable path / invalid directory structure
+    const unwritablePath = path.join(process.cwd(), 'test-credentials.vault', 'forbidden', 'vault.json');
+    // Create file where folder is expected
+    fs.writeFileSync(testVaultFile, 'dummy');
+    const failingVault = new CredentialVault(unwritablePath, testKey);
+
+    await expect(failingVault.setKey('openai', 'sk-proj-test')).rejects.toThrow();
   });
 
   it('returns null when querying a provider that has not been configured', async () => {

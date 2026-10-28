@@ -9,20 +9,43 @@ import { sessionRepository, SessionRecord } from '../services/session-repository
 import { SharedState } from '../../src/lib/types';
 import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio } from '../../src/lib/providers';
 
-const ALLOWED_STATE_KEYS = new Set([
+const BOOLEAN_STATE_KEYS = new Set([
   'showChat',
   'showDashboard',
   'chatWindowIsExpanded',
   'isStealthMode',
   'isRecording',
+  'meHasVoiceActivity',
+  'themHasVoiceActivity',
+  'isCapturingScreenshot',
+]);
+
+const ALLOWED_OPERATING_MODES = new Set([
+  'copilot',
+  'interview',
+  'coding',
+  'sales',
+  'executive',
+]);
+
+const ALLOWED_SHORTCUT_KEYS = new Set([
+  'toggleVisibility',
+  'ask',
+  'clear',
+  'toggleSession',
+  'moveUp',
+  'moveDown',
+  'moveLeft',
+  'moveRight',
+]);
+
+const ALLOWED_STATE_KEYS = new Set([
+  ...BOOLEAN_STATE_KEYS,
   'activeMode',
   'activeModel',
   'shortcuts',
   'session',
   'knowledgeDocs',
-  'meHasVoiceActivity',
-  'themHasVoiceActivity',
-  'isCapturingScreenshot',
 ]);
 
 export class IpcRouter {
@@ -148,7 +171,8 @@ export class IpcRouter {
   }
 
   /**
-   * Validates patch object strictly against permitted whitelist and types
+   * Validates patch object strictly against permitted whitelist and per-field type schemas.
+   * Rejects malformed values, prototype pollutants, or invalid enum variants.
    */
   public sanitizePatchState(patch: any): Partial<SharedState> {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
@@ -160,7 +184,92 @@ export class IpcRouter {
       if (!ALLOWED_STATE_KEYS.has(key)) {
         throw new Error(`[IpcRouter] Unauthorized state field in patch: "${key}"`);
       }
-      sanitized[key] = val;
+
+      // 1. Validate boolean flags
+      if (BOOLEAN_STATE_KEYS.has(key)) {
+        if (typeof val !== 'boolean') {
+          throw new Error(`[IpcRouter] Invalid type for boolean field "${key}": expected boolean, got ${typeof val}`);
+        }
+        sanitized[key] = val;
+      }
+
+      // 2. Validate operating mode enum
+      else if (key === 'activeMode') {
+        if (typeof val !== 'string' || !ALLOWED_OPERATING_MODES.has(val)) {
+          throw new Error(
+            `[IpcRouter] Invalid activeMode: "${val}". Must be one of: ${Array.from(ALLOWED_OPERATING_MODES).join(', ')}`
+          );
+        }
+        sanitized[key] = val;
+      }
+
+      // 3. Validate active model name
+      else if (key === 'activeModel') {
+        if (typeof val !== 'string' || val.trim().length === 0 || val.length > 100) {
+          throw new Error('[IpcRouter] Invalid activeModel: Expected non-empty string under 100 characters');
+        }
+        sanitized[key] = val.trim();
+      }
+
+      // 4. Validate shortcuts mapping
+      else if (key === 'shortcuts') {
+        if (!val || typeof val !== 'object' || Array.isArray(val)) {
+          throw new Error('[IpcRouter] Invalid shortcuts payload: Expected object map of accelerator strings');
+        }
+        const cleanShortcuts: Record<string, string> = {};
+        for (const [sKey, sVal] of Object.entries(val)) {
+          if (!ALLOWED_SHORTCUT_KEYS.has(sKey)) {
+            throw new Error(`[IpcRouter] Unknown shortcut action: "${sKey}"`);
+          }
+          if (typeof sVal !== 'string' || sVal.trim().length === 0) {
+            throw new Error(`[IpcRouter] Invalid accelerator for shortcut "${sKey}": Expected non-empty string`);
+          }
+          cleanShortcuts[sKey] = sVal.trim();
+        }
+        sanitized[key] = cleanShortcuts;
+      }
+
+      // 5. Validate session record structure
+      else if (key === 'session') {
+        if (val === null) {
+          sanitized[key] = null;
+        } else {
+          if (typeof val !== 'object' || Array.isArray(val)) {
+            throw new Error('[IpcRouter] Invalid session: Expected null or SessionState object');
+          }
+          const sessObj = val as any;
+          if (typeof sessObj.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(sessObj.id)) {
+            throw new Error('[IpcRouter] Invalid session: Session ID must match /^[a-zA-Z0-9_-]{1,64}$/');
+          }
+          if (typeof sessObj.createdAt !== 'string') {
+            throw new Error('[IpcRouter] Invalid session: Missing createdAt ISO timestamp');
+          }
+          if (!Array.isArray(sessObj.messages)) {
+            throw new Error('[IpcRouter] Invalid session: messages must be an array');
+          }
+          if (!Array.isArray(sessObj.transcript)) {
+            throw new Error('[IpcRouter] Invalid session: transcript must be an array');
+          }
+          sanitized[key] = val;
+        }
+      }
+
+      // 6. Validate knowledgeDocs array
+      else if (key === 'knowledgeDocs') {
+        if (!Array.isArray(val)) {
+          throw new Error('[IpcRouter] Invalid knowledgeDocs: Expected an array of documents');
+        }
+        for (let i = 0; i < val.length; i++) {
+          const docObj = val[i] as any;
+          if (!docObj || typeof docObj !== 'object') {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: Expected object`);
+          }
+          if (typeof docObj.id !== 'string' || typeof docObj.title !== 'string' || typeof docObj.content !== 'string') {
+            throw new Error(`[IpcRouter] Invalid document structure at index ${i}: Missing id, title, or content`);
+          }
+        }
+        sanitized[key] = val;
+      }
     }
 
     return sanitized;

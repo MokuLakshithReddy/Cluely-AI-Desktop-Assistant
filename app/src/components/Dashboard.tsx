@@ -34,6 +34,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
   const [anthropicInput, setAnthropicInput] = useState('');
   const [groqInput, setGroqInput] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [vaultError, setVaultError] = useState<string | null>(null);
 
   // Knowledge & File Upload State
   const [newDocTitle, setNewDocTitle] = useState('');
@@ -63,20 +64,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
   const handleSaveKeys = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!window.desktopBridge) return;
+    setVaultError(null);
 
-    if (geminiInput.trim()) await window.desktopBridge.saveApiKey('gemini', geminiInput.trim());
-    if (openaiInput.trim()) await window.desktopBridge.saveApiKey('openai', openaiInput.trim());
-    if (anthropicInput.trim()) await window.desktopBridge.saveApiKey('anthropic', anthropicInput.trim());
-    if (groqInput.trim()) await window.desktopBridge.saveApiKey('groq', groqInput.trim());
+    try {
+      if (geminiInput.trim()) await window.desktopBridge.saveApiKey('gemini', geminiInput.trim());
+      if (openaiInput.trim()) await window.desktopBridge.saveApiKey('openai', openaiInput.trim());
+      if (anthropicInput.trim()) await window.desktopBridge.saveApiKey('anthropic', anthropicInput.trim());
+      if (groqInput.trim()) await window.desktopBridge.saveApiKey('groq', groqInput.trim());
 
-    // Clear input fields so keys are not kept in component state memory
-    setGeminiInput('');
-    setOpenaiInput('');
-    setAnthropicInput('');
-    setGroqInput('');
+      // Clear input fields so keys are not kept in component state memory
+      setGeminiInput('');
+      setOpenaiInput('');
+      setAnthropicInput('');
+      setGroqInput('');
 
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    } catch (err: any) {
+      console.error('[Dashboard] Error persisting credentials to vault:', err);
+      setVaultError(err.message || 'Failed to save credentials in vault');
+    }
   };
 
   const handleDeleteKey = async (provider: string) => {
@@ -258,6 +265,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
                 Keys are stored securely in your OS credential vault with header-based authorization.
               </p>
             </div>
+
+            {vaultError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-400 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{vaultError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSaveKeys} className="space-y-4">
               <div>

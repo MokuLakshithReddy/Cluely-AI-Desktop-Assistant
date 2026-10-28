@@ -18,11 +18,11 @@ To ensure strict functional equivalence, clean-room integrity, and real-world de
 | **Screen Capture** | `tests/screen-capture.test.ts` | Aspect-ratio downscaling logic, max-1920 clamp, 4K/ultrawide preservation, PNG buffer validation | Automated (Vitest) |
 | **AI Context Assembly** | `tests/ai-context.test.ts` | Dual-speaker tagging ([You]/[Speaker]), 5 operating mode guidance, RAG grounding, error filtering | Automated (Vitest) |
 | **Knowledge RAG** | `tests/knowledge-rag.test.ts` | PDF text extraction, document ingestion, overlapping chunking, TF-IDF / BM25 ranking relevance | Automated (Vitest) |
-| **IPC & Security** | `tests/ipc-security.test.ts` | Sender frame origin verification, untrusted frame rejection, patch whitelist sanitization, injection rejection | Automated (Vitest) |
-| **Credential Vault** | `tests/credential-vault.test.ts` | safeStorage OS keyring / AES-256-GCM encryption, boolean key masking, deletion, input validation | Automated (Vitest) |
-| **Session Archive** | `tests/session-archive.test.ts` | Multi-session persistence, chronological index, query by ID, single/bulk deletion | Automated (Vitest) |
-| **AI Streaming** | `tests/ai-streaming.test.ts` | Non-destructive token accumulation, multi-turn history preservation, abort cancellation, immutability | Automated (Vitest) |
-| **Desktop Runtime** | `tests/electron-smoke.cjs` | Window coordinator initialization, IPC router registration, safeStorage binding, clean shutdown | Automated (Electron/Node) |
+| **IPC & Security** | `tests/ipc-security.test.ts` | Sender frame origin verification, lookalike hostname blocking, dist/index.html substring defense, per-field schema validation (17 tests) | Automated (Vitest) |
+| **Credential Vault** | `tests/credential-vault.test.ts` | safeStorage OS keyring / AES-256-GCM encryption, fail-safe on missing keyring, write error propagation, boolean key masking (7 tests) | Automated (Vitest) |
+| **Session Archive** | `tests/session-archive.test.ts` | Multi-session persistence, path traversal containment protection, chronological index, query by ID (6 tests) | Automated (Vitest) |
+| **AI Streaming** | `tests/ai-streaming.test.ts` | Non-destructive token accumulation, multi-turn history preservation, abort cancellation, immutability (4 tests) | Automated (Vitest) |
+| **Desktop Runtime** | `tests/electron-smoke.cjs` | Verified [APP_READY] signal observation, window coordinator initialization, IPC router registration, clean shutdown (1 test) | Automated (Electron/Node) |
 
 ---
 

@@ -9,6 +9,7 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "npm run build:vite && npm run build:electron",
     "test": "vitest run",
+    "test:report": "node scripts/generate-test-report.cjs",
     "start": "electron dist-electron/electron/main.js",
     "pack": "npm run build && electron-builder --dir"
   },

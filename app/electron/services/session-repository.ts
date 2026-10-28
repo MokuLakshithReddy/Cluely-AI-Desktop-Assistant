@@ -42,6 +42,8 @@ export interface SessionSummary {
 }
 
 export class SessionRepository {
+  private static readonly SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+
   private getStorageDir(): string {
     let base: string;
     try {
@@ -54,23 +56,63 @@ export class SessionRepository {
     return dir;
   }
 
+  /**
+   * Validates session ID against strict character set and bounds.
+   * Rejects path separators, directory traversal sequences, or oversized identifiers.
+   */
+  public validateSessionId(id: string): string {
+    if (!id || typeof id !== 'string') {
+      throw new Error('[SessionRepository] Invalid session ID: ID must be a non-empty string');
+    }
+    const trimmed = id.trim();
+    if (!SessionRepository.SESSION_ID_REGEX.test(trimmed)) {
+      throw new Error(`[SessionRepository] Malformed session ID: "${id}". Must match ${SessionRepository.SESSION_ID_REGEX}`);
+    }
+    if (trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\') || path.basename(trimmed) !== trimmed) {
+      throw new Error(`[SessionRepository] Path traversal detected in session ID: "${id}"`);
+    }
+    return trimmed;
+  }
+
+  /**
+   * Resolves destination file path and asserts strict directory boundary containment.
+   */
+  public resolveSessionPath(id: string): string {
+    const cleanId = this.validateSessionId(id);
+    const storageDir = path.resolve(this.getStorageDir());
+    const targetPath = path.resolve(storageDir, `${cleanId}.json`);
+
+    // Verify target path is strictly inside storageDir
+    if (!targetPath.startsWith(storageDir + path.sep)) {
+      throw new Error(`[SessionRepository] Security boundary violation: "${targetPath}" is outside "${storageDir}"`);
+    }
+
+    return targetPath;
+  }
+
   public async saveSession(session: SessionRecord): Promise<void> {
-    if (!session || !session.id) throw new Error('Invalid session record');
-    const filePath = path.join(this.getStorageDir(), `${session.id}.json`);
+    if (!session || !session.id) {
+      throw new Error('[SessionRepository] Invalid session record: Missing session ID');
+    }
+    const filePath = this.resolveSessionPath(session.id);
     session.updatedAt = new Date().toISOString();
     fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf8');
   }
 
   public async getSession(id: string): Promise<SessionRecord | null> {
     if (!id) return null;
-    const cleanId = path.basename(id);
-    const filePath = path.join(this.getStorageDir(), `${cleanId}.json`);
+    let filePath: string;
+    try {
+      filePath = this.resolveSessionPath(id);
+    } catch {
+      return null;
+    }
     if (!fs.existsSync(filePath)) return null;
     try {
       const raw = fs.readFileSync(filePath, 'utf8');
       return JSON.parse(raw);
     } catch (e) {
-      console.error(`[SessionRepository] Failed to read session ${cleanId}:`, e);
+      console.error(`[SessionRepository] Failed to read session ${id}:`, e);
       return null;
     }
   }
@@ -107,8 +149,12 @@ export class SessionRepository {
 
   public async deleteSession(id: string): Promise<boolean> {
     if (!id) return false;
-    const cleanId = path.basename(id);
-    const filePath = path.join(this.getStorageDir(), `${cleanId}.json`);
+    let filePath: string;
+    try {
+      filePath = this.resolveSessionPath(id);
+    } catch {
+      return false;
+    }
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return true;

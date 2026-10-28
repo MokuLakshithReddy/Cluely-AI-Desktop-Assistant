@@ -21,6 +21,9 @@ if (!gotSingleInstanceLock) {
     windowCoordinator.init();
     shortcutManager.init();
 
+    // Signal verified application readiness to parent runners / smoke harness
+    console.log('[APP_READY] Cluely Desktop Coordinator Ready');
+
     app.on('activate', () => {
       if (!windowCoordinator.getControlWindow()) {
         windowCoordinator.init();

@@ -141,5 +141,45 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
     const nonExistent = await repo.getSession('invalid_id_999');
     expect(nonExistent).toBeNull();
   });
+
+  it('rejects path traversal attempts in session IDs and protects parent directories', async () => {
+    const maliciousTraversals = [
+      '../../escaped_session',
+      '..\\..\\win_escaped',
+      '../test',
+      'sub/dir/id',
+      'valid_id/../../evil',
+      'id_with_null\0_byte',
+      'invalid space id',
+      'sess_with_symbols*?!',
+      'a'.repeat(65), // Exceeds 64 char max length
+    ];
+
+    for (const badId of maliciousTraversals) {
+      const maliciousSession: any = {
+        id: badId,
+        title: 'Exploit attempt',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        transcript: [],
+        messages: [],
+      };
+
+      // saveSession must throw on path traversal
+      await expect(
+        repo.saveSession(maliciousSession),
+        `Expected saveSession to throw on malicious ID: "${badId}"`
+      ).rejects.toThrow(/(Invalid session ID|Malformed session ID|Path traversal detected)/);
+
+      // getSession and deleteSession should safely reject traversal
+      expect(await repo.getSession(badId)).toBeNull();
+      expect(await repo.deleteSession(badId)).toBe(false);
+    }
+
+    // Verify no files were created outside testDir
+    const parentDir = path.dirname(testDir);
+    const escapedFile = path.join(parentDir, 'escaped_session.json');
+    expect(fs.existsSync(escapedFile)).toBe(false);
+  });
 });
 

@@ -147,5 +147,106 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     expect(() => router.sanitizePatchState('malicious')).toThrow(/Invalid patch/);
     expect(() => router.sanitizePatchState([1, 2, 3])).toThrow(/Invalid patch/);
   });
+
+  it('enforces strict boolean types on flags and rejects falsy/truthy non-booleans', () => {
+    const invalidTypes = [
+      { showChat: 'true' },
+      { isStealthMode: 1 },
+      { isRecording: null },
+      { chatWindowIsExpanded: 'yes' },
+      { meHasVoiceActivity: 0 },
+    ];
+
+    for (const invalidPatch of invalidTypes) {
+      expect(() => router.sanitizePatchState(invalidPatch)).toThrow(
+        /Invalid type for boolean field/
+      );
+    }
+  });
+
+  it('validates activeMode against allowed enum variants', () => {
+    // Valid modes
+    for (const mode of ['copilot', 'interview', 'coding', 'sales', 'executive']) {
+      expect(router.sanitizePatchState({ activeMode: mode }).activeMode).toBe(mode);
+    }
+
+    // Invalid modes
+    expect(() => router.sanitizePatchState({ activeMode: 'unauthorized_mode' })).toThrow(
+      /Invalid activeMode/
+    );
+    expect(() => router.sanitizePatchState({ activeMode: 123 })).toThrow(
+      /Invalid activeMode/
+    );
+  });
+
+  it('validates shortcuts map structure and accelerator strings', () => {
+    // Valid shortcuts
+    const valid = router.sanitizePatchState({
+      shortcuts: { ask: 'CommandOrControl+Enter', clear: 'Escape' },
+    });
+    expect(valid.shortcuts?.ask).toBe('CommandOrControl+Enter');
+
+    // Invalid shortcut action
+    expect(() =>
+      router.sanitizePatchState({
+        shortcuts: { maliciousAction: 'Ctrl+Alt+Del' },
+      })
+    ).toThrow(/Unknown shortcut action/);
+
+    // Invalid accelerator type
+    expect(() =>
+      router.sanitizePatchState({
+        shortcuts: { ask: '' },
+      })
+    ).toThrow(/Invalid accelerator for shortcut/);
+  });
+
+  it('validates session structure and rejects invalid session IDs', () => {
+    // Can be null
+    expect(router.sanitizePatchState({ session: null }).session).toBeNull();
+
+    // Valid session object
+    const validSession = {
+      id: 'sess_valid_123',
+      createdAt: new Date().toISOString(),
+      messages: [],
+      transcript: [],
+    };
+    expect(router.sanitizePatchState({ session: validSession }).session).toEqual(validSession);
+
+    // Invalid session ID with path traversal
+    expect(() =>
+      router.sanitizePatchState({
+        session: { ...validSession, id: '../../traversal' },
+      })
+    ).toThrow(/Session ID must match/);
+
+    // Missing messages array
+    expect(() =>
+      router.sanitizePatchState({
+        session: { id: 'sess_1', createdAt: '2026', transcript: [] },
+      })
+    ).toThrow(/messages must be an array/);
+  });
+
+  it('validates knowledgeDocs structure and document schemas', () => {
+    // Valid knowledgeDocs array
+    const validDocs = [
+      { id: 'doc1', title: 'Resume', content: 'Bio content', sourceType: 'file' },
+    ];
+    expect(router.sanitizePatchState({ knowledgeDocs: validDocs }).knowledgeDocs).toEqual(validDocs);
+
+    // Not an array
+    expect(() => router.sanitizePatchState({ knowledgeDocs: 'not-array' })).toThrow(
+      /Expected an array of documents/
+    );
+
+    // Item missing content
+    expect(() =>
+      router.sanitizePatchState({
+        knowledgeDocs: [{ id: 'doc1', title: 'Missing content' }],
+      })
+    ).toThrow(/Missing id, title, or content/);
+  });
 });
 

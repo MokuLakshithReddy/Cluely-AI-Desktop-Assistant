@@ -148,11 +148,14 @@ flowchart TD
 │   │   └── IMPLEMENTATION_PLAN.md      # Milestones and ordered stages (01-07)
 │   ├── testing/
 │   │   ├── TEST_PLAN.md                # 5-tier testing strategy
-│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results (50 tests)
+│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results (59 tests)
 │   ├── security/
 │   │   └── SECURITY_AND_PRIVACY.md     # Permissions, stealth & safeStorage vault
 │   └── production/
 │       └── PRODUCTION_READINESS.md     # Release blockers & acceptance verification
+├── .github/
+│   └── workflows/
+│       └── ci.yml                      # GitHub Actions CI workflow (Windows build, tests & smoke)
 ├── app/                                # Clean-room independent desktop implementation
 │   ├── package.json                    # Electron, React, Tailwind, Vite, Vitest
 │   ├── tsconfig.json                   # TypeScript config for frontend
@@ -222,15 +225,17 @@ npm install
 cd app
 npm test
 ```
-Runs the 50-test Vitest suite across 8 core subsystems:
+Runs the 58-test Vitest suite across 8 core subsystems:
 * 48kHz to 16kHz resampling, RMS energy, and Zero-Crossing Rate (ZCR) human voice detection
 * Voice Activity Detection state transitions, silence redemption, and crosstalk suppression
 * 16-bit PCM RIFF WAV binary encoding
 * Aspect-ratio thumbnail downscaling (1080p, 4K, Ultrawide, Portrait)
 * Dual-speaker transcript formatting (`[You]` and `[Speaker]`) and 5 operating mode guidance
 * PDF token stream parsing, document chunking, and TF-IDF search relevance
-* Strict IPC sender frame origin verification, lookalike hostname blocking, `dist/index.html` substring bypass defense, and whitelist state sanitization
-* OS-backed credential vault encryption and key deletion
+* Strict IPC sender frame origin verification, lookalike hostname blocking, `dist/index.html` substring bypass defense
+* Per-field schema validation on state patches (booleans, enum modes, shortcuts, structured sessions, knowledgeDocs)
+* OS-backed credential vault encryption, safe failure when keyring is missing, and write error propagation
+* Path traversal boundary protection and strict session ID validation in session storage
 * Multi-session chronological indexing, retrieval, and purging
 * AI response token accumulation without message history loss
 
@@ -239,7 +244,14 @@ Runs the 50-test Vitest suite across 8 core subsystems:
 cd app
 node tests/electron-smoke.cjs
 ```
-Launches the compiled Electron binary, initializes the window coordinator and vault, and validates clean desktop execution.
+Launches the compiled Electron binary, listens for explicit `[APP_READY]` coordinator readiness signal, asserts clean IPC initialization, and executes graceful SIGTERM termination.
+
+### Generating Verified Test Report
+```powershell
+cd app
+npm run test:report
+```
+Executes Vitest in JSON reporter mode, executes the verified Electron runtime smoke test, and programmatically compiles raw runner outputs directly into `docs/testing/TEST_RESULTS.md`.
 
 ### Building the Project
 ```powershell
