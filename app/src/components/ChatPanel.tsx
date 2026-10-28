@@ -11,11 +11,12 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { SharedState, ChatMessage } from '../lib/types';
+import { StateUpdater } from '../hooks/useSharedState';
 import { TranscriptLive } from './TranscriptLive';
 
 interface ChatPanelProps {
   state: SharedState;
-  patchState: (patch: Partial<SharedState>) => Promise<void>;
+  patchState: (updater: StateUpdater) => Promise<SharedState>;
   onAsk: (query: string, captureScreen: boolean) => Promise<void>;
   onStop: () => void;
   isGenerating: boolean;

@@ -1,31 +1,174 @@
 import { useEffect, useRef } from 'react';
-import { SharedState, TranscriptItem } from '../lib/types';
-import { AudioResampler, VADProcessor } from '../lib/vad';
-import { transcribeAudio } from '../lib/providers';
+import { SharedState, TranscriptItem, Role } from '../lib/types';
+import { StateUpdater } from './useSharedState';
+import { AudioResampler, VADProcessor, arrayBufferToBase64 } from '../lib/vad';
 
-export function useAudioCapture(state: SharedState, patchState: (patch: Partial<SharedState>) => Promise<void>) {
+export function useAudioCapture(
+  state: SharedState,
+  patchState: (updater: StateUpdater) => Promise<SharedState>,
+  getLatestState: () => SharedState
+) {
   const isRecording = state.isRecording;
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const vadRef = useRef<VADProcessor | null>(null);
-  const resamplerRef = useRef<AudioResampler | null>(null);
+
+  // Local Microphone State
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micAudioCtxRef = useRef<AudioContext | null>(null);
+  const micVadRef = useRef<VADProcessor | null>(null);
+  const micResamplerRef = useRef<AudioResampler | null>(null);
+
+  // Remote System Audio Loopback State
+  const systemStreamRef = useRef<MediaStream | null>(null);
+  const systemAudioCtxRef = useRef<AudioContext | null>(null);
+  const systemVadRef = useRef<VADProcessor | null>(null);
+  const systemResamplerRef = useRef<AudioResampler | null>(null);
 
   useEffect(() => {
     if (!isRecording) {
-      stopCapture();
+      stopDualCapture();
       return;
     }
 
-    startCapture();
+    startDualCapture();
 
     return () => {
-      stopCapture();
+      stopDualCapture();
     };
   }, [isRecording]);
 
-  const startCapture = async () => {
+  const handleSpeechSegmentReady = async (
+    role: Role,
+    wavBuffer: ArrayBuffer,
+    durationMs: number
+  ) => {
+    if (durationMs < 400) return; // Discard short clicks/pops
+
+    const transcriptId = `tr_${role}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const placeholderItem: TranscriptItem = {
+      id: transcriptId,
+      createdAt: new Date().toISOString(),
+      relativeMs: durationMs,
+      role,
+      status: 'transcribing',
+      text: '',
+    };
+
+    // Append placeholder segment to active session
+    await patchState(prev => {
+      const activeSession = prev.session || {
+        id: `sess_${Date.now()}`,
+        title: 'Live Conversation Session',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        durationSeconds: 0,
+        mode: prev.activeMode,
+        audioInputLanguage: 'en',
+        transcript: [],
+        messages: [],
+      };
+      return {
+        session: {
+          ...activeSession,
+          transcript: [...activeSession.transcript, placeholderItem],
+        },
+      };
+    });
+
+    const currentState = getLatestState();
+    const hasSttKey = currentState.hasApiKeys.groq || currentState.hasApiKeys.openai;
+
+    if (!hasSttKey) {
+      // Diagnostic mode: Do NOT inject fake conversation transcripts!
+      // Mark as error with clear actionable reason
+      await patchState(prev => {
+        if (!prev.session) return {};
+        return {
+          session: {
+            ...prev.session,
+            transcript: prev.session.transcript.map(item =>
+              item.id === transcriptId
+                ? {
+                    ...item,
+                    status: 'error',
+                    error: 'No STT key configured. Add Groq or OpenAI key in Settings.',
+                    text: '[Speech detected - Configure STT Key in Settings]',
+                  }
+                : item
+            ),
+          },
+        };
+      });
+      return;
+    }
+
+    // Call real transcription API via secure main process bridge
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const wavBase64 = arrayBufferToBase64(wavBuffer);
+      let recognizedText = '';
+
+      if (window.desktopBridge?.transcribeAudioPayload) {
+        const res = await window.desktopBridge.transcribeAudioPayload({
+          wavBase64,
+          language: currentState.session?.audioInputLanguage || 'en',
+        });
+        recognizedText = res.text?.trim() || '';
+      }
+
+      if (!recognizedText) {
+        // Remove empty segment cleanly
+        await patchState(prev => {
+          if (!prev.session) return {};
+          return {
+            session: {
+              ...prev.session,
+              transcript: prev.session.transcript.filter(item => item.id !== transcriptId),
+            },
+          };
+        });
+        return;
+      }
+
+      // Mark transcript segment as ready with actual transcribed text
+      await patchState(prev => {
+        if (!prev.session) return {};
+        return {
+          session: {
+            ...prev.session,
+            transcript: prev.session.transcript.map(item =>
+              item.id === transcriptId
+                ? { ...item, status: 'ready', text: recognizedText }
+                : item
+            ),
+          },
+        };
+      });
+    } catch (err: any) {
+      console.warn(`[useAudioCapture] Transcription error for ${role}:`, err);
+      // Clearly represent failed transcription as an error state
+      await patchState(prev => {
+        if (!prev.session) return {};
+        return {
+          session: {
+            ...prev.session,
+            transcript: prev.session.transcript.map(item =>
+              item.id === transcriptId
+                ? {
+                    ...item,
+                    status: 'error',
+                    error: err.message || 'Transcription service error',
+                    text: `[Transcription Failed: ${err.message || 'Error'}]`,
+                  }
+                : item
+            ),
+          },
+        };
+      });
+    }
+  };
+
+  const startDualCapture = async () => {
+    // 1. Channel A: Start Local Microphone Capture ('me')
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -33,116 +176,123 @@ export function useAudioCapture(state: SharedState, patchState: (patch: Partial<
           sampleRate: 48000,
         },
       });
-      mediaStreamRef.current = stream;
+      micStreamRef.current = micStream;
 
-      const audioCtx = new AudioContext({ sampleRate: 48000 });
-      audioContextRef.current = audioCtx;
+      const micAudioCtx = new AudioContext({ sampleRate: 48000 });
+      micAudioCtxRef.current = micAudioCtx;
+      const micSource = micAudioCtx.createMediaStreamSource(micStream);
+      const micResampler = new AudioResampler(48000, 16000);
+      micResamplerRef.current = micResampler;
 
-      const source = audioCtx.createMediaStreamSource(stream);
-      const resampler = new AudioResampler(48000, 16000);
-      resamplerRef.current = resampler;
+      const micVad = new VADProcessor();
+      micVadRef.current = micVad;
 
-      const vad = new VADProcessor();
-      vadRef.current = vad;
-
-      vad.onSpeechStart = () => {
+      micVad.onSpeechStart = () => {
         patchState({ meHasVoiceActivity: true });
       };
-
-      vad.onSpeechEnd = async (wavBuffer, durationMs) => {
+      micVad.onSpeechEnd = (wav, duration) => {
         patchState({ meHasVoiceActivity: false });
-        if (durationMs < 400) return; // Discard tiny clicks/noise
+        handleSpeechSegmentReady('me', wav, duration);
+      };
 
-        const transcriptId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        const newItem: TranscriptItem = {
-          id: transcriptId,
-          createdAt: new Date().toISOString(),
-          relativeMs: durationMs,
-          role: 'me',
-          status: 'transcribing',
-          text: '...',
-        };
+      const micScriptNode = micAudioCtx.createScriptProcessor(4096, 1, 1);
+      micScriptNode.onaudioprocess = event => {
+        const inputData = event.inputBuffer.getChannelData(0);
+        const resampled = micResampler.resample(inputData);
 
-        // Append placeholder to session
-        const currentSession = state.session || {
-          id: `sess_${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          audioInputLanguage: 'en',
-          transcript: [],
-          messages: [],
-        };
+        // Crosstalk Suppression: Zero mic frame if remote system audio is actively speaking!
+        const isEchoSuppressed = getLatestState().themHasVoiceActivity;
+        micVad.processFrame(resampled, isEchoSuppressed);
+      };
 
-        const updatedTranscript = [...currentSession.transcript, newItem];
-        await patchState({
-          session: {
-            ...currentSession,
-            transcript: updatedTranscript,
-          },
+      micSource.connect(micScriptNode);
+      micScriptNode.connect(micAudioCtx.destination);
+    } catch (err) {
+      console.error('[useAudioCapture] Failed to access local microphone:', err);
+    }
+
+    // 2. Channel B: Start Remote System Audio Loopback Capture ('them')
+    try {
+      if (navigator.mediaDevices.getDisplayMedia) {
+        // In Electron, setDisplayMediaRequestHandler provides screen video + loopback audio
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
         });
 
-        // Call STT API if key is available, else provide mock transcription
-        const apiKey = state.apiKeys.groq || state.apiKeys.openai;
-        let recognizedText = '';
+        // Disable and stop the video track immediately to conserve CPU and GPU
+        displayStream.getVideoTracks().forEach(track => {
+          track.enabled = false;
+          track.stop();
+        });
 
-        if (apiKey) {
-          try {
-            const provider = state.apiKeys.groq ? 'groq' : 'openai';
-            recognizedText = await transcribeAudio(wavBuffer, apiKey, provider);
-          } catch (err) {
-            console.warn('[AudioCapture] Cloud STT error:', err);
-            recognizedText = '[Audio captured - transcribe error]';
-          }
-        } else {
-          recognizedText = 'Speech segment detected (configure Groq/OpenAI key in Settings for cloud Whisper)';
+        const audioTracks = displayStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          systemStreamRef.current = new MediaStream(audioTracks);
+
+          const systemAudioCtx = new AudioContext({ sampleRate: 48000 });
+          systemAudioCtxRef.current = systemAudioCtx;
+          const systemSource = systemAudioCtx.createMediaStreamSource(systemStreamRef.current);
+          const systemResampler = new AudioResampler(48000, 16000);
+          systemResamplerRef.current = systemResampler;
+
+          const systemVad = new VADProcessor();
+          systemVadRef.current = systemVad;
+
+          systemVad.onSpeechStart = () => {
+            patchState({ themHasVoiceActivity: true });
+          };
+          systemVad.onSpeechEnd = (wav, duration) => {
+            patchState({ themHasVoiceActivity: false });
+            handleSpeechSegmentReady('them', wav, duration);
+          };
+
+          const systemScriptNode = systemAudioCtx.createScriptProcessor(4096, 1, 1);
+          systemScriptNode.onaudioprocess = event => {
+            const inputData = event.inputBuffer.getChannelData(0);
+            const resampled = systemResampler.resample(inputData);
+            systemVad.processFrame(resampled, false);
+          };
+
+          systemSource.connect(systemScriptNode);
+          systemScriptNode.connect(systemAudioCtx.destination);
         }
-
-        // Update transcript entry
-        if (recognizedText) {
-          const finalTranscript = updatedTranscript.map(item =>
-            item.id === transcriptId ? { ...item, status: 'ready' as const, text: recognizedText } : item
-          );
-          await patchState({
-            session: {
-              ...currentSession,
-              transcript: finalTranscript,
-            },
-          });
-        }
-      };
-
-      // ScriptProcessor / AudioWorklet for frame processing
-      const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
-      scriptNode.onaudioprocess = event => {
-        const inputData = event.inputBuffer.getChannelData(0);
-        const resampled = resampler.resample(inputData);
-
-        // Echo suppression: zero out if remote speaker ('them') is active
-        const isEchoSuppressed = state.themHasVoiceActivity;
-        vad.processFrame(resampled, isEchoSuppressed);
-      };
-
-      source.connect(scriptNode);
-      scriptNode.connect(audioCtx.destination);
+      }
     } catch (err) {
-      console.error('[AudioCapture] Failed to access microphone:', err);
-      patchState({ isRecording: false });
+      // Loopback media prompt dismissed or not supported on this platform
+      console.info('[useAudioCapture] System audio loopback not attached:', err);
     }
   };
 
-  const stopCapture = () => {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(t => t.stop());
-      mediaStreamRef.current = null;
+  const stopDualCapture = () => {
+    // Stop Microphone
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(t => t.stop());
+      micStreamRef.current = null;
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(console.error);
-      audioContextRef.current = null;
+    if (micAudioCtxRef.current) {
+      micAudioCtxRef.current.close().catch(() => {});
+      micAudioCtxRef.current = null;
     }
-    if (vadRef.current) {
-      vadRef.current.flush();
-      vadRef.current = null;
+    if (micVadRef.current) {
+      micVadRef.current.flush();
+      micVadRef.current = null;
     }
+
+    // Stop System Audio
+    if (systemStreamRef.current) {
+      systemStreamRef.current.getTracks().forEach(t => t.stop());
+      systemStreamRef.current = null;
+    }
+    if (systemAudioCtxRef.current) {
+      systemAudioCtxRef.current.close().catch(() => {});
+      systemAudioCtxRef.current = null;
+    }
+    if (systemVadRef.current) {
+      systemVadRef.current.flush();
+      systemVadRef.current = null;
+    }
+
     patchState({ meHasVoiceActivity: false, themHasVoiceActivity: false });
   };
 }
-

@@ -1,7 +1,85 @@
 import { KnowledgeDoc } from './types';
 
 /**
- * Chunks text content into overlapping passages
+ * Extracts plain text from binary PDF file data without external native dependencies.
+ * Parses PDF text operators (BT...ET, Tj, TJ) and text streams.
+ */
+export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(buffer);
+  let textContent = '';
+
+  // Convert bytes to string for token parsing
+  let binaryStr = '';
+  const step = 8192;
+  for (let i = 0; i < bytes.length; i += step) {
+    binaryStr += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, Math.min(i + step, bytes.length)))
+    );
+  }
+
+  // 1. Match Tj text blocks: (Some Text) Tj
+  const tjRegex = /\(([^)]+)\)\s*Tj/g;
+  let match;
+  while ((match = tjRegex.exec(binaryStr)) !== null) {
+    const clean = match[1].replace(/\\([()\\])/g, '$1');
+    textContent += clean + ' ';
+  }
+
+  // 2. Match TJ array blocks: [(Part 1) 20 (Part 2)] TJ
+  const tjArrayRegex = /\[([^\]]+)\]\s*TJ/g;
+  while ((match = tjArrayRegex.exec(binaryStr)) !== null) {
+    const inner = match[1];
+    const subRegex = /\(([^)]+)\)/g;
+    let subMatch;
+    while ((subMatch = subRegex.exec(inner)) !== null) {
+      const clean = subMatch[1].replace(/\\([()\\])/g, '$1');
+      textContent += clean + ' ';
+    }
+  }
+
+  // 3. Fallback: If minimal PDF operators were found, extract printable ASCII sequences
+  if (textContent.trim().length < 50) {
+    const asciiRegex = /[a-zA-Z0-9.,;:!?'"()\s\-_]{6,}/g;
+    const asciiMatches = binaryStr.match(asciiRegex) || [];
+    // Filter out PDF syntax keywords
+    const filtered = asciiMatches.filter(
+      s => !s.includes('obj') && !s.includes('endobj') && !s.includes('xref') && !s.includes('stream')
+    );
+    textContent = filtered.join('\n');
+  }
+
+  return textContent.trim();
+}
+
+/**
+ * Parses and ingests a local File object (.txt, .md, .pdf, .json, code files)
+ */
+export async function parseDocumentFile(file: File): Promise<{ title: string; content: string }> {
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+
+  if (ext === 'pdf') {
+    const arrayBuffer = await file.arrayBuffer();
+    const extracted = await extractTextFromPdf(arrayBuffer);
+    if (!extracted) {
+      throw new Error(`Could not extract readable text from PDF: ${file.name}`);
+    }
+    return {
+      title: file.name,
+      content: extracted,
+    };
+  }
+
+  // Text-based formats (.txt, .md, .json, .ts, .py, etc.)
+  const text = await file.text();
+  return {
+    title: file.name,
+    content: text,
+  };
+}
+
+/**
+ * Chunks text content into overlapping passages respecting paragraph and section headers
  */
 export function chunkDocument(text: string, chunkSize: number = 500, overlap: number = 80): string[] {
   const clean = text.replace(/\r\n/g, '\n').trim();
@@ -13,11 +91,13 @@ export function chunkDocument(text: string, chunkSize: number = 500, overlap: nu
   while (start < clean.length) {
     let end = start + chunkSize;
     if (end < clean.length) {
-      // Look for a clean boundary (newline or period)
-      const nextBreak = clean.lastIndexOf('\n', end);
+      // Look for a clean boundary: markdown headers, paragraphs, or sentence periods
+      const nextHeader = clean.lastIndexOf('\n#', end);
+      const nextParagraph = clean.lastIndexOf('\n\n', end);
       const nextPeriod = clean.lastIndexOf('. ', end);
-      const bestBreak = Math.max(nextBreak, nextPeriod);
-      if (bestBreak > start + chunkSize * 0.5) {
+
+      const bestBreak = Math.max(nextHeader, nextParagraph, nextPeriod);
+      if (bestBreak > start + chunkSize * 0.4) {
         end = bestBreak + 1;
       }
     } else {
@@ -37,7 +117,28 @@ export function chunkDocument(text: string, chunkSize: number = 500, overlap: nu
 }
 
 /**
- * Simple TF-IDF / Term Frequency ranker for local semantic retrieval
+ * Ingests a raw text note or parsed file into a KnowledgeDoc record
+ */
+export function createKnowledgeDoc(
+  title: string,
+  content: string,
+  sourceType: 'pasted' | 'file' = 'pasted',
+  fileName?: string
+): KnowledgeDoc {
+  const chunks = chunkDocument(content);
+  return {
+    id: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    title: title.trim(),
+    content: content.trim(),
+    chunks,
+    addedAt: new Date().toISOString(),
+    sourceType,
+    fileName,
+  };
+}
+
+/**
+ * BM25 / TF-IDF ranker for local semantic retrieval
  */
 export function retrieveRelevantPassages(
   query: string,
@@ -69,7 +170,6 @@ export function retrieveRelevantPassages(
       let matchCount = 0;
 
       for (const term of queryTerms) {
-        // Count occurrences
         let pos = 0;
         while ((pos = lowerChunk.indexOf(term, pos)) !== -1) {
           matchCount++;
@@ -91,4 +191,3 @@ export function retrieveRelevantPassages(
 
   return scored.slice(0, topK).map(s => `[${s.title}]: ${s.chunk}`);
 }
-

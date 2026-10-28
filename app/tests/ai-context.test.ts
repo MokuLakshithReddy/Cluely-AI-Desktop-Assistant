@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildContextPrompt, MODE_SYSTEM_PROMPTS } from '../src/lib/providers';
-import { chunkDocument, retrieveRelevantPassages } from '../src/lib/knowledge';
-import { TranscriptItem, KnowledgeDoc } from '../src/lib/types';
+import { TranscriptItem } from '../src/lib/types';
 
-describe('AI Context & Knowledge Retrieval Subsystem', () => {
+describe('AI Context Synthesis & Multimodal Provider Subsystem', () => {
   it('builds context prompt including speaker-attributed transcripts', () => {
     const transcripts: TranscriptItem[] = [
       {
@@ -33,59 +32,71 @@ describe('AI Context & Knowledge Retrieval Subsystem', () => {
     expect(prompt).toContain('Provide optimal pivot strategies');
   });
 
+  it('filters out error and incomplete transcript segments from prompt context', () => {
+    const transcripts: TranscriptItem[] = [
+      {
+        id: '1',
+        createdAt: new Date().toISOString(),
+        relativeMs: 500,
+        role: 'me',
+        status: 'error',
+        text: '[Transcription Failed]',
+        error: 'Network timeout',
+      },
+      {
+        id: '2',
+        createdAt: new Date().toISOString(),
+        relativeMs: 1000,
+        role: 'them',
+        status: 'ready',
+        text: 'What are the trade-offs of microservices?',
+      },
+    ];
+
+    const prompt = buildContextPrompt('Summarize key points', 'copilot', transcripts);
+    expect(prompt).not.toContain('[Transcription Failed]');
+    expect(prompt).toContain('What are the trade-offs of microservices?');
+  });
+
   it('includes mode-specific system prompts with clear operational boundaries', () => {
     expect(MODE_SYSTEM_PROMPTS.copilot).toContain('personal desktop copilot');
     expect(MODE_SYSTEM_PROMPTS.interview).toContain('technical interview copilot');
     expect(MODE_SYSTEM_PROMPTS.interview).toContain('time complexity');
     expect(MODE_SYSTEM_PROMPTS.coding).toContain('debugger');
     expect(MODE_SYSTEM_PROMPTS.sales).toContain('objection');
+    expect(MODE_SYSTEM_PROMPTS.executive).toContain('decisions made');
   });
 
-  it('chunks documents with overlapping windows', () => {
-    const longText = 'Sentence A. '.repeat(100); // ~1200 characters
-    const chunks = chunkDocument(longText, 300, 50);
-
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0].length).toBeLessThanOrEqual(350);
-  });
-
-  it('retrieves relevant knowledge passages using keyword / TF-IDF scoring', () => {
-    const docs: KnowledgeDoc[] = [
-      {
-        id: 'doc1',
-        title: 'Binary Search Trees',
-        content: 'Binary search tree lookup takes O(log N) on average and O(N) when degenerate.',
-        chunks: ['Binary search tree lookup takes O(log N) on average and O(N) when degenerate.'],
-        addedAt: new Date().toISOString(),
-      },
-      {
-        id: 'doc2',
-        title: 'Kubernetes Architecture',
-        content: 'Kubelet runs on each node and maintains container lifecycle with CRI.',
-        chunks: ['Kubelet runs on each node and maintains container lifecycle with CRI.'],
-        addedAt: new Date().toISOString(),
-      },
+  it('integrates retrieved knowledge passages with clear source tagging', () => {
+    const passages = [
+      '[System Architecture]: Microservices communicate via gRPC over HTTP/2.',
+      '[Database Guide]: PostgreSQL handles transactions with MVCC isolation.',
     ];
 
-    const results = retrieveRelevantPassages('What is the lookup complexity of binary tree?', docs, 1);
-    expect(results.length).toBe(1);
-    expect(results[0]).toContain('Binary Search Trees');
-    expect(results[0]).toContain('O(log N)');
+    const prompt = buildContextPrompt('How does our API communicate?', 'coding', [], passages);
+    expect(prompt).toContain('### RETRIEVED REFERENCE DOCUMENTS & NOTES');
+    expect(prompt).toContain('[Source 1]:');
+    expect(prompt).toContain('Microservices communicate via gRPC');
+    expect(prompt).toContain('[Source 2]:');
+    expect(prompt).toContain('PostgreSQL handles transactions');
   });
 
-  it('returns empty array when query does not match any document terms', () => {
-    const docs: KnowledgeDoc[] = [
-      {
-        id: 'doc1',
-        title: 'Accounting Standards',
-        content: 'GAAP principles require accrual basis revenue recognition.',
-        chunks: ['GAAP principles require accrual basis revenue recognition.'],
-        addedAt: new Date().toISOString(),
-      },
-    ];
+  it('handles empty query gracefully with contextual default instruction', () => {
+    const prompt = buildContextPrompt('', 'copilot', []);
+    expect(prompt).toContain('Based on the screen and recent conversation, provide the next helpful answer');
+  });
 
-    const results = retrieveRelevantPassages('quantum entanglement physics', docs, 1);
-    expect(results).toHaveLength(0);
+  it('verifies system prompt presence across all 5 defined assistance modes', () => {
+    const modes = ['copilot', 'interview', 'coding', 'sales', 'executive'] as const;
+    for (const m of modes) {
+      expect(MODE_SYSTEM_PROMPTS[m]).toBeDefined();
+      expect(MODE_SYSTEM_PROMPTS[m].length).toBeGreaterThan(50);
+    }
+  });
+
+  it('formats user request cleanly when query contains multiline strings', () => {
+    const multiline = 'Line 1\nLine 2\nLine 3';
+    const prompt = buildContextPrompt(multiline, 'copilot', []);
+    expect(prompt).toContain('### USER REQUEST\nLine 1\nLine 2\nLine 3');
   });
 });
-

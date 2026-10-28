@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import { SharedState } from '../../src/lib/types';
+import { credentialVault } from '../services/vault';
 
 function getStateFile(): string {
   try {
@@ -26,7 +27,13 @@ export const INITIAL_STATE: SharedState = {
   isRecording: false,
   activeMode: 'copilot',
   activeModel: 'gemini-2.5-flash',
-  apiKeys: {},
+  hasApiKeys: {
+    gemini: false,
+    openai: false,
+    anthropic: false,
+    groq: false,
+    ollama: false,
+  },
   shortcuts: {
     toggleVisibility: 'CommandOrControl+Shift+Space',
     ask: 'CommandOrControl+Enter',
@@ -47,6 +54,24 @@ class StateManager {
 
   constructor() {
     this.load();
+    this.syncVaultKeys();
+  }
+
+  public async syncVaultKeys() {
+    try {
+      const keys = await credentialVault.hasKeys();
+      this.patchState({
+        hasApiKeys: {
+          gemini: !!keys.gemini,
+          openai: !!keys.openai,
+          anthropic: !!keys.anthropic,
+          groq: !!keys.groq,
+          ollama: !!keys.ollama,
+        },
+      });
+    } catch (e) {
+      console.warn('[StateManager] Failed to sync keys from vault:', e);
+    }
   }
 
   public getState(): SharedState {
@@ -79,11 +104,14 @@ class StateManager {
       if (fs.existsSync(stateFile)) {
         const raw = fs.readFileSync(stateFile, 'utf8');
         const parsed = JSON.parse(raw);
+
+        // Sanitize: never allow plaintext apiKeys into state even if old file had them
+        delete parsed.apiKeys;
+
         this.state = {
           ...INITIAL_STATE,
-          appVersion: app.isReady() ? app.getVersion() : '1.0.0',
+          appVersion: (app && typeof app.isReady === 'function' && app.isReady()) ? app.getVersion() : '1.0.0',
           ...parsed,
-          // Always reset ephemeral session state on boot
           isControlWindowLoaded: false,
           isChatWindowLoaded: false,
           isDashboardWindowLoaded: false,
@@ -103,7 +131,12 @@ class StateManager {
       const stateFile = getStateFile();
       const dir = path.dirname(stateFile);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(stateFile, JSON.stringify(this.state, null, 2), 'utf8');
+
+      // Clean serialization copy: ensure no secrets are serialized
+      const toSave: any = { ...this.state };
+      delete toSave.apiKeys;
+
+      fs.writeFileSync(stateFile, JSON.stringify(toSave, null, 2), 'utf8');
     } catch (e) {
       console.error('[StateManager] Failed to save state:', e);
     }

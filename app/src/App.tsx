@@ -7,7 +7,7 @@ import { ChatPanel } from './components/ChatPanel';
 import { Dashboard } from './components/Dashboard';
 
 export function App() {
-  const { state, patchState } = useSharedState();
+  const { state, patchState, getLatestState } = useSharedState();
   const [route, setRoute] = useState(window.location.hash.replace('#', '') || 'all');
 
   useEffect(() => {
@@ -18,11 +18,15 @@ export function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Initialize live audio capture and VAD
-  useAudioCapture(state, patchState);
+  // Initialize dual-channel audio capture (mic + loopback) and VAD
+  useAudioCapture(state, patchState, getLatestState);
 
-  // Initialize AI assistant handler
-  const { askAssistant, stopGeneration, isGenerating } = useAiAssistant(state, patchState);
+  // Initialize AI assistant handler with latest state updater
+  const { askAssistant, stopGeneration, isGenerating } = useAiAssistant(
+    state,
+    patchState,
+    getLatestState
+  );
 
   // Listen for global shortcut triggers from main process
   useEffect(() => {

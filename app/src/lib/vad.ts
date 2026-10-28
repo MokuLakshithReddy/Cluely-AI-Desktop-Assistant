@@ -1,8 +1,9 @@
 /**
- * Voice Activity Detection (VAD) & Audio Pipeline
+ * Dual-Channel Voice Activity Detection (VAD) & Audio Pipeline
  * Features:
  * - 48kHz to 16kHz downsampling
- * - Voice Activity Detection with 300ms redemption and 20s max segment
+ * - Adaptive RMS energy and Zero-Crossing Rate (ZCR) speech classification
+ * - 300ms silence redemption window and 20s max segment timeout
  * - Crosstalk / Echo suppression (zeros local mic if system audio is active)
  * - 16-bit PCM RIFF WAV encoder
  */
@@ -11,6 +12,8 @@ export interface VADConfig {
   sampleRate: number;
   frameSize: number;
   energyThreshold: number;
+  minZcr: number;
+  maxZcr: number;
   redemptionMs: number;
   preSpeechPadMs: number;
   maxSegmentMs: number;
@@ -20,6 +23,8 @@ export const DEFAULT_VAD_CONFIG: VADConfig = {
   sampleRate: 16000,
   frameSize: 512,
   energyThreshold: 0.015,
+  minZcr: 0.02,   // Minimum zero-crossing rate for human speech phonemes
+  maxZcr: 0.45,   // Maximum ZCR to filter out high-frequency static noise
   redemptionMs: 300,
   preSpeechPadMs: 300,
   maxSegmentMs: 20000,
@@ -60,6 +65,7 @@ export class VADProcessor {
   private speechBuffer: Float32Array[] = [];
   private preSpeechBuffer: Float32Array[] = [];
   private preSpeechMaxFrames: number;
+  private adaptiveNoiseFloor = 0.005;
 
   public onSpeechStart?: () => void;
   public onSpeechEnd?: (wavBuffer: ArrayBuffer, durationMs: number) => void;
@@ -83,17 +89,39 @@ export class VADProcessor {
   }
 
   /**
-   * Process a 16kHz audio frame
+   * Calculate Zero-Crossing Rate (ZCR) to distinguish human speech from DC hum or clicks
    */
-  public processFrame(frame: Float32Array, isEchoSuppressed: boolean = false): void {
+  public calculateZcr(frame: Float32Array): number {
+    let crossings = 0;
+    for (let i = 1; i < frame.length; i++) {
+      if ((frame[i] >= 0 && frame[i - 1] < 0) || (frame[i] < 0 && frame[i - 1] >= 0)) {
+        crossings++;
+      }
+    }
+    return crossings / frame.length;
+  }
+
+  /**
+   * Process a 16kHz audio frame with speech discrimination
+   */
+  public processFrame(frame: Float32Array, isEchoSuppressed: boolean = false): boolean {
     if (isEchoSuppressed) {
-      // If echo suppression is active, treat frame as pure silence
+      // If echo suppression is active, zero out frame
       frame = new Float32Array(frame.length);
     }
 
     const energy = this.calculateRms(frame);
+    const zcr = this.calculateZcr(frame);
     const now = Date.now();
-    const hasVoice = energy > this.config.energyThreshold;
+
+    // Dynamically adapt background noise floor during quiet moments
+    if (!this.isSpeaking && energy < this.config.energyThreshold) {
+      this.adaptiveNoiseFloor = this.adaptiveNoiseFloor * 0.95 + energy * 0.05;
+    }
+
+    // Speech condition: Energy exceeds threshold + noise floor AND ZCR fits human speech band
+    const threshold = Math.max(this.config.energyThreshold, this.adaptiveNoiseFloor * 2.5);
+    const hasVoice = energy > threshold && zcr >= this.config.minZcr && zcr <= this.config.maxZcr;
 
     if (hasVoice) {
       this.silenceStartTimestamp = null;
@@ -105,7 +133,7 @@ export class VADProcessor {
       }
       this.speechBuffer.push(frame);
 
-      // Check max segment timeout (e.g. 20s)
+      // Max segment timeout (20s)
       if (this.speechStartTimestamp && now - this.speechStartTimestamp >= this.config.maxSegmentMs) {
         this.finalizeSegment(now);
       }
@@ -118,13 +146,15 @@ export class VADProcessor {
           this.finalizeSegment(now);
         }
       } else {
-        // Maintain ring buffer of pre-speech audio
+        // Maintain ring buffer of pre-speech padding
         this.preSpeechBuffer.push(frame);
         if (this.preSpeechBuffer.length > this.preSpeechMaxFrames) {
           this.preSpeechBuffer.shift();
         }
       }
     }
+
+    return this.isSpeaking;
   }
 
   private finalizeSegment(now: number) {
@@ -156,6 +186,10 @@ export class VADProcessor {
       this.finalizeSegment(Date.now());
     }
   }
+
+  public isVoiceActive(): boolean {
+    return this.isSpeaking;
+  }
 }
 
 /**
@@ -186,11 +220,11 @@ export function encodeWAV(
 
   // fmt sub-chunk
   writeString(12, 'fmt ');
-  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-  view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * blockAlign, true); // ByteRate
+  view.setUint32(28, sampleRate * blockAlign, true);
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitDepth, true);
 
@@ -210,9 +244,6 @@ export function encodeWAV(
   return buffer;
 }
 
-/**
- * Convert ArrayBuffer to base64 string
- */
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -222,4 +253,3 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   }
   return btoa(binary);
 }
-

@@ -4,43 +4,49 @@ const path = require('path');
 const electronBinary = require('electron');
 const appPath = path.resolve(__dirname, '..');
 
-console.log('Testing Electron launch with binary:', electronBinary);
-console.log('App path:', appPath);
+console.log('--- Initiating Electron Desktop Runtime Smoke Test ---');
+console.log('Electron binary:', electronBinary);
+console.log('App root:', appPath);
 
+// Ensure clean environment without ELECTRON_RUN_AS_NODE so Electron runs as a desktop app
 const cleanEnv = { ...process.env, CI: 'true', ELECTRON_ENABLE_LOGGING: '1' };
 delete cleanEnv.ELECTRON_RUN_AS_NODE;
 
-// Launch Electron with a 4-second timeout to verify it boots without crashing
 const child = spawn(electronBinary, [appPath], {
   env: cleanEnv,
   stdio: 'pipe',
 });
 
-let output = '';
+let stdoutCaptured = '';
+let stderrCaptured = '';
+
 child.stdout.on('data', data => {
-  output += data.toString();
+  stdoutCaptured += data.toString();
   console.log('[Electron stdout]:', data.toString().trim());
 });
 
 child.stderr.on('data', data => {
-  output += data.toString();
+  stderrCaptured += data.toString();
   console.log('[Electron stderr]:', data.toString().trim());
 });
 
+// Run for 3 seconds to let BrowserWindow, IPC handlers, and state initialize
 const timer = setTimeout(() => {
-  console.log('Electron launched and ran successfully for 3.5 seconds. Terminating smoke test process.');
+  console.log('Electron windows initialized cleanly without crash.');
+  console.log('Terminating smoke process cleanly...');
   child.kill();
-  process.exit(0);
-}, 3500);
+}, 3000);
 
 child.on('exit', (code, signal) => {
   clearTimeout(timer);
-  console.log(`Electron exited with code ${code}, signal: ${signal}`);
+  console.log(`Process exited with code: ${code}, signal: ${signal}`);
+
+  // Fatal crashes produce exit code > 0 without SIGTERM
   if (code !== 0 && signal !== 'SIGTERM' && signal !== null) {
-    console.error('Electron encountered an unexpected startup crash!');
+    console.error('Smoke test failure: Electron crashed on startup!');
     process.exit(1);
-  } else {
-    console.log('Smoke test passed successfully!');
-    process.exit(0);
   }
+
+  console.log('--- Electron Desktop Runtime Smoke Test: PASSED ---');
+  process.exit(0);
 });

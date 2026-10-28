@@ -8,8 +8,9 @@ app/dist-electron/
 dist/
 build/
 
-# Target extraction artifacts & binaries (keep cluely_domains_extracted)
+# Target extraction artifacts & binaries (Clean-room policy: no proprietary binaries in repo)
 extracted_cluely/
+cluely_domains_extracted/
 *.exe
 *.asar
 *.log
@@ -35,3 +36,10 @@ coverage/
 
 # Scratch & temporary
 scratch/
+
+# Runtime state & vault storage
+*.vault
+*shared-state.json
+sessions/
+app/sessions/
+

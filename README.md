@@ -47,7 +47,8 @@ Unlike basic chatbots or note-taking apps, this application continuously interpr
 * **Privacy & Bring-Your-Own-Key (BYOK)**:
   * Zero raw audio retention: audio buffers exist only in ephemeral memory and are discarded after transcription.
   * Explicit capture indicators on the floating pill.
-  * Local credential vault with zero cloud dependency for key storage.
+  * OS-backed credential vault (`safeStorage` utilizing Windows DPAPI / macOS Keychain, with AES-256-GCM fallback). Decrypted keys are strictly isolated in the main process and never broadcast to renderers or serialized to disk in plaintext.
+  * Multi-session history repository stored locally in user data with full search, deletion, and export capabilities.
 
 ---
 
@@ -139,7 +140,7 @@ flowchart TD
 .
 ├── docs/                               # Project documentation suite
 │   ├── reverse-engineering/
-│   │   ├── CLUELY_ANALYSIS.md          # Comprehensive evidence & decompiled findings
+│   │   ├── CLUELY_ANALYSIS.md          # Comprehensive evidence & reverse-engineered findings
 │   │   └── FEATURE_MATRIX.md           # Target behavior vs. independent implementation
 │   ├── architecture/
 │   │   └── ARCHITECTURE.md             # System design, boundaries & data flows
@@ -147,12 +148,11 @@ flowchart TD
 │   │   └── IMPLEMENTATION_PLAN.md      # Milestones and ordered stages (01-07)
 │   ├── testing/
 │   │   ├── TEST_PLAN.md                # 5-tier testing strategy
-│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results
+│   │   └── TEST_RESULTS.md             # Verified test runs & smoke results (44 tests)
 │   ├── security/
-│   │   └── SECURITY_AND_PRIVACY.md     # Permissions, stealth & credential vault
+│   │   └── SECURITY_AND_PRIVACY.md     # Permissions, stealth & safeStorage vault
 │   └── production/
 │       └── PRODUCTION_READINESS.md     # Release blockers & acceptance verification
-├── cluely_domains_extracted/           # Decompiled domain modules from Cluely
 ├── app/                                # Clean-room independent desktop implementation
 │   ├── package.json                    # Electron, React, Tailwind, Vite, Vitest
 │   ├── tsconfig.json                   # TypeScript config for frontend
@@ -162,34 +162,42 @@ flowchart TD
 │   ├── index.html                      # App root with strict CSP policy
 │   ├── electron/
 │   │   ├── main.ts                     # Single instance lock & app lifecycle
-│   │   ├── preload.ts                  # Context-isolated desktopBridge
-│   │   └── domains/
-│   │       ├── windows.ts              # Multi-window coordinator & stealth
-│   │       ├── shortcuts.ts            # Global hotkey manager
-│   │       ├── screenshot.ts           # Screen capture & thumbnail scaler
-│   │       ├── state.ts                # Shared state persistence
-│   │       └── ipc-router.ts           # Typed IPC handlers & media loopback
+│   │   ├── preload.ts                  # Context-isolated desktopBridge (vault, sessions, AI stream)
+│   │   ├── domains/
+│   │   │   ├── windows.ts              # Multi-window coordinator & stealth (WDA_EXCLUDEFROMCAPTURE)
+│   │   │   ├── shortcuts.ts            # Global hotkey manager
+│   │   │   ├── screenshot.ts           # Screen capture & 1920px thumbnail scaler
+│   │   │   ├── state.ts                # Shared state persistence (stripped of secrets)
+│   │   │   └── ipc-router.ts           # Strict origin-verified IPC & display loopback handler
+│   │   └── services/
+│   │       ├── vault.ts                # OS-backed safeStorage / AES-256-GCM credential vault
+│   │       └── session-repository.ts   # Multi-session disk persistence & archiving
 │   ├── src/
 │   │   ├── App.tsx                     # Route dispatcher (#control, #chat, #dashboard)
 │   │   ├── components/
 │   │   │   ├── FloatingBar.tsx         # Frameless floating pill UI
 │   │   │   ├── ChatPanel.tsx           # AI response card with markdown streaming
 │   │   │   ├── TranscriptLive.tsx      # Real-time transcript with speaker badges
-│   │   │   └── Dashboard.tsx           # Settings, models, knowledge & shortcuts
+│   │   │   └── Dashboard.tsx           # Vault credentials, models, document RAG & session archive
 │   │   ├── hooks/
-│   │   │   ├── useSharedState.ts       # Reactive shared state synchronization
-│   │   │   ├── useAudioCapture.ts      # Web Audio pipeline & VAD dispatch
-│   │   │   └── useAiAssistant.ts       # Multimodal context synthesis & streaming
+│   │   │   ├── useSharedState.ts       # Functional patchState & atomic state synchronization
+│   │   │   ├── useAudioCapture.ts      # Dual-stream loopback + mic capture & VAD dispatch
+│   │   │   └── useAiAssistant.ts       # Non-destructive streaming context synthesis
 │   │   └── lib/
-│   │       ├── types.ts                # Shared state & message contracts
-│   │       ├── vad.ts                  # Audio resampler, RMS VAD, RIFF WAV encoder
-│   │       ├── providers.ts            # Gemini, OpenAI, and Groq STT adapters
-│   │       └── knowledge.ts            # Document chunker & TF-IDF retriever
+│   │       ├── types.ts                # Shared state, SessionRecord, and message contracts
+│   │       ├── vad.ts                  # Resampler (48k->16k), RMS+ZCR voice detector, RIFF WAV
+│   │       ├── providers.ts            # Gemini, OpenAI, Claude 3.5, Ollama & Groq STT adapters
+│   │       └── knowledge.ts            # PDF parser, multi-file chunker & TF-IDF retriever
 │   └── tests/
-│       ├── audio-vad.test.ts           # Resampling, energy, and VAD unit tests
-│       ├── screen-capture.test.ts      # Aspect-ratio downscaling tests
-│       ├── ai-context.test.ts          # Prompt synthesis & RAG retrieval tests
-│       └── electron-smoke.cjs          # Native desktop launch & lifecycle smoke test
+│       ├── audio-vad.test.ts           # Resampling, energy, ZCR, and VAD unit tests (6 tests)
+│       ├── screen-capture.test.ts      # Aspect-ratio downscaling tests (5 tests)
+│       ├── ai-context.test.ts          # Prompt synthesis & speaker tagging tests (7 tests)
+│       ├── knowledge-rag.test.ts       # PDF operator parsing & TF-IDF retrieval tests (6 tests)
+│       ├── ipc-security.test.ts        # Sender frame validation & patch sanitization (6 tests)
+│       ├── credential-vault.test.ts    # OS keyring & AES-256-GCM vault tests (5 tests)
+│       ├── session-archive.test.ts     # Multi-session persistence & query tests (5 tests)
+│       ├── ai-streaming.test.ts        # Non-destructive token accumulation tests (4 tests)
+│       └── electron-smoke.cjs          # Native desktop launch & lifecycle smoke test (1 test)
 ├── LICENSE                             # MIT License
 └── README.md                           # Documentation & quickstart guide
 ```
@@ -214,14 +222,24 @@ npm install
 cd app
 npm test
 ```
-Runs the Vitest test suite covering:
-* 48kHz to 16kHz resampling
-* Voice Activity Detection state transitions and silence redemption
-* Echo cancellation and crosstalk suppression
+Runs the 44-test Vitest suite across 8 core subsystems:
+* 48kHz to 16kHz resampling, RMS energy, and Zero-Crossing Rate (ZCR) human voice detection
+* Voice Activity Detection state transitions, silence redemption, and crosstalk suppression
 * 16-bit PCM RIFF WAV binary encoding
 * Aspect-ratio thumbnail downscaling (1080p, 4K, Ultrawide, Portrait)
-* Multimodal prompt fusion and speaker tagging
-* Document chunking and TF-IDF search relevance
+* Dual-speaker transcript formatting (`[You]` and `[Speaker]`) and 5 operating mode guidance
+* PDF token stream parsing, document chunking, and TF-IDF search relevance
+* Strict IPC sender frame validation and whitelist state sanitization
+* OS-backed credential vault encryption and key deletion
+* Multi-session chronological indexing, retrieval, and purging
+* AI response token accumulation without message history loss
+
+### Executing Native Desktop Smoke Test
+```powershell
+cd app
+node tests/electron-smoke.cjs
+```
+Launches the compiled Electron binary, initializes the window coordinator and vault, and validates clean desktop execution.
 
 ### Building the Project
 ```powershell

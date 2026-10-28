@@ -198,10 +198,20 @@ When a user triggers an answer (either by pressing Enter in the chat pill or usi
 
 ## 7. Implications for Independent Implementation
 
-Our clean-room implementation will reproduce all critical observable capabilities discovered:
+Our clean-room implementation reproduces all critical observable capabilities discovered:
 1. **Desktop Shell**: Electron + TypeScript + Vite + React + Tailwind CSS with multi-window coordination, frameless floating pill, content protection toggle, and global shortcuts.
-2. **Audio Pipeline**: Dual-channel mic + Windows loopback audio, Silero VAD (with energy VAD fallback), crosstalk suppression, and multi-provider STT (Whisper, Deepgram, Google Cloud Speech).
-3. **Screen Understanding**: Native `desktopCapturer` with 1920px aspect-ratio downscaling and multimodal LLM integration (Gemini 2.0 / 1.5 Flash, GPT-4o, Claude 3.5 Sonnet).
+2. **Audio Pipeline**: Dual-channel mic + Windows loopback audio, Silero/RMS+ZCR VAD, crosstalk suppression, and multi-provider STT (Whisper, Deepgram, Google Cloud Speech).
+3. **Screen Understanding**: Native `desktopCapturer` with 1920px aspect-ratio downscaling and multimodal LLM integration (Gemini 2.0 / 1.5 Flash, GPT-4o, Claude 3.5 Sonnet, Ollama).
 4. **Context Manager**: Unified context synthesis combining speech timeline, visual evidence, user instructions, and local knowledge retrieval.
-5. **Security & Privacy**: Zero raw-audio persistence by default, local credential vault, strict IPC origin enforcement, and explicit capture indicators.
+5. **Security & Privacy**: Zero raw-audio persistence by default, local OS-backed safeStorage credential vault, strict IPC origin enforcement, and explicit capture indicators.
+
+---
+
+## 8. Clean-Room Governance & Evidence Policy
+
+To strictly adhere to legal and intellectual property compliance:
+- **Zero Proprietary Code in Repository**: No proprietary source files, decompiled byte streams, or vendor script bundles are committed to or distributed in this repository.
+- **Evidence Verification via Cryptographic Digests**: All technical findings and behavioral observations are anchored to verifiable evidence identifiers and SHA-256 digests (`ev_3f579700396e22cdcbce959e9489a2654a013788e6c20143a4653533e58d23d9`).
+- **Independent Clean-Room Authorship**: Every line of the runtime application (`app/`), IPC routers, audio pipelines, UI components, and test suites was written from scratch based exclusively on functional specifications and black-box behavioral testing.
+
 

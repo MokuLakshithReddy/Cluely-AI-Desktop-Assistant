@@ -12,10 +12,11 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { SharedState, AssistantMode } from '../lib/types';
+import { StateUpdater } from '../hooks/useSharedState';
 
 interface FloatingBarProps {
   state: SharedState;
-  patchState: (patch: Partial<SharedState>) => Promise<void>;
+  patchState: (updater: StateUpdater) => Promise<SharedState>;
   onAsk: () => void;
   isGenerating?: boolean;
 }

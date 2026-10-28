@@ -34,5 +34,11 @@ describe('Screen Capture & Thumbnail Scaling Subsystem', () => {
     expect(res.height).toBe(1920);
     expect(res.width).toBe(Math.round(1440 * (1920 / 2560)));
   });
-});
 
+  it('handles boundary 1x1 minimal screen dimension safely', () => {
+    const min = { width: 1, height: 1 };
+    const res = calculateThumbnailSize(min);
+    expect(res.width).toBe(1);
+    expect(res.height).toBe(1);
+  });
+});

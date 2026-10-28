@@ -58,9 +58,10 @@ export function buildContextPrompt(
   let prompt = '';
 
   // 1. Conversation transcript context
-  if (recentTranscript.length > 0) {
+  if (recentTranscript && recentTranscript.length > 0) {
     prompt += '### RECENT CONVERSATION TRANSCRIPT\n';
-    for (const item of recentTranscript.slice(-12)) {
+    for (const item of recentTranscript.slice(-15)) {
+      if (item.status === 'error') continue; // Skip failed segments
       const speaker = item.role === 'me' ? 'You' : 'Remote Speaker';
       prompt += `[${speaker}]: ${item.text}\n`;
     }
@@ -68,7 +69,7 @@ export function buildContextPrompt(
   }
 
   // 2. Personal knowledge context
-  if (knowledgePassages.length > 0) {
+  if (knowledgePassages && knowledgePassages.length > 0) {
     prompt += '### RETRIEVED REFERENCE DOCUMENTS & NOTES\n';
     knowledgePassages.forEach((p, idx) => {
       prompt += `[Source ${idx + 1}]:\n${p}\n\n`;
@@ -82,18 +83,18 @@ export function buildContextPrompt(
 }
 
 /**
- * Calls Google Gemini (Gemini 2.5 Flash / 1.5 Flash) with multimodal vision and streaming
+ * Google Gemini 2.0 / 1.5 Flash streaming adapter.
+ * Uses `x-goog-api-key` header to prevent credentials appearing in URL query strings or proxy logs.
  */
 export async function streamGemini(options: GenerationOptions): Promise<string> {
   const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
-  if (!apiKey) throw new Error('Gemini API key is required. Please set it in Settings.');
+  if (!apiKey) throw new Error('Gemini API key is required. Please configure it in Settings.');
 
-  const systemInstruction = MODE_SYSTEM_PROMPTS[mode];
+  const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
   const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
 
   const parts: any[] = [{ text: textPrompt }];
   if (screenshotBase64) {
-    // Strip header if present
     const cleanB64 = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
     parts.unshift({
       inlineData: {
@@ -103,11 +104,14 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     });
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse';
 
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey.trim(), // Header-based auth avoids credential exposure in URL
+    },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
       systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -124,50 +128,24 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     throw new Error(`Gemini API error (${response.status}): ${errorText}`);
   }
 
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Failed to obtain streaming reader from Gemini');
-
-  const decoder = new TextDecoder();
-  let fullText = '';
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const chunkText = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (chunkText) {
-            fullText += chunkText;
-            onToken?.(chunkText);
-          }
-        } catch {
-          // Ignore incomplete chunk parse errors
-        }
-      }
+  return processSseStream(response, chunk => {
+    try {
+      const parsed = JSON.parse(chunk);
+      return parsed.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    } catch {
+      return null;
     }
-  }
-
-  return fullText;
+  }, onToken);
 }
 
 /**
- * Calls OpenAI GPT-4o with multimodal vision and streaming
+ * OpenAI GPT-4o / GPT-4o-mini streaming adapter.
  */
 export async function streamOpenAI(options: GenerationOptions): Promise<string> {
   const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
-  if (!apiKey) throw new Error('OpenAI API key is required. Please set it in Settings.');
+  if (!apiKey) throw new Error('OpenAI API key is required. Please configure it in Settings.');
 
-  const systemInstruction = MODE_SYSTEM_PROMPTS[mode];
+  const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
   const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
 
   const userContent: any[] = [{ type: 'text', text: textPrompt }];
@@ -185,7 +163,7 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey.trim()}`,
     },
     body: JSON.stringify({
       model: 'gpt-4o',
@@ -205,8 +183,147 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
     throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
   }
 
+  return processSseStream(response, chunk => {
+    try {
+      const parsed = JSON.parse(chunk);
+      return parsed.choices?.[0]?.delta?.content || null;
+    } catch {
+      return null;
+    }
+  }, onToken);
+}
+
+/**
+ * Anthropic Claude 3.5 Sonnet streaming adapter.
+ */
+export async function streamClaude(options: GenerationOptions): Promise<string> {
+  const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
+  if (!apiKey) throw new Error('Anthropic API key is required. Please configure it in Settings.');
+
+  const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
+  const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
+
+  const content: any[] = [];
+  if (screenshotBase64) {
+    const cleanB64 = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/png',
+        data: cleanB64,
+      },
+    });
+  }
+  content.push({ type: 'text', text: textPrompt });
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey.trim(),
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2048,
+      system: systemInstruction,
+      messages: [{ role: 'user', content }],
+      stream: true,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Anthropic Claude API error (${response.status}): ${errorText}`);
+  }
+
+  return processSseStream(response, chunk => {
+    try {
+      const parsed = JSON.parse(chunk);
+      if (parsed.type === 'content_block_delta') {
+        return parsed.delta?.text || null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, onToken);
+}
+
+/**
+ * Local Ollama streaming adapter (Offline).
+ */
+export async function streamOllama(options: GenerationOptions): Promise<string> {
+  const { mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
+  const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
+  const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
+
+  const images: string[] = [];
+  if (screenshotBase64) {
+    images.push(screenshotBase64.replace(/^data:image\/\w+;base64,/, ''));
+  }
+
+  const endpoint = 'http://localhost:11434/api/generate';
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: images.length > 0 ? 'llava' : 'llama3.2',
+      system: systemInstruction,
+      prompt: textPrompt,
+      images: images.length > 0 ? images : undefined,
+      stream: true,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Ollama connection error (${response.status}): Is Ollama running on localhost:11434? ${errText}`);
+  }
+
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('Failed to obtain streaming reader from OpenAI');
+  if (!reader) throw new Error('Failed to read Ollama stream');
+
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.response) {
+          fullText += parsed.response;
+          onToken?.(parsed.response);
+        }
+      } catch {}
+    }
+  }
+
+  return fullText;
+}
+
+/**
+ * Helper to process SSE streams from Gemini, OpenAI, Claude
+ */
+async function processSseStream(
+  response: Response,
+  extractDelta: (data: string) => string | null,
+  onToken?: (token: string) => void
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Failed to obtain streaming reader');
 
   const decoder = new TextDecoder();
   let fullText = '';
@@ -222,17 +339,12 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
 
     for (const line of lines) {
       if (line.startsWith('data: ')) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) {
-            fullText += delta;
-            onToken?.(delta);
-          }
-        } catch {
-          // Ignore incomplete chunk parse errors
+        const dataStr = line.slice(6).trim();
+        if (dataStr === '[DONE]') continue;
+        const delta = extractDelta(dataStr);
+        if (delta) {
+          fullText += delta;
+          onToken?.(delta);
         }
       }
     }
@@ -267,7 +379,7 @@ export async function transcribeAudio(
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey.trim()}`,
     },
     body: formData,
   });
@@ -280,4 +392,3 @@ export async function transcribeAudio(
   const result = await response.json();
   return result.text?.trim() || '';
 }
-
