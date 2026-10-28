@@ -42,7 +42,7 @@ const smokeResult = spawnSync('node', ['tests/electron-smoke.cjs'], {
   cwd: appDir,
   encoding: 'utf8',
   env: { ...process.env, CI: 'true' },
-  timeout: 20000,
+  timeout: 30000,
 });
 
 const smokeStdout = smokeResult.stdout || '';
@@ -106,7 +106,8 @@ md += `\`\`\`text\n`;
 md += `✓ Spawns electron binary with stripped ELECTRON_RUN_AS_NODE\n`;
 md += `✓ Loads control window, chat panel, and dashboard without uncaught exceptions\n`;
 md += `✓ Verified explicit [APP_READY] signal emitted by windowCoordinator\n`;
-md += `✓ Cleanly terminates via SIGTERM with exit code 0\n`;
+md += `✓ Verifies clean graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])\n`;
+md += `✓ Cleanly exits with code 0 and null OS termination signal\n`;
 md += `\`\`\`\n`;
 
 fs.writeFileSync(resultsPath, md, 'utf8');

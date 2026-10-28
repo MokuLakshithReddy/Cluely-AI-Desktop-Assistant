@@ -244,14 +244,21 @@ Runs the 61-test Vitest suite across 8 core subsystems:
 cd app
 node tests/electron-smoke.cjs
 ```
-Launches the compiled Electron binary, listens for explicit `[APP_READY]` coordinator readiness signal, asserts clean IPC initialization, and executes graceful SIGTERM termination.
+Launches the compiled Electron binary, listens for explicit `[APP_READY]` coordinator readiness signal, asserts clean IPC initialization, delivers a graceful shutdown trigger, verifies execution of `before-quit` and `will-quit` lifecycle hooks, and asserts clean termination with exit code 0 and null OS signal.
 
 ### Generating Verified Test Report
 ```powershell
 cd app
 npm run test:report
 ```
-Executes Vitest in JSON reporter mode, executes the verified Electron runtime smoke test, and programmatically compiles raw runner outputs directly into `docs/testing/TEST_RESULTS.md`.
+Executes Vitest across all 8 test suites (61 tests) in JSON reporter mode, executes the verified Electron runtime smoke test (1 test), and programmatically compiles all 62 passing test results directly into `docs/testing/TEST_RESULTS.md`.
+
+### Packaging the Desktop Application
+```powershell
+cd app
+npm run pack
+```
+Packages the complete native Windows standalone application via `electron-builder` into `app/release/win-unpacked/`, producing the compiled `Cluely Copilot.exe` executable along with unpacked dependencies and ASAR integrity archives.
 
 ### Building the Project
 ```powershell

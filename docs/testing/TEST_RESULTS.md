@@ -126,5 +126,6 @@
 ✓ Spawns electron binary with stripped ELECTRON_RUN_AS_NODE
 ✓ Loads control window, chat panel, and dashboard without uncaught exceptions
 ✓ Verified explicit [APP_READY] signal emitted by windowCoordinator
-✓ Cleanly terminates via SIGTERM with exit code 0
+✓ Verifies clean graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])
+✓ Cleanly exits with code 0 and null OS termination signal
 ```

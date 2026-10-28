@@ -5,6 +5,8 @@ app/node_modules/
 # Production build outputs
 app/dist/
 app/dist-electron/
+app/release/
+release/
 dist/
 build/
 

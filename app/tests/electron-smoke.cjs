@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const electronBinary = require('electron');
 const appPath = path.resolve(__dirname, '..');
@@ -9,16 +10,28 @@ console.log('Electron binary:', electronBinary);
 console.log('App root:', appPath);
 
 // Ensure clean environment without ELECTRON_RUN_AS_NODE so Electron runs as a desktop app
-const cleanEnv = { ...process.env, CI: 'true', ELECTRON_ENABLE_LOGGING: '1' };
+const cleanEnv = {
+  ...process.env,
+  CI: 'true',
+  SMOKE_TEST: 'true',
+  ELECTRON_ENABLE_LOGGING: '1',
+};
 delete cleanEnv.ELECTRON_RUN_AS_NODE;
 
+const triggerPath = path.join(appPath, '.smoke-shutdown.trigger');
+if (fs.existsSync(triggerPath)) {
+  try { fs.unlinkSync(triggerPath); } catch {}
+}
+
 const child = spawn(electronBinary, [appPath], {
+  cwd: appPath,
   env: cleanEnv,
-  stdio: 'pipe',
+  stdio: ['pipe', 'pipe', 'pipe'],
 });
 
 let appReadyObserved = false;
-let terminationSignalDelivered = false;
+let shutdownCommandDelivered = false;
+let shutdownTimeoutHandle = null;
 let stdoutCaptured = '';
 let stderrCaptured = '';
 
@@ -36,17 +49,26 @@ child.stdout.on('data', data => {
     appReadyObserved = true;
     console.log('✓ Verified application-ready event observed from Electron runtime.');
 
-    // Wait a brief stabilization tick before delivering SIGTERM
+    // Wait a brief stabilization tick before delivering graceful shutdown trigger
     setTimeout(() => {
-      // Set flag immediately prior to kill invocation
-      terminationSignalDelivered = true;
-      console.log('Delivering SIGTERM to initiate clean shutdown verification...');
+      shutdownCommandDelivered = true;
+      console.log('Delivering graceful shutdown trigger to verify clean lifecycle exit...');
+      const triggerPath = path.join(appPath, '.smoke-shutdown.trigger');
       try {
-        child.kill('SIGTERM');
+        fs.writeFileSync(triggerPath, 'QUIT', 'utf8');
       } catch (e) {
-        console.error('Error delivering SIGTERM to child process:', e);
+        console.error('Error writing shutdown trigger file:', e);
         process.exit(1);
       }
+
+      // Hard timeout for graceful shutdown: must exit cleanly within 10 seconds of trigger
+      shutdownTimeoutHandle = setTimeout(() => {
+        console.error('Smoke test failure: Electron failed to exit cleanly within 10 seconds after shutdown trigger!');
+        try {
+          child.kill('SIGKILL');
+        } catch {}
+        process.exit(1);
+      }, 10000);
     }, 400);
   }
 });
@@ -57,8 +79,8 @@ child.stderr.on('data', data => {
   console.log('[Electron stderr]:', str.trim());
 });
 
-// Hard timeout of 15 seconds waiting for readiness
-const timeoutHandle = setTimeout(() => {
+// Maximum timeout of 15 seconds waiting for initial readiness signal
+const readinessTimeoutHandle = setTimeout(() => {
   console.error('Smoke test failure: Timed out waiting for [APP_READY] signal after 15 seconds.');
   try {
     child.kill('SIGKILL');
@@ -67,27 +89,52 @@ const timeoutHandle = setTimeout(() => {
 }, 15000);
 
 child.on('exit', (code, signal) => {
-  clearTimeout(timeoutHandle);
+  clearTimeout(readinessTimeoutHandle);
+  if (shutdownTimeoutHandle) clearTimeout(shutdownTimeoutHandle);
+
   console.log(`Process exited with code: ${code}, signal: ${signal}`);
 
-  // 1. Fail if exited before [APP_READY] was observed
+  // 1. Verify that readiness was reached prior to exit
   if (!appReadyObserved) {
-    console.error(`Smoke test failure: Process exited unexpectedly before [APP_READY] signal was emitted (code: ${code}, signal: ${signal})!`);
+    console.error(`Smoke test failure: Process exited prematurely before [APP_READY] signal was emitted (code: ${code}, signal: ${signal})!`);
     process.exit(1);
   }
 
-  // 2. Fail if exited after [APP_READY] but before SIGTERM was deliberately delivered (i.e. crashed in the interval!)
-  if (!terminationSignalDelivered) {
-    console.error(`Smoke test failure: Process crashed unexpectedly after [APP_READY] before SIGTERM was delivered (code: ${code}, signal: ${signal})!`);
+  // 2. Verify that shutdown command was delivered before exit (distinguish crash in stabilization interval)
+  if (!shutdownCommandDelivered) {
+    console.error(`Smoke test failure: Process crashed unexpectedly after [APP_READY] before clean shutdown command was delivered (code: ${code}, signal: ${signal})!`);
     process.exit(1);
   }
 
-  // 3. Fail if stderr contains fatal exceptions
+  // 3. Verify clean shutdown lifecycle events
+  if (!stdoutCaptured.includes('[APP_CLEAN_SHUTDOWN]')) {
+    console.error('Smoke test failure: Process exited without emitting [APP_CLEAN_SHUTDOWN] marker!');
+    process.exit(1);
+  }
+
+  if (!stdoutCaptured.includes('[APP_BEFORE_QUIT]')) {
+    console.error('Smoke test failure: Process exited without executing [APP_BEFORE_QUIT] lifecycle hooks!');
+    process.exit(1);
+  }
+
+  // 4. Verify exit code: MUST be 0 (graceful app.quit())
+  if (code !== 0) {
+    console.error(`Smoke test failure: Expected clean exit code 0, but process exited with code: ${code}!`);
+    process.exit(1);
+  }
+
+  // 5. Verify signal: MUST be null (exited gracefully, not terminated by OS signal)
+  if (signal !== null) {
+    console.error(`Smoke test failure: Expected graceful exit without OS termination signal, but received signal: ${signal}!`);
+    process.exit(1);
+  }
+
+  // 6. Verify no fatal exceptions in stderr
   if (stderrCaptured.includes('Uncaught Exception') || stderrCaptured.includes('Fatal error') || stderrCaptured.includes('Segmentation fault')) {
-    console.error('Smoke test failure: Uncaught exceptions or fatal errors detected in process output!');
+    console.error('Smoke test failure: Fatal errors or uncaught exceptions detected in stderr output!');
     process.exit(1);
   }
 
-  console.log('--- Electron Desktop Runtime Smoke Test: PASSED ---');
+  console.log('--- Electron Desktop Runtime Smoke Test: PASSED (Verified Clean Shutdown with Exit Code 0) ---');
   process.exit(0);
 });

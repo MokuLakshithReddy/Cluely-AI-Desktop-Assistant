@@ -22,11 +22,26 @@ To ensure strict functional equivalence, clean-room integrity, and real-world de
 | **Credential Vault** | `tests/credential-vault.test.ts` | safeStorage OS keyring / AES-256-GCM encryption, fail-safe on missing keyring, write error propagation, boolean key masking (7 tests) | Automated (Vitest) |
 | **Session Archive** | `tests/session-archive.test.ts` | Multi-session persistence, path traversal containment protection, chronological index, query by ID (6 tests) | Automated (Vitest) |
 | **AI Streaming** | `tests/ai-streaming.test.ts` | Non-destructive token accumulation, multi-turn history preservation, abort cancellation, immutability (4 tests) | Automated (Vitest) |
-| **Desktop Runtime** | `tests/electron-smoke.cjs` | Verified [APP_READY] signal observation, window coordinator initialization, IPC router registration, clean shutdown (1 test) | Automated (Electron/Node) |
+| **Desktop Runtime** | `tests/electron-smoke.cjs` | Verified [APP_READY] signal observation, window coordinator initialization, IPC router registration, clean shutdown with exit code 0 (1 test) | Automated (Electron/Node) |
+| **Total Verified** | **All 9 Subsystems** | **61 Vitest Unit/Integration Tests + 1 Native Electron Smoke Test (100% Pass Rate)** | **62 Automated Tests** |
 
 ---
 
-## 3. Acceptance Criteria Checklist (Section 10)
+## 3. Verified Environments Matrix
+
+Testing is validated and tracked across two isolated environments:
+1. **Local Development & Interactive Environment**:
+   - Host: Windows 11 Pro x64 (Build 26200)
+   - Runtime: Node.js v24.19.0, npm v11.x, Vitest v3.2.7, Electron v34.2.0
+   - Artifacts: Direct hardware audio device access, live Electron window coordinator, local report generation (`npm run test:report`)
+2. **Hosted CI Environment**:
+   - Host: Windows Server 2022 (`windows-latest`) on GitHub Actions
+   - Runtime: Node.js v20.x, npm v10.x (`npm ci`)
+   - Artifacts: Headless display emulation, automated Vitest runner, verified Electron smoke test, and continuous build artifact upload
+
+---
+
+## 4. Acceptance Criteria Checklist (Section 10)
 - [x] **Desktop experience**: The app launches, the floating panel works, shortcuts respond, and sessions can be stopped cleanly.
 - [x] **Real AI responses**: The application calls a configured model (Gemini, GPT-4o, Claude 3.5, Ollama), streams actual responses without token loss, and handles failures and cancellation.
 - [x] **Screen understanding**: A real captured image is sent to a vision-capable service, and the answer reflects its contents.
