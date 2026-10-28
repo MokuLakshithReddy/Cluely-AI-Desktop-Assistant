@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+app/node_modules/
+
+# Production build outputs
+app/dist/
+app/dist-electron/
+dist/
+build/
+
+# Target extraction artifacts & binaries (keep cluely_domains_extracted)
+extracted_cluely/
+*.exe
+*.asar
+*.log
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+
+# Test & coverage
+coverage/
+.vitest/
+
+# Scratch & temporary
+scratch/
