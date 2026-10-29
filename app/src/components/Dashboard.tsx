@@ -15,6 +15,9 @@ import {
   FileCode,
   FileUp,
   Eye,
+  ArrowLeft,
+  Monitor,
+  Cpu,
 } from 'lucide-react';
 import { SharedState, KnowledgeDoc, SessionSummary, SessionRecord } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
@@ -26,7 +29,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
-  const [activeTab, setActiveTab] = useState<'models' | 'knowledge' | 'shortcuts' | 'history'>('models');
+  const [activeTab, setActiveTab] = useState<'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop'>('models');
 
   // Vault Key Inputs
   const [geminiInput, setGeminiInput] = useState('');
@@ -183,15 +186,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
       {/* Sidebar Navigation */}
       <div className="w-60 bg-slate-900 border-r border-slate-800 p-4 flex flex-col justify-between">
         <div className="space-y-6">
-          <div className="flex items-center gap-2.5 px-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md">
-              C
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-100">Cluely Copilot</h2>
-              <p className="text-[10px] text-slate-500">v{state.appVersion} • Clean-Room Verified</p>
+          <div className="flex items-center justify-between px-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md">
+                C
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-100">Cluely Copilot</h2>
+                <p className="text-[10px] text-slate-500">v{state.appVersion} • Web Verified</p>
+              </div>
             </div>
           </div>
+
+          <button
+            onClick={() => { window.location.hash = ''; }}
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-cyan-400 text-xs font-semibold border border-slate-700/60 shadow-sm transition-all"
+            title="Return to Floating Copilot and Chat"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Copilot View</span>
+          </button>
 
           <nav className="space-y-1">
             <button
@@ -240,6 +254,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
             >
               <History className="w-4 h-4" />
               <span>Session Archive ({pastSessions.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('desktop')}
+              className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                activeTab === 'desktop'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <Monitor className="w-4 h-4" />
+              <span>Desktop App & Installers</span>
             </button>
           </nav>
         </div>
@@ -639,6 +665,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'desktop' && (
+          <div className="max-w-2xl space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <Monitor className="w-5 h-5 text-cyan-400" /> Cluely Copilot Desktop Application
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Cluely Copilot is designed as an independent native desktop AI assistant with advanced capabilities. Anyone can download, build, and run this application on Windows, macOS, or Linux.
+              </p>
+            </div>
+
+            {/* Key Desktop Features */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs">
+                  <ShieldCheck className="w-4 h-4" /> Secure OS Vault
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Encrypted credentials stored securely via OS keychains (DPAPI / Keychain).
+                </p>
+              </div>
+
+              <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-2 text-indigo-400 font-semibold text-xs">
+                  <Cpu className="w-4 h-4" /> Dual Audio VAD & Loopback
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Real-time microphone & system loopback audio capture with Whisper STT.
+                </p>
+              </div>
+            </div>
+
+            {/* Packaging & Distribution Instructions */}
+            <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
+              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                How to Build & Package for Distribution
+              </h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                To build standalone installable packages (<code className="text-cyan-300">.exe</code>, <code className="text-cyan-300">.dmg</code>, <code className="text-cyan-300">AppImage</code>) for anyone to install on their desktop, run the following commands in your terminal:
+              </p>
+
+              <div className="space-y-2 font-mono text-xs">
+                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-slate-300">
+                  <span className="text-cyan-400"># 1. Install dependencies</span><br />
+                  npm install
+                </div>
+                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-slate-300">
+                  <span className="text-cyan-400"># 2. Build Vite frontend & Electron TypeScript compiler</span><br />
+                  npm run build
+                </div>
+                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-slate-300">
+                  <span className="text-cyan-400"># 3. Package native desktop app (creates release folder)</span><br />
+                  npm run pack
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500">
+                The resulting installer or portable binary will be saved in the <code className="text-slate-300">release/</code> directory ready for sharing and distribution.
+              </p>
+            </div>
           </div>
         )}
       </div>

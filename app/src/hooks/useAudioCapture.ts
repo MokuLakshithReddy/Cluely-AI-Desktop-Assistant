@@ -167,6 +167,12 @@ export function useAudioCapture(
 
   const startDualCapture = async () => {
     // 1. Channel A: Start Local Microphone Capture ('me')
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      console.warn('[useAudioCapture] Microphone capture is not supported in this environment');
+      await patchState({ isRecording: false, meHasVoiceActivity: false });
+      return;
+    }
+
     try {
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -207,8 +213,44 @@ export function useAudioCapture(
 
       micSource.connect(micScriptNode);
       micScriptNode.connect(micAudioCtx.destination);
-    } catch (err) {
-      console.error('[useAudioCapture] Failed to access local microphone:', err);
+    } catch (err: any) {
+      console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
+      // Gracefully reset recording state
+      await patchState(prev => {
+        const activeSession = prev.session || {
+          id: `sess_${Date.now()}`,
+          title: 'Live Conversation Session',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          durationSeconds: 0,
+          mode: prev.activeMode,
+          audioInputLanguage: 'en',
+          transcript: [],
+          messages: [],
+        };
+        return {
+          isRecording: false,
+          meHasVoiceActivity: false,
+          session: {
+            ...activeSession,
+            transcript: [
+              ...activeSession.transcript,
+              {
+                id: `tr_mic_perm_${Date.now()}`,
+                createdAt: new Date().toISOString(),
+                relativeMs: 0,
+                role: 'me',
+                status: 'error',
+                error: err?.name === 'NotAllowedError' ? 'Permission denied' : (err?.message || 'Mic unavailable'),
+                text: err?.name === 'NotAllowedError'
+                  ? '[Microphone permission denied — please allow mic access in your browser]'
+                  : `[Microphone unavailable: ${err?.message || 'Access error'}]`,
+              },
+            ],
+          },
+        };
+      });
+      return;
     }
 
     // 2. Channel B: Start Remote System Audio Loopback Capture ('them')

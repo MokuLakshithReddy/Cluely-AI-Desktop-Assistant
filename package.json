@@ -1,0 +1,17 @@
+{
+  "name": "cluely-copilot-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "app"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=app",
+    "build": "npm run build --workspace=app",
+    "lint": "npm run lint --workspace=app",
+    "start": "npm run dev --workspace=app"
+  },
+  "devDependencies": {
+    "@types/electron": "^1.4.38"
+  }
+}

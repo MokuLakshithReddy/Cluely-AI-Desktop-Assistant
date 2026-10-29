@@ -76,6 +76,22 @@ export function App() {
   // Combined Web / Preview Mode
   return (
     <div className="min-h-screen bg-slate-950 p-6 flex flex-col items-center justify-start space-y-4">
+      {/* Top Web Navigation Toggle */}
+      <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 p-1 rounded-full text-xs shadow-md">
+        <button
+          onClick={() => { window.location.hash = ''; }}
+          className="px-3.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/30 shadow-sm"
+        >
+          Copilot Floating Overlay
+        </button>
+        <button
+          onClick={() => { window.location.hash = 'dashboard'; }}
+          className="px-3.5 py-1 rounded-full text-slate-400 hover:text-slate-200 font-medium transition-colors"
+        >
+          Dashboard & Vault
+        </button>
+      </div>
+
       <div className="w-[420px]">
         <FloatingBar
           state={state}

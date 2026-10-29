@@ -1,13 +1,15 @@
 {
-  "name": "cluely-assistant",
+  "name": "app",
   "version": "1.0.0",
   "description": "Evidence-driven independent desktop AI assistant with real-time screen and audio understanding",
   "main": "dist-electron/electron/main.js",
   "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "dev:vite": "vite",
     "build:vite": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "npm run build:vite && npm run build:electron",
+    "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:report": "node scripts/generate-test-report.cjs",
     "start": "electron dist-electron/electron/main.js",
@@ -27,6 +29,16 @@
     "win": {
       "target": [
         "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
       ]
     }
   },
