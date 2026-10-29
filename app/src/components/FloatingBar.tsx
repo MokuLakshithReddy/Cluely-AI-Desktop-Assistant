@@ -10,6 +10,8 @@ import {
   ChevronUp,
   GripHorizontal,
   Sparkles,
+  Minus,
+  X,
 } from 'lucide-react';
 import { SharedState, AssistantMode } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
@@ -45,21 +47,36 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
     window.desktopBridge?.openDashboard('settings');
   };
 
+  const handleMinimize = () => {
+    if (window.desktopBridge?.minimizeApp) {
+      window.desktopBridge.minimizeApp();
+    }
+  };
+
+  const handleClose = () => {
+    if (window.desktopBridge?.quitApp) {
+      window.desktopBridge.quitApp();
+    }
+  };
+
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     patchState({ activeMode: e.target.value as AssistantMode });
   };
 
   return (
-    <div className="flex items-center justify-between w-full h-[52px] px-3 bg-slate-900/90 backdrop-blur-md border border-slate-700/60 rounded-full shadow-2xl text-slate-200 select-none">
+    <div className="flex items-center justify-between w-full h-[54px] px-3 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-full shadow-2xl text-slate-200 select-none overflow-hidden box-border">
       {/* Drag Handle */}
-      <div className="drag-region flex items-center pr-2 cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300">
+      <div
+        className="drag-region flex items-center pr-1.5 cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 flex-shrink-0"
+        title="Drag to move assistant"
+      >
         <GripHorizontal className="w-4 h-4" />
       </div>
 
       {/* Mic Status & Toggle */}
       <button
         onClick={toggleRecording}
-        className={`no-drag relative flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+        className={`no-drag relative flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap ${
           state.isRecording
             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
             : 'bg-slate-800 text-slate-400 hover:text-slate-200'
@@ -87,11 +104,11 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
       </button>
 
       {/* Mode Selector */}
-      <div className="no-drag flex items-center px-2">
+      <div className="no-drag flex items-center px-1.5 flex-shrink-0">
         <select
           value={state.activeMode}
           onChange={handleModeChange}
-          className="bg-slate-800/80 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+          className="bg-slate-800/90 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
         >
           <option value="copilot">Copilot</option>
           <option value="interview">Interview</option>
@@ -105,15 +122,15 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
       <button
         onClick={onAsk}
         disabled={isGenerating}
-        className="no-drag flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold shadow-md active:scale-95 transition-all disabled:opacity-50"
+        className="no-drag flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold shadow-md active:scale-95 transition-all disabled:opacity-50 flex-shrink-0 whitespace-nowrap"
         title="Capture Screen & Ask AI (Ctrl+Enter)"
       >
         <Sparkles className="w-3.5 h-3.5" />
-        <span>{isGenerating ? 'Thinking...' : 'Ask AI'}</span>
+        <span className="whitespace-nowrap">{isGenerating ? 'Thinking...' : 'Ask AI'}</span>
       </button>
 
-      {/* Controls: Stealth, Settings, Expand */}
-      <div className="no-drag flex items-center gap-1 pl-2 border-l border-slate-700/60 text-slate-400">
+      {/* Feature Controls: Stealth, Settings, Expand */}
+      <div className="no-drag flex items-center gap-0.5 pl-1.5 border-l border-slate-700/60 text-slate-400 flex-shrink-0">
         {/* Stealth Anti-Capture Toggle */}
         <button
           onClick={toggleStealth}
@@ -145,6 +162,24 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
           title={state.showChat ? 'Hide Chat Card' : 'Show Chat Card'}
         >
           {state.showChat ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {/* Window Controls: Minimize & Close Application */}
+      <div className="no-drag flex items-center gap-0.5 pl-1.5 border-l border-slate-700/60 text-slate-400 flex-shrink-0">
+        <button
+          onClick={handleMinimize}
+          className="p-1.5 rounded-full hover:bg-slate-800 hover:text-slate-100 transition-colors"
+          title="Minimize to Taskbar"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={handleClose}
+          className="p-1.5 rounded-full hover:bg-rose-500/20 hover:text-rose-400 transition-colors"
+          title="Close Cluely Copilot"
+        >
+          <X className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

@@ -117,6 +117,8 @@ export interface DesktopBridge {
   dragControlWindowEnd: () => void;
   resizeChatWindow: (height: number) => void;
   openDashboard: (tab?: string) => void;
+  minimizeApp?: () => void;
+  quitApp?: () => void;
 
   // Credential Vault
   saveApiKey: (provider: string, key: string) => Promise<void>;

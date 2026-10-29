@@ -217,6 +217,15 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     dragControlWindow: () => {},
     dragControlWindowEnd: () => {},
     resizeChatWindow: () => {},
+    minimizeApp: () => {
+      console.log('[WebBridge] minimizeApp called');
+    },
+    quitApp: () => {
+      console.log('[WebBridge] quitApp called');
+      if (typeof window !== 'undefined' && window.confirm('Exit Cluely Copilot?')) {
+        window.close();
+      }
+    },
 
     openDashboard: (tab?: string) => {
       window.location.hash = tab ? `dashboard?tab=${tab}` : 'dashboard';

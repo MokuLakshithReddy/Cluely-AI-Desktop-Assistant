@@ -62,7 +62,7 @@ export function App() {
 
   if (routeInfo.route === 'control') {
     return (
-      <div className="w-full h-full p-1 bg-transparent">
+      <div className="w-full h-full flex items-center justify-center p-0 m-0 bg-transparent overflow-hidden">
         <FloatingBar
           state={state}
           patchState={patchState}
@@ -75,7 +75,7 @@ export function App() {
 
   if (routeInfo.route === 'chat') {
     return (
-      <div className="w-full h-screen p-1 bg-transparent">
+      <div className="w-full h-full p-1 bg-transparent overflow-hidden">
         <ChatPanel
           state={state}
           patchState={patchState}
@@ -110,7 +110,7 @@ export function App() {
         </button>
       </div>
 
-      <div className="w-[420px]">
+      <div className="w-[490px]">
         <FloatingBar
           state={state}
           patchState={patchState}
@@ -120,7 +120,7 @@ export function App() {
       </div>
 
       {state.showChat && (
-        <div className="w-[440px] h-[540px]">
+        <div className="w-[490px] h-[540px]">
           <ChatPanel
             state={state}
             patchState={patchState}

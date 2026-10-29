@@ -155,4 +155,13 @@ describe('WebBridge Security and Memory Architecture', () => {
     const result = await streamPromise;
     expect(result.content.length).toBeLessThan(400);
   });
+
+  it('exposes window lifecycle controls minimizeApp and quitApp safely', () => {
+    const bridge = initWebBridge();
+    expect(typeof bridge.minimizeApp).toBe('function');
+    expect(typeof bridge.quitApp).toBe('function');
+
+    // Safe execution without crashing
+    expect(() => bridge.minimizeApp?.()).not.toThrow();
+  });
 });

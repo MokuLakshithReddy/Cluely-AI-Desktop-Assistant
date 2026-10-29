@@ -46,12 +46,13 @@ export class WindowCoordinator {
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workArea;
 
     // Center horizontally, placed near the top
-    const winWidth = 380;
-    const winHeight = 52;
+    const winWidth = 490;
+    const winHeight = 56;
     const initialX = Math.round((screenWidth - winWidth) / 2);
     const initialY = 24;
 
     this.controlWin = new BrowserWindow({
+      title: 'Cluely Copilot',
       width: winWidth,
       height: winHeight,
       x: initialX,
@@ -59,7 +60,7 @@ export class WindowCoordinator {
       frame: false,
       transparent: true,
       alwaysOnTop: true,
-      skipTaskbar: true,
+      skipTaskbar: false,
       resizable: false,
       show: false,
       hasShadow: false,
@@ -79,6 +80,18 @@ export class WindowCoordinator {
       stateManager.patchState({ isControlWindowLoaded: true });
     });
 
+    this.controlWin.on('restore', () => {
+      if (stateManager.getState().showChat && this.chatWin && !this.chatWin.isDestroyed()) {
+        this.chatWin.show();
+      }
+    });
+
+    this.controlWin.on('minimize', () => {
+      if (this.chatWin && !this.chatWin.isDestroyed()) {
+        this.chatWin.hide();
+      }
+    });
+
     this.updateStealthMode(stateManager.getState().isStealthMode);
 
     return this.controlWin;
@@ -87,9 +100,9 @@ export class WindowCoordinator {
   public createChatWindow(): BrowserWindow {
     if (this.chatWin && !this.chatWin.isDestroyed()) return this.chatWin;
 
-    const controlBounds = this.controlWin ? this.controlWin.getBounds() : { x: 500, y: 24, width: 380, height: 52 };
-    const chatWidth = 440;
-    const chatHeight = 500;
+    const controlBounds = this.controlWin ? this.controlWin.getBounds() : { x: 500, y: 24, width: 490, height: 56 };
+    const chatWidth = 490;
+    const chatHeight = 520;
     const chatX = Math.round(controlBounds.x + (controlBounds.width - chatWidth) / 2);
     const chatY = controlBounds.y + controlBounds.height + 8;
 
@@ -227,6 +240,19 @@ export class WindowCoordinator {
         this.chatWin.hide();
       }
     }
+  }
+
+  public minimizeApp() {
+    if (this.chatWin && !this.chatWin.isDestroyed() && this.chatWin.isVisible()) {
+      this.chatWin.hide();
+    }
+    if (this.controlWin && !this.controlWin.isDestroyed()) {
+      this.controlWin.minimize();
+    }
+  }
+
+  public quitApp() {
+    app.quit();
   }
 
   public getControlWindow(): BrowserWindow | null {

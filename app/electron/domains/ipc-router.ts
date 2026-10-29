@@ -516,7 +516,18 @@ export class IpcRouter {
       windowCoordinator.openDashboardWindow(safeTab);
     });
 
-    // 8. Secure Credential Vault Handlers
+    // 8. Window Lifecycle Controls (Minimize & Quit)
+    ipcMain.on('minimize-app', (event) => {
+      this.validateOrigin(event);
+      windowCoordinator.minimizeApp();
+    });
+
+    ipcMain.on('quit-app', (event) => {
+      this.validateOrigin(event);
+      windowCoordinator.quitApp();
+    });
+
+    // 9. Secure Credential Vault Handlers
     ipcMain.handle('vault-save-key', async (event, { provider, key }: any) => {
       this.validateOrigin(event);
       if (!provider || typeof provider !== 'string') throw new Error('Invalid provider');

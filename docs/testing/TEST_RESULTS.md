@@ -3,7 +3,7 @@
 **Target Environment**: Windows 11 x64  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  
-**Test Status**: 82/82 Passing (100% Pass Rate)  
+**Test Status**: 83/83 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
 **Verification Date**: 2026-10-29  
 
@@ -24,9 +24,9 @@
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 6 | 6 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 7 | 7 | 0 | **PASSED** |
-| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 4 | 4 | 0 | **PASSED** |
+| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Native Electron Desktop Runtime Smoke Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **82** | **82** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **83** | **83** | **0** | **100% PASS** |
 
 ---
 
@@ -159,6 +159,7 @@
 ✓ purgeAllData wipes in-memory vault keys and stored session archives
 ✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
 ✓ abortAiStream returns false for unknown requestId without aborting other requests
+✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
 ### 13. Native Electron Desktop Runtime Smoke Verification (`tests/electron-smoke.cjs`)

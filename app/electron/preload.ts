@@ -12,6 +12,8 @@ const desktopBridge: DesktopBridge = {
   dragControlWindowEnd: () => ipcRenderer.send('drag-control-window-end'),
   resizeChatWindow: (height: number) => ipcRenderer.send('resize-chat-window', height),
   openDashboard: (tab?: string) => ipcRenderer.send('open-dashboard', tab),
+  minimizeApp: () => ipcRenderer.send('minimize-app'),
+  quitApp: () => ipcRenderer.send('quit-app'),
 
   // Credential Vault
   saveApiKey: (provider: string, key: string) => ipcRenderer.invoke('vault-save-key', { provider, key }),

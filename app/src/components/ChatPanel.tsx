@@ -9,6 +9,7 @@ import {
   Radio,
   MessageSquare,
   BookOpen,
+  X,
 } from 'lucide-react';
 import { SharedState, ChatMessage } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
@@ -86,11 +87,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           </button>
         </div>
 
-        {/* Mode & Model Indicators */}
+        {/* Mode & Model Indicators + Close Button */}
         <div className="flex items-center gap-2">
           <span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800/60">
             {state.activeMode}
           </span>
+          <button
+            onClick={() => patchState({ showChat: false })}
+            className="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            title="Close Chat Card (Ctrl+Esc)"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
