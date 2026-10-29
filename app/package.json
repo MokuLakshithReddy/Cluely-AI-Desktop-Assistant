@@ -1,6 +1,6 @@
 {
   "name": "app",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Evidence-driven independent desktop AI assistant with real-time screen and audio understanding",
   "main": "dist-electron/electron/main.js",
   "scripts": {

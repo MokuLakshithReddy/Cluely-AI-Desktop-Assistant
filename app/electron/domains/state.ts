@@ -13,7 +13,7 @@ function getStateFile(): string {
 }
 
 export const INITIAL_STATE: SharedState = {
-  appVersion: '1.0.0',
+  appVersion: '1.0.1',
   isControlWindowLoaded: false,
   isChatWindowLoaded: false,
   isDashboardWindowLoaded: false,
@@ -128,7 +128,7 @@ class StateManager {
 
         this.state = {
           ...INITIAL_STATE,
-          appVersion: (app && typeof app.isReady === 'function' && app.isReady()) ? app.getVersion() : '1.0.0',
+          appVersion: (app && typeof app.isReady === 'function' && app.isReady()) ? app.getVersion() : '1.0.1',
           ...parsed,
           isControlWindowLoaded: false,
           isChatWindowLoaded: false,
