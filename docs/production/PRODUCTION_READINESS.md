@@ -12,7 +12,7 @@
 | **Multimodal Intelligence** | Real-time streaming LLM reasoning | **Complete** | Active 2026 models (`gemini-3.6-flash`, `claude-sonnet-5-5`, `gpt-4o-mini`, `ollama`) with non-destructive token accumulation |
 | **Knowledge & RAG** | Chunking, search, grounded citation | **Complete** | In-memory TF-IDF and semantic chunk retriever with 500-token chunking and 80-token overlap |
 | **Security & Privacy** | IPC origin check, zero raw audio retention, encrypted vault | **Complete** | Strict URL parsing, sender frame validation, deep payload sanitization, OS-backed `safeStorage` vault, 5MB ceiling, screenshot stripping |
-| **Automated Verification** | All unit, integration, and runtime smoke tests passing | **Complete** | **82 automated tests passing (81 Vitest unit & integration tests + 1 native Electron smoke test) with 100% pass rate** |
+| **Automated Verification** | All unit, integration, and runtime smoke tests passing | **Complete** | **89 automated tests passing (88 Vitest unit & integration tests + 1 native Electron smoke test) with 100% pass rate** |
 | **Packaging & Distribution** | Native Windows executable & unpackaged portable build | **Complete** | Packaged via `electron-builder` (`npm run pack` / `npm run dist:win`) producing `release/win-unpacked/Cluely Copilot.exe` |
 
 ---
@@ -35,17 +35,17 @@ To ensure strict separation of local development artifacts from continuous integ
 * **Workflow**: `.github/workflows/ci.yml`
 * **Automated Gates**:
   1. Strict dependency verification (`npm ci`)
-  2. Vitest unit and integration suite execution (`npm test` — 81 automated tests across 12 suites)
+  2. Vitest unit and integration suite execution (`npm test` — 88 automated tests across 13 suites)
   3. Production build compilation (`npm run build` — Vite + TypeScript Electron compiler)
   4. Runtime Electron smoke test (`npm run smoke` — 1 runtime smoke test verifying clean code 0 shutdown)
-  5. Automated test report generation (`npm run test:report` — 82 total verified tests)
+  5. Automated test report generation (`npm run test:report` — 89 total verified tests)
   6. Build artifact archiving (`dist`, `dist-electron`)
 
 ---
 
 ## 3. Automated Test Suite Reconciliation
 
-The test suite consists of **82 verified automated tests** across 13 test files (12 Vitest suites + 1 Electron smoke runner), with zero failures:
+The test suite consists of **89 verified automated tests** across 14 test files (13 Vitest suites + 1 Electron smoke runner), with zero failures:
 
 ```text
 ============================== TEST EXECUTION BREAKDOWN ==============================
@@ -55,17 +55,18 @@ The test suite consists of **82 verified automated tests** across 13 test files 
 4.  tests/audio-vad.test.ts           6 passed (Audio Resampling, VAD, Crosstalk & RIFF WAV Encoding)
 5.  tests/credential-vault.test.ts    7 passed (Credential Vault, OS Keyring, Safe Storage & Error Propagation)
 6.  tests/dashboard-routing.test.ts   4 passed (Dashboard Hash Parsing & Sub-Tab Query Routing)
-7.  tests/ipc-security.test.ts       22 passed (IPC Origin Guard, Sender URL Validation & Deep Payload Schema Checks)
-8.  tests/knowledge-rag.test.ts       6 passed (Knowledge Document Ingestion, PDF Token Parsing & TF-IDF Retrieval)
-9.  tests/provider-models.test.ts     6 passed (2026 Model Routing, Diagnostic Errors & Multi-Turn History Serialization)
-10. tests/screen-capture.test.ts      5 passed (Display Thumbnail Scaling, Max-1920 Proportional Downscaling)
-11. tests/session-archive.test.ts     7 passed (Multi-Session Storage, Path Traversal Boundary Containment & 5MB Limit)
-12. tests/web-bridge.test.ts          4 passed (Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort)
+7.  tests/e2e-desktop-session.test.ts 6 passed (Real Desktop Session E2E Workflow & Zero-Leakage Purge)
+8.  tests/ipc-security.test.ts       22 passed (IPC Origin Guard, Sender URL Validation & Deep Payload Schema Checks)
+9.  tests/knowledge-rag.test.ts       6 passed (Knowledge Document Ingestion, PDF Token Parsing & TF-IDF Retrieval)
+10. tests/provider-models.test.ts     6 passed (2026 Model Routing, Diagnostic Errors & Multi-Turn History Serialization)
+11. tests/screen-capture.test.ts      5 passed (Display Thumbnail Scaling, Max-1920 Proportional Downscaling)
+12. tests/session-archive.test.ts     7 passed (Multi-Session Storage, Path Traversal Boundary Containment & 5MB Limit)
+13. tests/web-bridge.test.ts          5 passed (Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort)
 --------------------------------------------------------------------------------------
-Subtotal (Vitest Test Suites):      81 passing unit & integration tests
-13. tests/electron-smoke.cjs          1 passed (Native Electron Runtime Smoke & Graceful Lifecycle Exit Code 0)
+Subtotal (Vitest Test Suites):      88 passing unit & integration tests
+14. tests/electron-smoke.cjs          1 passed (Native Electron Runtime Smoke & Graceful Lifecycle Exit Code 0)
 ======================================================================================
-Grand Total:                        82 passing tests (100% Pass Rate)
+Grand Total:                        89 passing tests (100% Pass Rate)
 ======================================================================================
 ```
 

@@ -14,16 +14,23 @@ To ensure strict functional equivalence, clean-room integrity, and real-world de
 
 | Test Suite | File | Focus Areas | Automated / Manual |
 |---|---|---|---|
-| **Audio & VAD** | `tests/audio-vad.test.ts` | 48kHz to 16kHz resampling, RMS energy + ZCR speech detection, dynamic noise floor, crosstalk suppression, WAV encoding | Automated (Vitest) |
-| **Screen Capture** | `tests/screen-capture.test.ts` | Aspect-ratio downscaling logic, max-1920 clamp, 4K/ultrawide preservation, PNG buffer validation | Automated (Vitest) |
-| **AI Context Assembly** | `tests/ai-context.test.ts` | Dual-speaker tagging ([You]/[Speaker]), 5 operating mode guidance, RAG grounding, error filtering | Automated (Vitest) |
-| **Knowledge RAG** | `tests/knowledge-rag.test.ts` | PDF text extraction, document ingestion, overlapping chunking, TF-IDF / BM25 ranking relevance | Automated (Vitest) |
-| **IPC & Security** | `tests/ipc-security.test.ts` | Sender frame origin verification, lookalike hostname blocking, dist/index.html substring defense, nested schema & size validation (20 tests) | Automated (Vitest) |
+| **Audio & VAD** | `tests/audio-vad.test.ts` | 48kHz to 16kHz resampling, RMS energy + ZCR speech detection, dynamic noise floor, crosstalk suppression, WAV encoding (6 tests) | Automated (Vitest) |
+| **Audio Ownership** | `tests/audio-ownership.test.ts` | Dual-channel audio ownership & stream leak prevention (3 tests) | Automated (Vitest) |
+| **Screen Capture** | `tests/screen-capture.test.ts` | Aspect-ratio downscaling logic, max-1920 clamp, 4K/ultrawide preservation, PNG buffer validation (5 tests) | Automated (Vitest) |
+| **AI Context Assembly** | `tests/ai-context.test.ts` | Dual-speaker tagging ([You]/[Speaker]), 5 operating mode guidance, RAG grounding, error filtering (7 tests) | Automated (Vitest) |
+| **Knowledge RAG** | `tests/knowledge-rag.test.ts` | PDF text extraction, document ingestion, overlapping chunking, TF-IDF / BM25 ranking relevance (6 tests) | Automated (Vitest) |
+| **IPC & Security** | `tests/ipc-security.test.ts` | Sender frame origin verification, lookalike hostname blocking, dist/index.html substring defense, nested schema & size validation (22 tests) | Automated (Vitest) |
 | **Credential Vault** | `tests/credential-vault.test.ts` | safeStorage OS keyring / AES-256-GCM encryption, fail-safe on missing keyring, write error propagation, boolean key masking (7 tests) | Automated (Vitest) |
-| **Session Archive** | `tests/session-archive.test.ts` | Multi-session persistence, path traversal containment protection, chronological index, query by ID (6 tests) | Automated (Vitest) |
+| **Session Archive** | `tests/session-archive.test.ts` | Multi-session persistence, path traversal containment protection, screenshot stripping, 5MB limit (7 tests) | Automated (Vitest) |
 | **AI Streaming** | `tests/ai-streaming.test.ts` | Non-destructive token accumulation, multi-turn history preservation, abort cancellation, immutability (4 tests) | Automated (Vitest) |
-| **Desktop Runtime** | `tests/electron-smoke.cjs` | Verified [APP_READY] signal observation, window coordinator initialization, IPC router registration, clean shutdown with exit code 0 (1 test) | Automated (Electron/Node) |
-| **Total Verified** | **All 9 Subsystems** | **61 Vitest Unit/Integration Tests + 1 Native Electron Smoke Test (100% Pass Rate)** | **62 Automated Tests** |
+| **Dashboard Routing** | `tests/dashboard-routing.test.ts` | Route hash parsing & sub-tab query routing (4 tests) | Automated (Vitest) |
+| **Provider Models** | `tests/provider-models.test.ts` | Active 2026 model routing, fallback self-healing, multi-turn serialization (6 tests) | Automated (Vitest) |
+| **Web Bridge** | `tests/web-bridge.test.ts` | Web bridge in-memory vault, no-localStorage enforcement, scoped abort (5 tests) | Automated (Vitest) |
+| **E2E Desktop Session** | `tests/e2e-desktop-session.test.ts` | Full consented desktop session lifecycle, audio VAD, screen scaling, RAG, streaming, abort, and zero-leakage purge (6 tests) | Automated (Vitest) |
+| **Desktop Runtime Smoke** | `tests/electron-smoke.cjs` | Verified [APP_READY] signal observation, window coordinator initialization, IPC router registration, clean shutdown with exit code 0 (1 test) | Automated (Electron/Node) |
+| **Total Verified** | **All 14 Subsystems** | **88 Vitest Unit/Integration Tests + 1 Native Electron Smoke Test (100% Pass Rate)** | **89 Automated Tests** |
+
+For the complete end-to-end execution audit, see [`E2E_VERIFICATION_REPORT.md`](E2E_VERIFICATION_REPORT.md). For empirical benchmarks, see [`docs/benchmarks/QUALITY_MEASUREMENTS.md`](../benchmarks/QUALITY_MEASUREMENTS.md).
 
 ---
 

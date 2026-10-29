@@ -116,6 +116,54 @@ md += `\`\`\`\n`;
 fs.writeFileSync(resultsPath, md, 'utf8');
 console.log(`Successfully generated verified test report at: ${resultsPath}`);
 
+// 4. Synchronize Single Source of Truth into README.md
+const readmePath = path.join(repoRoot, 'README.md');
+if (fs.existsSync(readmePath)) {
+  let readme = fs.readFileSync(readmePath, 'utf8');
+  readme = readme.replace(
+    /badge\/Tests-\d+%2F\d+%20Passing%20\(\d+(?:%25|%)\)-success/g,
+    `badge/Tests-${grandPassedTests}%2F${grandTotalTests}%20Passing%20(${passRate}%25)-success`
+  );
+  readme = readme.replace(
+    /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/g,
+    `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`
+  );
+  readme = readme.replace(
+    /consisting of \*\*\d+ automated tests\*\* across \d+ test files \(\d+ Vitest suites/g,
+    `consisting of **${grandTotalTests} automated tests** across ${totalSuites + 1} test files (${totalSuites} Vitest suites`
+  );
+  readme = readme.replace(
+    /\|\s*\*\*Total\*\*\s*\|\s*\*\*All Core Domains & Runtime Smoke Verification\*\*\s*\|\s*\*\*\d+\*\*\s*\|\s*\*\*\d+\*\*\s*\|\s*\*\*\d+%\s*PASS\*\*\s*\|/g,
+    `| **Total** | **All Core Domains & Runtime Smoke Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`
+  );
+  fs.writeFileSync(readmePath, readme, 'utf8');
+  console.log(`Synchronized single source of truth test count (${grandPassedTests}/${grandTotalTests}) into README.md`);
+}
+
+// 5. Synchronize Single Source of Truth into PRODUCTION_READINESS.md
+const prodDocPath = path.join(repoRoot, 'docs', 'production', 'PRODUCTION_READINESS.md');
+if (fs.existsSync(prodDocPath)) {
+  let prodDoc = fs.readFileSync(prodDocPath, 'utf8');
+  prodDoc = prodDoc.replace(
+    /\*\*\d+ automated tests passing \(\d+ Vitest unit & integration tests \+ 1 native Electron smoke test\) with \d+% pass rate\*\*/g,
+    `**${grandTotalTests} automated tests passing (${totalUnitTests} Vitest unit & integration tests + 1 native Electron smoke test) with ${passRate}% pass rate**`
+  );
+  prodDoc = prodDoc.replace(
+    /consists of \*\*\d+ verified automated tests\*\* across \d+ test files \(\d+ Vitest suites/g,
+    `consists of **${grandTotalTests} verified automated tests** across ${totalSuites + 1} test files (${totalSuites} Vitest suites`
+  );
+  prodDoc = prodDoc.replace(
+    /Subtotal \(Vitest Test Suites\):\s+\d+ passing unit & integration tests/g,
+    `Subtotal (Vitest Test Suites):      ${totalUnitTests} passing unit & integration tests`
+  );
+  prodDoc = prodDoc.replace(
+    /Grand Total:\s+\d+ passing tests \(\d+% Pass Rate\)/g,
+    `Grand Total:                        ${grandTotalTests} passing tests (${passRate}% Pass Rate)`
+  );
+  fs.writeFileSync(prodDocPath, prodDoc, 'utf8');
+  console.log(`Synchronized single source of truth test count (${grandPassedTests}/${grandTotalTests}) into PRODUCTION_READINESS.md`);
+}
+
 if (grandFailedTests > 0) {
   console.error(`Test report verification FAILED: ${grandFailedTests} test(s) failed.`);
   process.exit(1);

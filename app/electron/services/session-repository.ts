@@ -96,7 +96,21 @@ export class SessionRepository {
     }
     const filePath = this.resolveSessionPath(session.id);
     session.updatedAt = new Date().toISOString();
-    const serialized = JSON.stringify(session, null, 2);
+
+    // Defense-in-depth: Strip heavy screenshot base64 payloads before writing to disk
+    const sanitizedMessages = (session.messages || []).map(msg => {
+      if (msg.screenshot) {
+        const { screenshot, ...rest } = msg;
+        return rest as any;
+      }
+      return msg;
+    });
+    const recordToSave = {
+      ...session,
+      messages: sanitizedMessages,
+    };
+
+    const serialized = JSON.stringify(recordToSave, null, 2);
     if (serialized.length > 5 * 1024 * 1024) {
       throw new Error('[SessionRepository] Session exceeds maximum aggregate size limit of 5MB');
     }

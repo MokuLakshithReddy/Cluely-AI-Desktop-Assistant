@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { windowCoordinator } from './domains/windows';
@@ -6,8 +6,10 @@ import { shortcutManager } from './domains/shortcuts';
 import { ipcRouter } from './domains/ipc-router';
 import { stateManager } from './domains/state';
 
-// Prevent multiple instances
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+let isQuitting = false;
+
+// Prevent multiple instances (bypassed in automated smoke test to avoid lock contention with running app)
+const gotSingleInstanceLock = process.env.SMOKE_TEST === 'true' ? true : app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
@@ -38,6 +40,7 @@ if (!gotSingleInstanceLock) {
           clearInterval(checkInterval);
           try { fs.unlinkSync(shutdownTrigger); } catch {}
           console.log('[APP_CLEAN_SHUTDOWN] Graceful shutdown command received via trigger.');
+          isQuitting = true;
           app.quit();
         }
       }, 100);
@@ -57,14 +60,11 @@ if (!gotSingleInstanceLock) {
 
   app.on('will-quit', () => {
     console.log('[APP_WILL_QUIT] Application lifecycle will-quit completed.');
-    if (process.env.SMOKE_TEST === 'true') {
-      // In smoke test harness, ensure immediate clean exit code 0 after all lifecycle hooks have fired
-      app.exit(0);
-    }
   });
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    if (process.platform !== 'darwin' && !isQuitting) {
+      isQuitting = true;
       app.quit();
     }
   });

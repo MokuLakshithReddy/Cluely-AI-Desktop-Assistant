@@ -3,7 +3,7 @@
 **Target Environment**: Windows 11 x64  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  
-**Test Status**: 83/83 Passing (100% Pass Rate)  
+**Test Status**: 89/89 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
 **Verification Date**: 2026-10-29  
 
@@ -19,6 +19,7 @@
 | `audio-vad.test.ts` | Audio Processing, VAD & Crosstalk Subsystem | 6 | 6 | 0 | **PASSED** |
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 7 | 7 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
+| `e2e-desktop-session.test.ts` | Real Desktop Session End-to-End Workflow & Verification | 6 | 6 | 0 | **PASSED** |
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 22 | 22 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 6 | 6 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 6 | 6 | 0 | **PASSED** |
@@ -26,7 +27,7 @@
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 7 | 7 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Native Electron Desktop Runtime Smoke Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **83** | **83** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **89** | **89** | **0** | **100% PASS** |
 
 ---
 
@@ -87,7 +88,17 @@
 ✓ handles leading slash with query parameters
 ```
 
-### 7. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
+### 7. Real Desktop Session End-to-End Workflow & Verification (`tests/e2e-desktop-session.test.ts`)
+```text
+✓ Stage 1: Captures dual-stream consented meeting audio with VAD and crosstalk suppression
+✓ Stage 2: Captures active display bounds with proportional aspect ratio downscaling
+✓ Stage 3: Ingests user knowledge document and retrieves relevant SLA context via cosine RAG
+✓ Stage 4: Synthesizes multimodal context prompt from spoken transcript, screen, and RAG knowledge
+✓ Stage 5: Streams grounded AI response, verifies citation, and tests mid-stream cancellation
+✓ Stage 6: Verifies zero-leakage session persistence, screenshot stripping, and session deletion
+```
+
+### 8. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
 ```text
 ✓ rejects IPC invocation when senderFrame is null or undefined
 ✓ rejects IPC invocation when senderFrame.url is empty or invalid
@@ -113,7 +124,7 @@
 ✓ sanitizeSessionRecord strips screenshot payloads and enforces a 5MB aggregate size ceiling
 ```
 
-### 8. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
+### 9. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
 ```text
 ✓ chunks documents with overlapping windows respecting paragraph breaks
 ✓ creates KnowledgeDoc record with correct metadata and chunks
@@ -123,7 +134,7 @@
 ✓ ranks higher frequency keyword occurrences with greater relevance
 ```
 
-### 9. AI Provider Model Propagation and Multi-Turn Serialization (`tests/provider-models.test.ts`)
+### 10. AI Provider Model Propagation and Multi-Turn Serialization (`tests/provider-models.test.ts`)
 ```text
 ✓ streamGemini defaults to gemini-3.6-flash, routes URL correctly and serializes multi-turn history
 ✓ streamGemini provides diagnostic guidance on 403 / 404 model errors
@@ -133,7 +144,7 @@
 ✓ buildContextPrompt excludes transcribing and error items from transcript context
 ```
 
-### 10. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 11. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
@@ -142,7 +153,7 @@
 ✓ handles boundary 1x1 minimal screen dimension safely
 ```
 
-### 11. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
+### 12. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
 ```text
 ✓ saves and reads a full session record with transcripts and messages
 ✓ lists past sessions ordered by newest creation date
@@ -153,7 +164,7 @@
 ✓ enforces 5MB size ceiling in session repository saveSession
 ```
 
-### 12. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+### 13. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
 ```text
 ✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
 ✓ purgeAllData wipes in-memory vault keys and stored session archives
@@ -162,7 +173,7 @@
 ✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
-### 13. Native Electron Desktop Runtime Smoke Verification (`tests/electron-smoke.cjs`)
+### 14. Native Electron Desktop Runtime Smoke Verification (`tests/electron-smoke.cjs`)
 ```text
 ✓ Spawns electron binary with stripped ELECTRON_RUN_AS_NODE
 ✓ Loads control window, chat panel, and dashboard without uncaught exceptions

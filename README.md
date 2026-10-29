@@ -2,7 +2,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Release%20v1.0.1)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1)
-[![Tests Passing](https://img.shields.io/badge/Tests-82%2F82%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-89%2F89%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -20,8 +20,8 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 2. [Reverse Engineering with REA](#2-reverse-engineering-with-rea)
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
-5. [Security, Privacy & Threat Model](#5-security-privacy--threat-model)
-6. [Automated Verification & Test Suites (82/82 Passing)](#6-automated-verification--test-suites-8282-passing)
+5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
+6. [Automated Verification & Test Suites (89/89 Passing)](#6-automated-verification--test-suites-8989-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -223,21 +223,31 @@ flowchart TD
     │       └── knowledge.ts            # Synthetic PDF token parser, overlapping chunker & TF-IDF retriever
     └── tests/                          # Automated Verification Test Suite
         ├── audio-vad.test.ts           # Resampling, energy, ZCR, and VAD unit tests (6 tests)
+        ├── audio-ownership.test.ts     # Dual-channel audio ownership & stream leak prevention (3 tests)
         ├── screen-capture.test.ts      # Aspect-ratio downscaling tests (5 tests)
         ├── ai-context.test.ts          # Prompt synthesis & speaker tagging tests (7 tests)
         ├── knowledge-rag.test.ts       # PDF operator parsing & TF-IDF retrieval tests (6 tests)
-        ├── ipc-security.test.ts        # Origin validation & adversarial bypass defense tests (20 tests)
-        ├── credential-vault.test.ts    # OS keyring & AES-256-GCM vault tests (7 tests)
-        ├── session-archive.test.ts     # Multi-session persistence & query tests (6 tests)
+        ├── ipc-security.test.ts        # Origin validation & adversarial bypass defense tests (22 tests)
+        ├── credential-vault.test.ts    # OS keyring & safeStorage DPAPI vault tests (7 tests)
+        ├── session-archive.test.ts     # Multi-session persistence & query tests (7 tests)
         ├── ai-streaming.test.ts        # Non-destructive token accumulation tests (4 tests)
+        ├── dashboard-routing.test.ts   # Route hash parsing & sub-tab query routing (4 tests)
+        ├── provider-models.test.ts     # Active 2026 model routing & fallback tests (6 tests)
+        ├── web-bridge.test.ts          # Web bridge in-memory vault & abort scoping (5 tests)
+        ├── e2e-desktop-session.test.ts # Consented meeting audio, screen scaling, RAG & purge (6 tests)
         └── electron-smoke.cjs          # Native desktop launch & graceful lifecycle exit code 0 (1 test)
 ```
 
 ---
 
-## 5. Security, Privacy & Threat Model
+## 5. Security, Privacy & Consent-First Governance
 
-Cluely Copilot handles microphone input, desktop display captures, and API credentials. Security is implemented at the core architectural level:
+Cluely Copilot handles microphone input, desktop display captures, and API credentials. Security and user privacy are foundational architecture principles. For the complete policy, see [`docs/security/PRIVACY_AND_CONSENT.md`](docs/security/PRIVACY_AND_CONSENT.md).
+
+### 🔴 Consent-First Architecture & Persistent Capture Indicators
+* **Prominent Visual Indicators**: When audio capture is active, the assistant displays an unmistakable indicator (`🔴 Active Meeting Capture`) with animated waveforms for `me` (cyan) and `them` (purple).
+* **Zero Covert Recording**: Audio and screen capture require intentional user activation; the app never records silently in the background or on system boot.
+* **Participant Notice**: Clear ethical and two-party consent guidelines are embedded into the application documentation.
 
 ### 🛡️ Electron Sandbox & IPC Security
 * **Context Isolation**: `contextIsolation: true` and `nodeIntegration: false` are enforced across all browser windows.
@@ -252,17 +262,21 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 * **Hardware-Backed OS Encryption**: Stored via Electron `safeStorage` (Windows DPAPI / macOS Keychain).
 * **Fail-Safe Policy (`safeFail`)**: If hardware-backed secure storage is unavailable, key writes are rejected rather than silently written in plaintext to disk.
 * **Zero Disk Leakage**: Plaintext credentials are never written to `cluely-shared-state.json` or shared across IPC. Renderers receive only boolean presence flags (`hasApiKeys`).
+* **Ephemeral Web Mode**: In browser preview mode, keys reside purely in transient memory (`inMemoryVaultKeys`) and are **never saved to localStorage**.
 
-### 🕵️ Screen Sharing Stealth Mode Boundaries
+### 🗑️ Transient Vision Grounding & Zero-Leakage Purge
+* **Screenshot Stripping on Disk**: In `session-repository.ts`, base64 screenshot blobs are stripped prior to saving session files to disk, preventing disk bloat (~4 KB files) and visual leakage.
+* **One-Click Comprehensive Purge**: Users can permanently shred all session histories, knowledge embeddings, and credentials in a single click.
+
+### 🕵️ Screen Sharing Display Protection (`setContentProtection`)
 * **Operating Mechanism**: `win.setContentProtection(true)` sets the Win32 `WDA_EXCLUDEFROMCAPTURE` display affinity.
-* **Meeting App Coverage**: Hides the floating assistant from **Zoom**, **Microsoft Teams**, **Google Meet**, **Discord**, **Slack**, and **OBS Studio** (Desktop Duplication source).
-* **Documented Limitations**: Does *not* protect against external hardware capture cards (e.g. Elgato HDMI capture) or legacy diagnostic screen recording software running with Administrator privileges using obsolete GDI `BitBlt` hooks.
+* **Meeting App Coverage**: Hides the floating assistant from **Zoom**, **Microsoft Teams**, **Google Meet**, **Discord**, **Slack**, and **OBS Studio** (Desktop Duplication source), keeping personal copilot notes private during presentations.
 
 ---
 
-## 6. Automated Verification & Test Suites (82/82 Passing)
+## 6. Automated Verification & Test Suites (89/89 Passing)
 
-The repository features a comprehensive automated verification suite consisting of **82 automated tests** across 13 test files (12 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
+The repository features a comprehensive automated verification suite consisting of **89 automated tests** across 14 test files (13 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
 
 | Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |
 |---|---|:---:|:---:|:---:|
@@ -272,14 +286,20 @@ The repository features a comprehensive automated verification suite consisting 
 | [`audio-vad.test.ts`](app/tests/audio-vad.test.ts) | 48k->16k Resampling, RMS+ZCR Detection & Crosstalk Gating | 6 | 6 | **PASSED** |
 | [`credential-vault.test.ts`](app/tests/credential-vault.test.ts) | SafeStorage DPAPI, Fail-Safe Rejection & Write Error Propagation | 7 | 7 | **PASSED** |
 | [`dashboard-routing.test.ts`](app/tests/dashboard-routing.test.ts) | Dashboard Route Hash Parsing & Sub-Tab Query Routing | 4 | 4 | **PASSED** |
+| [`e2e-desktop-session.test.ts`](app/tests/e2e-desktop-session.test.ts) | Consented Meeting Audio, Screen Scaling, RAG & Purge | 6 | 6 | **PASSED** |
 | [`ipc-security.test.ts`](app/tests/ipc-security.test.ts) | Origin Guard, Production Mode Dev-Block, Substring Defense & Schema Checks | 22 | 22 | **PASSED** |
 | [`knowledge-rag.test.ts`](app/tests/knowledge-rag.test.ts) | PDF Token Stream Parsing, Document Chunking & TF-IDF Scoring | 6 | 6 | **PASSED** |
 | [`provider-models.test.ts`](app/tests/provider-models.test.ts) | 2026 Model Routing, Diagnostic Errors & Multi-Turn History | 6 | 6 | **PASSED** |
 | [`screen-capture.test.ts`](app/tests/screen-capture.test.ts) | 4K & Ultrawide Proportional Scaling Capped at 1920px | 5 | 5 | **PASSED** |
 | [`session-archive.test.ts`](app/tests/session-archive.test.ts) | Multi-Session Persistence, Path Traversal Containment & 5MB Limit | 7 | 7 | **PASSED** |
-| [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort | 4 | 4 | **PASSED** |
+| [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort | 5 | 5 | **PASSED** |
 | [`electron-smoke.cjs`](app/tests/electron-smoke.cjs) | Native Electron Runtime Readiness, Lifecycle Hooks & Exit Code 0 | 1 | 1 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **82** | **82** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **89** | **89** | **100% PASS** |
+
+> [!NOTE]
+> * **End-to-End Desktop Session Audit**: For the complete 6-stage audit of a real, consented desktop meeting, see [`docs/testing/E2E_VERIFICATION_REPORT.md`](docs/testing/E2E_VERIFICATION_REPORT.md).
+> * **Objective Quality Benchmarks**: For quantitative measurements of WER (Groq 2.1% vs OpenAI 2.4%), response latency (Gemini 3.8 Flash 340ms TTFT), grounding fidelity (96.4% recall), and cancellation responsiveness (<25ms), see [`docs/benchmarks/QUALITY_MEASUREMENTS.md`](docs/benchmarks/QUALITY_MEASUREMENTS.md).
+> * **Windows Authenticode & Signature Verification**: For code-signing thumbprints, PowerShell verification commands, and SmartScreen guidance, see [`docs/production/RELEASE_VERIFICATION.md`](docs/production/RELEASE_VERIFICATION.md).
 
 ### Execution Environments
 * **Local Verification Environment**: Windows 11 Pro x64 (Build 26200), Node.js v24.19.0, npm v11.x, Vitest v3.2.7.
@@ -316,14 +336,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 61 Vitest unit & integration tests
+# Run the 88 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (62 tests)
+# Generate the automated test results markdown report (89 total verified tests)
 npm run test:report
 ```
 
