@@ -18,6 +18,7 @@
   },
   "build": {
     "appId": "com.cluely.copilot",
+    "forceCodeSigning": true,
     "productName": "Cluely Copilot",
     "directories": {
       "output": "release"
