@@ -1,6 +1,7 @@
 # Cluely Copilot: Reverse-Engineered Desktop AI Assistant
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Release%20v1.0.1)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1)
 [![Tests Passing](https://img.shields.io/badge/Tests-82%2F82%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
@@ -354,7 +355,7 @@ npm run pack
 
 # 2. Portable standalone single executable (distribution)
 npm run dist:win
-# Output: app/release/Cluely Copilot 1.0.0.exe (72.6MB)
+# Output: app/release/Cluely-Copilot-1.0.1-Windows-x64.exe (72.6MB)
 ```
 
 ### Launching the Packaged Application
