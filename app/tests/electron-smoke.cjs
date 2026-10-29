@@ -23,7 +23,10 @@ if (fs.existsSync(triggerPath)) {
   try { fs.unlinkSync(triggerPath); } catch {}
 }
 
-const child = spawn(electronBinary, [appPath], {
+const os = require('os');
+const smokeUserDataDir = path.join(os.tmpdir(), `cluely-smoke-${Date.now()}`);
+
+const child = spawn(electronBinary, [appPath, `--user-data-dir=${smokeUserDataDir}`], {
   cwd: appPath,
   env: cleanEnv,
   stdio: ['pipe', 'pipe', 'pipe'],
@@ -136,5 +139,10 @@ child.on('exit', (code, signal) => {
   }
 
   console.log('--- Electron Desktop Runtime Smoke Test: PASSED (Verified Clean Shutdown with Exit Code 0) ---');
+  try {
+    if (fs.existsSync(smokeUserDataDir)) {
+      fs.rmSync(smokeUserDataDir, { recursive: true, force: true });
+    }
+  } catch {}
   process.exit(0);
 });

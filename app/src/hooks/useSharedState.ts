@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { SharedState } from '../lib/types';
 
 export const FALLBACK_STATE: SharedState = {
-  appVersion: '1.0.0',
+  appVersion: '1.0.1',
   isControlWindowLoaded: true,
   isChatWindowLoaded: true,
   isDashboardWindowLoaded: false,
@@ -15,7 +15,7 @@ export const FALLBACK_STATE: SharedState = {
   isCapturingScreenshot: false,
   isRecording: false,
   activeMode: 'copilot',
-  activeModel: 'gemini-2.5-flash',
+  activeModel: 'gemini-3.8-flash',
   hasApiKeys: {
     gemini: false,
     openai: false,
@@ -50,19 +50,31 @@ export function useSharedState() {
     stateRef.current = state;
   }, [state]);
 
+  const migrateState = (s: SharedState): SharedState => {
+    if (s && ((s.activeModel as string) === 'gemini-2.5-flash' || !s.activeModel)) {
+      return { ...s, activeModel: 'gemini-3.8-flash' };
+    }
+    return s;
+  };
+
   useEffect(() => {
     if (window.desktopBridge) {
       window.desktopBridge
         .getSharedState()
         .then(s => {
-          setState(s);
-          stateRef.current = s;
+          const migrated = migrateState(s);
+          setState(migrated);
+          stateRef.current = migrated;
+          if (migrated.activeModel !== s.activeModel) {
+            window.desktopBridge?.patchSharedState({ activeModel: migrated.activeModel });
+          }
         })
         .catch(console.error);
 
       const unsubscribe = window.desktopBridge.onSharedStateUpdated(newState => {
-        setState(newState);
-        stateRef.current = newState;
+        const migrated = migrateState(newState);
+        setState(migrated);
+        stateRef.current = migrated;
       });
       return unsubscribe;
     }

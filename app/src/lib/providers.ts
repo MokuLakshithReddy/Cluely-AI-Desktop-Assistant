@@ -106,8 +106,13 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     });
   }
 
-  const modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-3.6-flash';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
+  // Prefer active 2026 models: Automatically migrate legacy gemini-2.5-flash to gemini-3.8-flash
+  let modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-3.8-flash';
+  if (modelName === 'gemini-2.5-flash') {
+    modelName = 'gemini-3.8-flash';
+  }
+
+  let endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
 
   const contents: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
   if (conversationHistory && conversationHistory.length > 0) {
@@ -121,7 +126,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
   }
   contents.push({ role: 'user', parts });
 
-  const response = await fetch(endpoint, {
+  let response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -138,12 +143,34 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     signal,
   });
 
+  // Automatic retry with flagship gemini-3.8-flash if model returned 404 or 403
+  if (!response.ok && (response.status === 403 || response.status === 404) && modelName !== 'gemini-3.8-flash') {
+    modelName = 'gemini-3.8-flash';
+    endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey.trim(),
+      },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2048,
+        },
+      }),
+      signal,
+    });
+  }
+
   if (!response.ok) {
     const errorText = await response.text();
     if (response.status === 403 || response.status === 404) {
-      if (modelName.includes('2.5')) {
+      if (options.model?.includes('2.5') || modelName.includes('2.5') || errorText.includes('legacy') || errorText.includes('restricted')) {
         throw new Error(
-          `Gemini API access error (${response.status}): Access to ${modelName} is restricted to legacy projects. Please switch to "Gemini 3.6 Flash" in Settings. Details: ${errorText}`
+          `Gemini API access error (${response.status}): Access to ${options.model || modelName} is restricted to legacy projects. Please switch to "Gemini 3.8 Flash" (or "Gemini 3.6 Flash") in Settings. Details: ${errorText}`
         );
       }
     }

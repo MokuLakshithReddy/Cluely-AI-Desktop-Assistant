@@ -26,7 +26,7 @@ export const INITIAL_STATE: SharedState = {
   isCapturingScreenshot: false,
   isRecording: false,
   activeMode: 'copilot',
-  activeModel: 'gemini-3.6-flash',
+  activeModel: 'gemini-3.8-flash',
   hasApiKeys: {
     gemini: false,
     openai: false,
@@ -80,6 +80,9 @@ class StateManager {
   }
 
   public patchState(patch: Partial<SharedState>): SharedState {
+    if ((patch.activeModel as any) === 'gemini-2.5-flash') {
+      patch.activeModel = 'gemini-3.8-flash';
+    }
     this.state = { ...this.state, ...patch };
     this.scheduleSave();
     this.notify();
@@ -138,6 +141,11 @@ class StateManager {
           themHasVoiceActivity: false,
           isCapturingScreenshot: false,
         };
+
+        // Automatic migration from restricted legacy gemini-2.5-flash to flagship gemini-3.8-flash
+        if ((this.state.activeModel as string) === 'gemini-2.5-flash' || !this.state.activeModel) {
+          this.state.activeModel = 'gemini-3.8-flash';
+        }
       }
     } catch (e) {
       console.error('[StateManager] Failed to load state:', e);

@@ -81,7 +81,7 @@ describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
         query: 'Test',
         recentTranscript: [],
       })
-    ).rejects.toThrow(/gemini-2\.5-flash.*Gemini 3\.6 Flash/i);
+    ).rejects.toThrow(/gemini-2\.5-flash.*Gemini 3\.[68] Flash/i);
   });
 
   it('streamOpenAI dynamically forwards gpt-4o-mini and serializes multi-turn turns', async () => {
