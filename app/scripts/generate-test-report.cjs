@@ -58,7 +58,7 @@ const totalUnitTests = vitestData.numTotalTests;
 const passedUnitTests = vitestData.numPassedTests;
 const failedUnitTests = vitestData.numFailedTests;
 
-const grandTotalTests = totalUnitTests + (smokePassed ? 1 : 0);
+const grandTotalTests = totalUnitTests + 1;
 const grandPassedTests = passedUnitTests + (smokePassed ? 1 : 0);
 const grandFailedTests = failedUnitTests + (smokePassed ? 0 : 1);
 const passRate = grandTotalTests > 0 ? Math.round((grandPassedTests / grandTotalTests) * 100) : 0;
@@ -98,7 +98,8 @@ for (let i = 0; i < vitestData.testResults.length; i++) {
   md += `### ${i + 1}. ${subName} (\`tests/${fileName}\`)\n`;
   md += `\`\`\`text\n`;
   for (const t of suite.assertionResults) {
-    md += `✓ ${t.title}\n`;
+    const mark = t.status === 'passed' ? '✓' : '✗';
+    md += `${mark} ${t.title}\n`;
   }
   md += `\`\`\`\n\n`;
 }

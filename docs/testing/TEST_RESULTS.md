@@ -3,7 +3,7 @@
 **Target Environment**: Windows 11 x64  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  
-**Test Status**: 77/77 Passing (100% Pass Rate)  
+**Test Status**: 82/82 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
 **Verification Date**: 2026-10-29  
 
@@ -19,14 +19,14 @@
 | `audio-vad.test.ts` | Audio Processing, VAD & Crosstalk Subsystem | 6 | 6 | 0 | **PASSED** |
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 7 | 7 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
-| `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 20 | 20 | 0 | **PASSED** |
+| `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 22 | 22 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 6 | 6 | 0 | **PASSED** |
-| `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 4 | 4 | 0 | **PASSED** |
+| `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 6 | 6 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
-| `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 6 | 6 | 0 | **PASSED** |
+| `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 7 | 7 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 4 | 4 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Native Electron Desktop Runtime Smoke Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **77** | **77** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **82** | **82** | **0** | **100% PASS** |
 
 ---
 
@@ -97,6 +97,7 @@
 ✓ rejects rogue file:// URLs attempting to load dist/index.html from outside the trusted app directory
 ✓ accepts valid production file:// URL matching the exact trusted app bundle
 ✓ accepts exact legitimate development server origins (localhost:5173 and 127.0.0.1:5173)
+✓ strictly rejects development server origins when running in production mode
 ✓ respects exact origin when VITE_DEV_SERVER_URL is configured
 ✓ sanitizes patch-shared-state payloads to only allow whitelisted keys
 ✓ rejects patch-shared-state payloads containing unwhitelisted or sensitive fields
@@ -109,6 +110,7 @@
 ✓ enforces nested schema validation and size limits on session transcript items
 ✓ enforces nested schema validation on session chat messages
 ✓ enforces size limits and schema validation on knowledge documents
+✓ sanitizeSessionRecord strips screenshot payloads and enforces a 5MB aggregate size ceiling
 ```
 
 ### 8. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
@@ -123,10 +125,12 @@
 
 ### 9. AI Provider Model Propagation and Multi-Turn Serialization (`tests/provider-models.test.ts`)
 ```text
-✓ streamGemini dynamically routes to configured Gemini 2.5 model and includes multi-turn history
+✓ streamGemini defaults to gemini-3.6-flash, routes URL correctly and serializes multi-turn history
+✓ streamGemini provides diagnostic guidance on 403 / 404 model errors
 ✓ streamOpenAI dynamically forwards gpt-4o-mini and serializes multi-turn turns
-✓ streamClaude maps claude-3-7-sonnet to 2026 model ID and preserves multi-turn context
-✓ streamClaude maps claude-3-5-haiku to active model ID
+✓ streamClaude maps active 2026 models with anthropic-version 2026-10-21 and preserves multi-turn context
+✓ streamClaude provides diagnostic error when Claude returns model_not_found error
+✓ buildContextPrompt excludes transcribing and error items from transcript context
 ```
 
 ### 10. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
@@ -146,6 +150,7 @@
 ✓ purges all archived sessions cleanly
 ✓ returns null when requesting a nonexistent session id
 ✓ rejects path traversal attempts in session IDs and protects parent directories
+✓ enforces 5MB size ceiling in session repository saveSession
 ```
 
 ### 12. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
@@ -153,7 +158,7 @@
 ✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
 ✓ purgeAllData wipes in-memory vault keys and stored session archives
 ✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
-✓ abortAiStream aborts active streaming requests cleanly
+✓ abortAiStream returns false for unknown requestId without aborting other requests
 ```
 
 ### 13. Native Electron Desktop Runtime Smoke Verification (`tests/electron-smoke.cjs`)

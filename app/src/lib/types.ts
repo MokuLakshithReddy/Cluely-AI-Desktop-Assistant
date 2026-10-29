@@ -73,12 +73,15 @@ export interface SharedState {
   isRecording: boolean;
   activeMode: AssistantMode;
   activeModel:
+    | 'gemini-3.6-flash'
+    | 'gemini-3.5-flash-lite'
     | 'gemini-2.5-flash'
-    | 'gemini-2.5-pro'
+    | 'gemini-3.1-pro'
     | 'gpt-4o'
     | 'gpt-4o-mini'
-    | 'claude-3-7-sonnet'
-    | 'claude-3-5-haiku'
+    | 'claude-sonnet-5-5'
+    | 'claude-haiku-5-5'
+    | 'claude-opus-5-5'
     | 'ollama';
   isGenerating?: boolean;
   hasApiKeys: {

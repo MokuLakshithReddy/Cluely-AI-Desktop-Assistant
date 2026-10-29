@@ -181,5 +181,29 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
     const escapedFile = path.join(parentDir, 'escaped_session.json');
     expect(fs.existsSync(escapedFile)).toBe(false);
   });
+
+  it('enforces 5MB size ceiling in session repository saveSession', async () => {
+    const hugeSession: any = {
+      id: 'sess_oversized_5mb',
+      title: 'Huge Session',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      durationSeconds: 10,
+      mode: 'copilot',
+      transcript: [],
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'x'.repeat(5 * 1024 * 1024 + 100),
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    await expect(repo.saveSession(hugeSession)).rejects.toThrow(
+      /Session exceeds maximum aggregate size limit of 5MB/
+    );
+  });
 });
 

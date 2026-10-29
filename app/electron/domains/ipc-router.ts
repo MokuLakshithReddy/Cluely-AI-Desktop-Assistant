@@ -59,12 +59,14 @@ const ALLOWED_STATE_KEYS = new Set([
 
 export class IpcRouter {
   private customTrustedHtmlPath?: string;
+  private forceProductionMode: boolean = false;
   private activeAiControllers: Map<string, AbortController> = new Map();
 
-  constructor(customTrustedHtmlPath?: string) {
+  constructor(customTrustedHtmlPath?: string, forceProductionMode: boolean = false) {
     if (customTrustedHtmlPath) {
       this.customTrustedHtmlPath = path.normalize(customTrustedHtmlPath).toLowerCase();
     }
+    this.forceProductionMode = forceProductionMode;
   }
 
   public init() {
@@ -151,9 +153,12 @@ export class IpcRouter {
       throw new Error(`[IpcRouter] Rejected malformed URL: ${rawUrl}`);
     }
 
-    // 1. Development Mode Validation:
+    // Check production mode status (explicit override or packaged Electron app)
+    const isProd = this.forceProductionMode || (app && app.isPackaged);
+
+    // 1. Development Mode Validation (strictly disallowed in production mode):
     // If VITE_DEV_SERVER_URL is configured, match its exact origin (protocol, hostname, port)
-    if (process.env.VITE_DEV_SERVER_URL) {
+    if (!isProd && process.env.VITE_DEV_SERVER_URL) {
       try {
         const devServer = new URL(process.env.VITE_DEV_SERVER_URL);
         if (
@@ -168,9 +173,10 @@ export class IpcRouter {
       }
     }
 
-    // Standard local Vite dev server check:
+    // Standard local Vite dev server check (strictly prohibited in production mode):
     // Protocol must be strictly http:, hostname strictly 'localhost' or '127.0.0.1', and port strictly '5173'
     if (
+      !isProd &&
       parsedUrl.protocol === 'http:' &&
       (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') &&
       parsedUrl.port === '5173'
@@ -261,97 +267,7 @@ export class IpcRouter {
         if (val === null) {
           sanitized[key] = null;
         } else {
-          if (typeof val !== 'object' || Array.isArray(val)) {
-            throw new Error('[IpcRouter] Invalid session: Expected null or SessionState object');
-          }
-          const sessObj = val as any;
-          if (typeof sessObj.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(sessObj.id)) {
-            throw new Error('[IpcRouter] Invalid session: Session ID must match /^[a-zA-Z0-9_-]{1,64}$/');
-          }
-          if (typeof sessObj.createdAt !== 'string' || isNaN(Date.parse(sessObj.createdAt))) {
-            throw new Error('[IpcRouter] Invalid session: Missing or invalid createdAt ISO timestamp');
-          }
-          if (sessObj.updatedAt !== undefined && (typeof sessObj.updatedAt !== 'string' || isNaN(Date.parse(sessObj.updatedAt)))) {
-            throw new Error('[IpcRouter] Invalid session: Invalid updatedAt ISO timestamp');
-          }
-          if (sessObj.title !== undefined && (typeof sessObj.title !== 'string' || sessObj.title.length > 255)) {
-            throw new Error('[IpcRouter] Invalid session: title must be string under 255 chars');
-          }
-          if (sessObj.durationSeconds !== undefined && (typeof sessObj.durationSeconds !== 'number' || !Number.isFinite(sessObj.durationSeconds) || sessObj.durationSeconds < 0)) {
-            throw new Error('[IpcRouter] Invalid session: durationSeconds must be non-negative finite number');
-          }
-          if (sessObj.mode !== undefined && (!ALLOWED_OPERATING_MODES.has(sessObj.mode))) {
-            throw new Error(`[IpcRouter] Invalid session: mode "${sessObj.mode}" is not a recognized operating mode`);
-          }
-
-          // Nested transcript validation
-          if (!Array.isArray(sessObj.transcript)) {
-            throw new Error('[IpcRouter] Invalid session: transcript must be an array');
-          }
-          if (sessObj.transcript.length > MAX_TRANSCRIPT_ITEMS) {
-            throw new Error(`[IpcRouter] Invalid session: transcript exceeds maximum limit of ${MAX_TRANSCRIPT_ITEMS} items`);
-          }
-          for (let i = 0; i < sessObj.transcript.length; i++) {
-            const item = sessObj.transcript[i];
-            if (!item || typeof item !== 'object') throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: Expected object`);
-            if (typeof item.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(item.id)) {
-              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: ID must match /^[a-zA-Z0-9_-]{1,64}$/`);
-            }
-            if (typeof item.createdAt !== 'string' || isNaN(Date.parse(item.createdAt))) {
-              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: Invalid createdAt timestamp`);
-            }
-            if (typeof item.relativeMs !== 'number' || !Number.isFinite(item.relativeMs) || item.relativeMs < 0) {
-              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: relativeMs must be non-negative finite number`);
-            }
-            if (!VALID_TRANSCRIPT_ROLES.has(item.role)) {
-              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: role must be "me" or "them"`);
-            }
-            if (!VALID_TRANSCRIPT_STATUSES.has(item.status)) {
-              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: status must be transcribing, ready, or error`);
-            }
-            if (typeof item.text !== 'string' || item.text.length > 10000) {
-              throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: text must be string under 10000 chars`);
-            }
-          }
-
-          // Nested messages validation
-          if (!Array.isArray(sessObj.messages)) {
-            throw new Error('[IpcRouter] Invalid session: messages must be an array');
-          }
-          if (sessObj.messages.length > MAX_MESSAGES_ITEMS) {
-            throw new Error(`[IpcRouter] Invalid session: messages exceeds maximum limit of ${MAX_MESSAGES_ITEMS} items`);
-          }
-          for (let i = 0; i < sessObj.messages.length; i++) {
-            const msg = sessObj.messages[i];
-            if (!msg || typeof msg !== 'object') throw new Error(`[IpcRouter] Invalid message at index ${i}: Expected object`);
-            if (typeof msg.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(msg.id)) {
-              throw new Error(`[IpcRouter] Invalid message at index ${i}: ID must match /^[a-zA-Z0-9_-]{1,64}$/`);
-            }
-            if (!VALID_MESSAGE_ROLES.has(msg.role)) {
-              throw new Error(`[IpcRouter] Invalid message at index ${i}: role must be user, assistant, or system`);
-            }
-            if (typeof msg.content !== 'string' || msg.content.length > 500000) {
-              throw new Error(`[IpcRouter] Invalid message at index ${i}: content exceeds 500,000 char limit`);
-            }
-            if (typeof msg.createdAt !== 'string' || isNaN(Date.parse(msg.createdAt))) {
-              throw new Error(`[IpcRouter] Invalid message at index ${i}: Invalid createdAt timestamp`);
-            }
-            if (msg.screenshot !== undefined && (typeof msg.screenshot !== 'string' || msg.screenshot.length > 15000000)) {
-              throw new Error(`[IpcRouter] Invalid message at index ${i}: screenshot exceeds 15MB size limit`);
-            }
-            if (msg.sources !== undefined) {
-              if (!Array.isArray(msg.sources) || msg.sources.length > 50) {
-                throw new Error(`[IpcRouter] Invalid message at index ${i}: sources must be an array under 50 items`);
-              }
-              for (const src of msg.sources) {
-                if (typeof src !== 'string' || src.length > 500) {
-                  throw new Error(`[IpcRouter] Invalid source entry at message ${i}: Expected string under 500 chars`);
-                }
-              }
-            }
-          }
-
-          sanitized[key] = val;
+          sanitized[key] = this.sanitizeSessionRecord(val);
         }
       }
 
@@ -397,6 +313,146 @@ export class IpcRouter {
     }
 
     return sanitized;
+  }
+
+  /**
+   * Deep schema sanitization for session records across both state-patch and session-save.
+   * Strips raw screenshot payloads to prevent storage bloat and memory leaks.
+   * Enforces a strict 5MB aggregate payload limit.
+   */
+  public sanitizeSessionRecord(val: any): SessionRecord {
+    if (!val || typeof val !== 'object' || Array.isArray(val)) {
+      throw new Error('[IpcRouter] Invalid session: Expected SessionState object');
+    }
+    const sessObj = val as any;
+    if (typeof sessObj.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(sessObj.id)) {
+      throw new Error('[IpcRouter] Invalid session: Session ID must match /^[a-zA-Z0-9_-]{1,64}$/');
+    }
+    if (typeof sessObj.createdAt !== 'string' || isNaN(Date.parse(sessObj.createdAt))) {
+      throw new Error('[IpcRouter] Invalid session: Missing or invalid createdAt ISO timestamp');
+    }
+    if (sessObj.updatedAt !== undefined && (typeof sessObj.updatedAt !== 'string' || isNaN(Date.parse(sessObj.updatedAt)))) {
+      throw new Error('[IpcRouter] Invalid session: Invalid updatedAt ISO timestamp');
+    }
+    if (sessObj.title !== undefined && (typeof sessObj.title !== 'string' || sessObj.title.length > 255)) {
+      throw new Error('[IpcRouter] Invalid session: title must be string under 255 chars');
+    }
+    if (sessObj.durationSeconds !== undefined && (typeof sessObj.durationSeconds !== 'number' || !Number.isFinite(sessObj.durationSeconds) || sessObj.durationSeconds < 0)) {
+      throw new Error('[IpcRouter] Invalid session: durationSeconds must be non-negative finite number');
+    }
+    if (sessObj.mode !== undefined && (!ALLOWED_OPERATING_MODES.has(sessObj.mode))) {
+      throw new Error(`[IpcRouter] Invalid session: mode "${sessObj.mode}" is not a recognized operating mode`);
+    }
+
+    // Nested transcript validation
+    if (!Array.isArray(sessObj.transcript)) {
+      throw new Error('[IpcRouter] Invalid session: transcript must be an array');
+    }
+    if (sessObj.transcript.length > MAX_TRANSCRIPT_ITEMS) {
+      throw new Error(`[IpcRouter] Invalid session: transcript exceeds maximum limit of ${MAX_TRANSCRIPT_ITEMS} items`);
+    }
+    const cleanTranscript: any[] = [];
+    for (let i = 0; i < sessObj.transcript.length; i++) {
+      const item = sessObj.transcript[i];
+      if (!item || typeof item !== 'object') throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: Expected object`);
+      if (typeof item.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(item.id)) {
+        throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: ID must match /^[a-zA-Z0-9_-]{1,64}$/`);
+      }
+      if (typeof item.createdAt !== 'string' || isNaN(Date.parse(item.createdAt))) {
+        throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: Invalid createdAt timestamp`);
+      }
+      if (typeof item.relativeMs !== 'number' || !Number.isFinite(item.relativeMs) || item.relativeMs < 0) {
+        throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: relativeMs must be non-negative finite number`);
+      }
+      if (!VALID_TRANSCRIPT_ROLES.has(item.role)) {
+        throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: role must be "me" or "them"`);
+      }
+      if (!VALID_TRANSCRIPT_STATUSES.has(item.status)) {
+        throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: status must be transcribing, ready, or error`);
+      }
+      if (typeof item.text !== 'string' || item.text.length > 10000) {
+        throw new Error(`[IpcRouter] Invalid transcript item at index ${i}: text must be string under 10000 chars`);
+      }
+      cleanTranscript.push({
+        id: item.id,
+        createdAt: item.createdAt,
+        relativeMs: item.relativeMs,
+        role: item.role,
+        status: item.status,
+        text: item.text,
+        error: typeof item.error === 'string' ? item.error : undefined,
+      });
+    }
+
+    // Nested messages validation & screenshot stripping
+    if (!Array.isArray(sessObj.messages)) {
+      throw new Error('[IpcRouter] Invalid session: messages must be an array');
+    }
+    if (sessObj.messages.length > MAX_MESSAGES_ITEMS) {
+      throw new Error(`[IpcRouter] Invalid session: messages exceeds maximum limit of ${MAX_MESSAGES_ITEMS} items`);
+    }
+    const cleanMessages: any[] = [];
+    for (let i = 0; i < sessObj.messages.length; i++) {
+      const msg = sessObj.messages[i];
+      if (!msg || typeof msg !== 'object') throw new Error(`[IpcRouter] Invalid message at index ${i}: Expected object`);
+      if (typeof msg.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(msg.id)) {
+        throw new Error(`[IpcRouter] Invalid message at index ${i}: ID must match /^[a-zA-Z0-9_-]{1,64}$/`);
+      }
+      if (!VALID_MESSAGE_ROLES.has(msg.role)) {
+        throw new Error(`[IpcRouter] Invalid message at index ${i}: role must be user, assistant, or system`);
+      }
+      if (typeof msg.content !== 'string' || msg.content.length > 500000) {
+        throw new Error(`[IpcRouter] Invalid message at index ${i}: content exceeds 500,000 char limit`);
+      }
+      if (typeof msg.createdAt !== 'string' || isNaN(Date.parse(msg.createdAt))) {
+        throw new Error(`[IpcRouter] Invalid message at index ${i}: Invalid createdAt timestamp`);
+      }
+      if (msg.screenshot !== undefined && (typeof msg.screenshot !== 'string' || msg.screenshot.length > 15000000)) {
+        throw new Error(`[IpcRouter] Invalid message at index ${i}: screenshot exceeds 15MB size limit`);
+      }
+      let cleanSources: string[] | undefined = undefined;
+      if (msg.sources !== undefined) {
+        if (!Array.isArray(msg.sources) || msg.sources.length > 50) {
+          throw new Error(`[IpcRouter] Invalid message at index ${i}: sources must be an array under 50 items`);
+        }
+        cleanSources = [];
+        for (const src of msg.sources) {
+          if (typeof src !== 'string' || src.length > 500) {
+            throw new Error(`[IpcRouter] Invalid source entry at message ${i}: Expected string under 500 chars`);
+          }
+          cleanSources.push(src);
+        }
+      }
+      // Strip screenshot to keep session record lightweight and free of large base64 binaries
+      cleanMessages.push({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.createdAt,
+        sources: cleanSources,
+      });
+    }
+
+    const cleanRecord: any = {
+      id: sessObj.id,
+      createdAt: sessObj.createdAt,
+      transcript: cleanTranscript,
+      messages: cleanMessages,
+    };
+    if (sessObj.updatedAt !== undefined) cleanRecord.updatedAt = sessObj.updatedAt;
+    if (sessObj.title !== undefined) cleanRecord.title = sessObj.title;
+    if (sessObj.durationSeconds !== undefined) cleanRecord.durationSeconds = sessObj.durationSeconds;
+    if (sessObj.mode !== undefined) cleanRecord.mode = sessObj.mode;
+    if (sessObj.audioInputLanguage !== undefined) cleanRecord.audioInputLanguage = sessObj.audioInputLanguage;
+    if (sessObj.summary !== undefined) cleanRecord.summary = sessObj.summary;
+
+    // Aggregate size ceiling: 5MB maximum
+    const serialized = JSON.stringify(cleanRecord);
+    if (serialized.length > 5 * 1024 * 1024) {
+      throw new Error('[IpcRouter] Session record exceeds maximum aggregate size limit of 5MB');
+    }
+
+    return cleanRecord;
   }
 
   private registerHandlers() {
@@ -575,17 +631,21 @@ export class IpcRouter {
         return { content: resultText, sources: knowledgePassages };
       } finally {
         this.activeAiControllers.delete(reqId);
-        stateManager.patchState({ isGenerating: false });
+        stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
       }
     });
 
-    ipcMain.handle('ai-abort-request', (event, { requestId }: any) => {
+    ipcMain.handle('ai-abort-request', (event, { requestId }: any = {}) => {
       this.validateOrigin(event);
-      if (requestId && this.activeAiControllers.has(requestId)) {
-        this.activeAiControllers.get(requestId)!.abort();
-        this.activeAiControllers.delete(requestId);
-        stateManager.patchState({ isGenerating: false });
-        return true;
+      if (requestId) {
+        const ctrl = this.activeAiControllers.get(requestId);
+        if (ctrl) {
+          ctrl.abort();
+          this.activeAiControllers.delete(requestId);
+          stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
+          return true;
+        }
+        return false;
       }
       for (const ctrl of this.activeAiControllers.values()) {
         ctrl.abort();
@@ -627,16 +687,9 @@ export class IpcRouter {
     });
 
     // 11. Multi-Session Repository Handlers
-    ipcMain.handle('session-save', async (event, session: SessionRecord) => {
+    ipcMain.handle('session-save', async (event, session: any) => {
       this.validateOrigin(event);
-      // Strip screenshot payloads before persisting to disk to prevent storage bloat and protect privacy
-      const cleanSession: SessionRecord = {
-        ...session,
-        messages: (session.messages || []).map(m => {
-          const { screenshot, ...rest } = m;
-          return rest;
-        }),
-      };
+      const cleanSession = this.sanitizeSessionRecord(session);
       await sessionRepository.saveSession(cleanSession);
     });
 

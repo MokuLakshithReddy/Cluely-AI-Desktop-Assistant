@@ -131,26 +131,28 @@ describe('WebBridge Security and Memory Architecture', () => {
     );
   });
 
-  it('abortAiStream aborts active streaming requests cleanly', async () => {
+  it('abortAiStream returns false for unknown requestId without aborting other requests', async () => {
     const bridge = initWebBridge();
-    const requestId = 'req_test_abort_123';
+    const activeReqId = 'req_active_123';
 
-    // Start executeAiStream in demo mode (simulating streaming with delay)
+    // Start request
     const streamPromise = bridge.executeAiStream({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       mode: 'copilot',
       query: 'Hello world',
       recentTranscript: [],
-      requestId,
+      requestId: activeReqId,
     });
 
-    // Abort after 20ms
-    setTimeout(() => {
-      bridge.abortAiStream?.(requestId);
-    }, 20);
+    // Abort a completely different non-existent request ID
+    const abortResult = await bridge.abortAiStream?.('req_non_existent');
+    expect(abortResult).toBe(false);
+
+    // Now abort the actual active request
+    const legitimateAbort = await bridge.abortAiStream?.(activeReqId);
+    expect(legitimateAbort).toBe(true);
 
     const result = await streamPromise;
-    // Should have truncated early due to abort signal
     expect(result.content.length).toBeLessThan(400);
   });
 });

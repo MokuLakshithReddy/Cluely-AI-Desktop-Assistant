@@ -44,3 +44,4 @@ describe('Dashboard Route and Hash Parsing', () => {
     });
   });
 });
+

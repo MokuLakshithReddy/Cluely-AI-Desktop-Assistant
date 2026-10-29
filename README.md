@@ -1,7 +1,7 @@
 # Cluely Copilot: Reverse-Engineered Desktop AI Assistant
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
-[![Tests Passing](https://img.shields.io/badge/Tests-77%2F77%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-82%2F82%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -20,7 +20,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Threat Model](#5-security-privacy--threat-model)
-6. [Automated Verification & Test Suites (77/77 Passing)](#6-automated-verification--test-suites-7777-passing)
+6. [Automated Verification & Test Suites (82/82 Passing)](#6-automated-verification--test-suites-8282-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -259,9 +259,9 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (77/77 Passing)
+## 6. Automated Verification & Test Suites (82/82 Passing)
 
-The repository features a comprehensive automated verification suite consisting of **77 automated tests** across 13 test files (12 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
+The repository features a comprehensive automated verification suite consisting of **82 automated tests** across 13 test files (12 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
 
 | Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |
 |---|---|:---:|:---:|:---:|
@@ -271,14 +271,14 @@ The repository features a comprehensive automated verification suite consisting 
 | [`audio-vad.test.ts`](app/tests/audio-vad.test.ts) | 48k->16k Resampling, RMS+ZCR Detection & Crosstalk Gating | 6 | 6 | **PASSED** |
 | [`credential-vault.test.ts`](app/tests/credential-vault.test.ts) | SafeStorage DPAPI, Fail-Safe Rejection & Write Error Propagation | 7 | 7 | **PASSED** |
 | [`dashboard-routing.test.ts`](app/tests/dashboard-routing.test.ts) | Dashboard Route Hash Parsing & Sub-Tab Query Routing | 4 | 4 | **PASSED** |
-| [`ipc-security.test.ts`](app/tests/ipc-security.test.ts) | Origin Guard, Substring Defense & Nested Schema Checks | 20 | 20 | **PASSED** |
+| [`ipc-security.test.ts`](app/tests/ipc-security.test.ts) | Origin Guard, Production Mode Dev-Block, Substring Defense & Schema Checks | 22 | 22 | **PASSED** |
 | [`knowledge-rag.test.ts`](app/tests/knowledge-rag.test.ts) | PDF Token Stream Parsing, Document Chunking & TF-IDF Scoring | 6 | 6 | **PASSED** |
-| [`provider-models.test.ts`](app/tests/provider-models.test.ts) | 2026 Model Routing, Header Auth & Multi-Turn History | 4 | 4 | **PASSED** |
+| [`provider-models.test.ts`](app/tests/provider-models.test.ts) | 2026 Model Routing, Diagnostic Errors & Multi-Turn History | 6 | 6 | **PASSED** |
 | [`screen-capture.test.ts`](app/tests/screen-capture.test.ts) | 4K & Ultrawide Proportional Scaling Capped at 1920px | 5 | 5 | **PASSED** |
-| [`session-archive.test.ts`](app/tests/session-archive.test.ts) | Multi-Session Persistence, Path Traversal Containment & Purge | 6 | 6 | **PASSED** |
-| [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Abort Handling | 4 | 4 | **PASSED** |
+| [`session-archive.test.ts`](app/tests/session-archive.test.ts) | Multi-Session Persistence, Path Traversal Containment & 5MB Limit | 7 | 7 | **PASSED** |
+| [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort | 4 | 4 | **PASSED** |
 | [`electron-smoke.cjs`](app/tests/electron-smoke.cjs) | Native Electron Runtime Readiness, Lifecycle Hooks & Exit Code 0 | 1 | 1 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **77** | **77** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **82** | **82** | **100% PASS** |
 
 ### Execution Environments
 * **Local Verification Environment**: Windows 11 Pro x64 (Build 26200), Node.js v24.19.0, npm v11.x, Vitest v3.2.7.
@@ -344,12 +344,18 @@ npm run build
 ```
 Compiles the React frontend into `app/dist/` and the TypeScript Electron code into `app/dist-electron/`.
 
-### Packaging the Windows Standalone Executable
+### Packaging the Windows Standalone Executables
 ```powershell
 cd app
+
+# 1. Unpacked standalone directory (fast testing)
 npm run pack
+# Output: app/release/win-unpacked/Cluely Copilot.exe (181MB)
+
+# 2. Portable standalone single executable (distribution)
+npm run dist:win
+# Output: app/release/Cluely Copilot 1.0.0.exe (72.6MB)
 ```
-Executes `electron-builder --dir`, creating the standalone distribution in `app/release/win-unpacked/Cluely Copilot.exe`.
 
 ### Launching the Packaged Application
 ```powershell
@@ -385,15 +391,22 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 
 | Category | Supported Providers | Recommended Model | Latency |
 |---|---|---|:---:|
-| **Multimodal Vision & Reasoning** | Google Gemini (2.5 Flash / Pro), OpenAI (GPT-4o / GPT-4o Mini), Anthropic Claude (3.7 Sonnet / 3.5 Haiku), Ollama (Local) | **Gemini 2.5 Flash** | ~350ms |
+| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`), Ollama (Local) | **Gemini 3.6 Flash** | ~320ms |
 | **Speech Recognition (STT)** | Groq Whisper, OpenAI Whisper, Deepgram, Web Speech API | **Groq Whisper Large v3 Turbo** | <300ms |
 | **Document RAG** | Built-in in-memory TF-IDF keyword & semantic chunk scorer | Embedded | <5ms |
+
+> [!NOTE]
+> **Active 2026 AI Model Lineup & Provider Guidance**:
+> * **Google Gemini**: Defaults to `gemini-3.6-flash`. Note that `gemini-2.5-flash` access has been restricted by Google to legacy developer projects; new API keys should use `gemini-3.6-flash` or `gemini-3.5-flash-lite`. Cluely Copilot detects 403/404 legacy errors and surfaces immediate diagnostic guidance.
+> * **Anthropic Claude**: Active models are `claude-sonnet-5-5`, `claude-haiku-5-5`, and `claude-opus-5-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are automatically caught with informative retirement diagnostics.
+> * **OpenAI**: Supports `gpt-4o` and `gpt-4o-mini` with full multi-turn conversational history.
+> * **Local Ollama**: Fully offline execution without external API keys or cloud telemetry.
 
 ### Initial Key Configuration
 1. Launch Cluely Copilot and click the **Gear Icon** to open the Dashboard.
 2. Select the **API Keys** tab.
 3. Enter your Gemini API key (from Google AI Studio) or Groq API key (from Groq Console).
-4. Click **Save Credentials**. Keys are immediately encrypted into your OS vault.
+4. Click **Save Credentials**. Keys are immediately encrypted into your OS vault (`safeStorage`).
 
 ---
 

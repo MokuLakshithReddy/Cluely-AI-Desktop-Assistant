@@ -26,7 +26,7 @@ export const INITIAL_STATE: SharedState = {
   isCapturingScreenshot: false,
   isRecording: false,
   activeMode: 'copilot',
-  activeModel: 'gemini-2.5-flash',
+  activeModel: 'gemini-3.6-flash',
   hasApiKeys: {
     gemini: false,
     openai: false,
@@ -150,9 +150,22 @@ class StateManager {
       const dir = path.dirname(stateFile);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-      // Clean serialization copy: ensure no secrets are serialized
+      // Clean serialization copy: ensure no secrets or screenshot payloads are saved to disk
       const toSave: any = { ...this.state };
       delete toSave.apiKeys;
+
+      if (toSave.session && Array.isArray(toSave.session.messages)) {
+        toSave.session = {
+          ...toSave.session,
+          messages: toSave.session.messages.map((m: any) => {
+            if (m.screenshot) {
+              const { screenshot, ...rest } = m;
+              return rest;
+            }
+            return m;
+          }),
+        };
+      }
 
       fs.writeFileSync(stateFile, JSON.stringify(toSave, null, 2), 'utf8');
     } catch (e) {

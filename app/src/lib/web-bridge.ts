@@ -260,11 +260,15 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
 
     abortAiStream: async (requestId?: string) => {
-      if (requestId && activeWebControllers.has(requestId)) {
-        activeWebControllers.get(requestId)!.abort();
-        activeWebControllers.delete(requestId);
-        await bridge.patchSharedState({ isGenerating: false });
-        return true;
+      if (requestId) {
+        const ctrl = activeWebControllers.get(requestId);
+        if (ctrl) {
+          ctrl.abort();
+          activeWebControllers.delete(requestId);
+          await bridge.patchSharedState({ isGenerating: activeWebControllers.size > 0 });
+          return true;
+        }
+        return false;
       }
       for (const ctrl of activeWebControllers.values()) {
         ctrl.abort();
@@ -378,7 +382,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
         return { content, sources: knowledgePassages };
       } finally {
         activeWebControllers.delete(reqId);
-        await bridge.patchSharedState({ isGenerating: false });
+        await bridge.patchSharedState({ isGenerating: activeWebControllers.size > 0 });
       }
     },
 

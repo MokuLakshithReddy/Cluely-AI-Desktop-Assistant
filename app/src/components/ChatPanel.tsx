@@ -13,6 +13,7 @@ import {
 import { SharedState, ChatMessage } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
 import { TranscriptLive } from './TranscriptLive';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface ChatPanelProps {
   state: SharedState;
@@ -157,9 +158,19 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   )}
 
                   {/* Message Content */}
-                  <div className="whitespace-pre-wrap font-sans text-slate-200">
-                    {msg.content || (msg.isStreaming ? 'Thinking...' : '')}
-                  </div>
+                  {msg.role === 'assistant' ? (
+                    msg.content ? (
+                      <MarkdownRenderer content={msg.content} />
+                    ) : (
+                      <div className="font-sans text-cyan-400 animate-pulse italic text-xs">
+                        {msg.isStreaming ? 'Thinking...' : ''}
+                      </div>
+                    )
+                  ) : (
+                    <div className="whitespace-pre-wrap font-sans text-slate-200">
+                      {msg.content}
+                    </div>
+                  )}
 
                   {/* Retrieved Sources Attribution */}
                   {msg.sources && msg.sources.length > 0 && (

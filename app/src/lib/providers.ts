@@ -62,9 +62,10 @@ export function buildContextPrompt(
   if (recentTranscript && recentTranscript.length > 0) {
     prompt += '### RECENT CONVERSATION TRANSCRIPT\n';
     for (const item of recentTranscript.slice(-15)) {
-      if (item.status === 'error') continue; // Skip failed segments
+      // Only include completed, verified transcript items (skip transcribing placeholders and errors)
+      if (item.status !== 'ready' || !item.text || !item.text.trim()) continue;
       const speaker = item.role === 'me' ? 'You' : 'Remote Speaker';
-      prompt += `[${speaker}]: ${item.text}\n`;
+      prompt += `[${speaker}]: ${item.text.trim()}\n`;
     }
     prompt += '\n';
   }
@@ -105,7 +106,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     });
   }
 
-  const modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-2.5-flash';
+  const modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-3.6-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
 
   const contents: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
@@ -139,6 +140,13 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (response.status === 403 || response.status === 404) {
+      if (modelName.includes('2.5')) {
+        throw new Error(
+          `Gemini API access error (${response.status}): Access to ${modelName} is restricted to legacy projects. Please switch to "Gemini 3.6 Flash" in Settings. Details: ${errorText}`
+        );
+      }
+    }
     throw new Error(`Gemini API error (${response.status}): ${errorText}`);
   }
 
@@ -243,11 +251,13 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
   }
   content.push({ type: 'text', text: textPrompt });
 
-  let modelName = 'claude-3-7-sonnet-20250219';
-  if (options.model === 'claude-3-5-haiku') {
-    modelName = 'claude-3-5-haiku-20241022';
-  } else if (options.model === 'claude-3-7-sonnet') {
-    modelName = 'claude-3-7-sonnet-20250219';
+  let modelName = 'claude-sonnet-5-5';
+  if (options.model === 'claude-haiku-5-5') {
+    modelName = 'claude-haiku-5-5';
+  } else if (options.model === 'claude-opus-5-5') {
+    modelName = 'claude-opus-5-5';
+  } else if (options.model === 'claude-sonnet-5-5') {
+    modelName = 'claude-sonnet-5-5';
   } else if (options.model?.startsWith('claude-')) {
     modelName = options.model;
   }
@@ -269,7 +279,7 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey.trim(),
-      'anthropic-version': '2023-06-01',
+      'anthropic-version': '2026-10-21',
     },
     body: JSON.stringify({
       model: modelName,
@@ -283,6 +293,13 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (response.status === 400 || response.status === 404) {
+      if (errorText.includes('model') || errorText.includes('not_found')) {
+        throw new Error(
+          `Anthropic API model error (${response.status}): Model "${modelName}" may be retired or unavailable on your account tier. Please check active Claude models in Settings. Details: ${errorText}`
+        );
+      }
+    }
     throw new Error(`Anthropic Claude API error (${response.status}): ${errorText}`);
   }
 
@@ -359,6 +376,17 @@ export async function streamOllama(options: GenerationOptions): Promise<string> 
     }
   }
 
+  // Flush any trailing JSON in buffer
+  if (buffer.trim()) {
+    try {
+      const parsed = JSON.parse(buffer.trim());
+      if (parsed.response) {
+        fullText += parsed.response;
+        onToken?.(parsed.response);
+      }
+    } catch {}
+  }
+
   return fullText;
 }
 
@@ -393,6 +421,23 @@ async function processSseStream(
         if (delta) {
           fullText += delta;
           onToken?.(delta);
+        }
+      }
+    }
+  }
+
+  // Flush any trailing SSE chunk in buffer
+  if (buffer.trim()) {
+    const lines = buffer.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const dataStr = line.slice(6).trim();
+        if (dataStr && dataStr !== '[DONE]') {
+          const delta = extractDelta(dataStr);
+          if (delta) {
+            fullText += delta;
+            onToken?.(delta);
+          }
         }
       }
     }

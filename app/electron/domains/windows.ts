@@ -32,7 +32,7 @@ export class WindowCoordinator {
   }
 
   private getRendererUrl(hash: string = ''): string {
-    if (process.env.VITE_DEV_SERVER_URL) {
+    if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
       return `${process.env.VITE_DEV_SERVER_URL}#${hash}`;
     }
     const htmlPath = path.join(app.getAppPath(), 'dist/index.html');
@@ -134,7 +134,7 @@ export class WindowCoordinator {
     win.webContents.on('will-navigate', (event, url) => {
       try {
         const parsed = new URL(url);
-        const isDev = parsed.origin === 'http://localhost:5173' || parsed.origin === 'http://127.0.0.1:5173';
+        const isDev = !app.isPackaged && (parsed.origin === 'http://localhost:5173' || parsed.origin === 'http://127.0.0.1:5173');
         const isProd = parsed.protocol === 'file:';
         if (!isDev && !isProd) {
           event.preventDefault();

@@ -16,6 +16,7 @@
     "test:report": "npm run test:report --workspace=app",
     "smoke": "node app/tests/electron-smoke.cjs",
     "pack": "npm run pack --workspace=app",
+    "dist:win": "npm run dist:win --workspace=app",
     "start": "npm run start --workspace=app"
   },
   "devDependencies": {

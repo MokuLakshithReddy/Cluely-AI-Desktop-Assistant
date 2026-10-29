@@ -103,6 +103,20 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     }
   });
 
+  it('strictly rejects development server origins when running in production mode', () => {
+    const prodRouter = new IpcRouter(trustedHtml, true);
+    const devUrls = [
+      'http://localhost:5173/',
+      'http://localhost:5173/index.html',
+      'http://127.0.0.1:5173/',
+    ];
+    for (const url of devUrls) {
+      expect(() => prodRouter.validateOrigin({ senderFrame: { url } })).toThrow(
+        /Rejected unauthorized origin/
+      );
+    }
+  });
+
   it('respects exact origin when VITE_DEV_SERVER_URL is configured', () => {
     const originalEnv = process.env.VITE_DEV_SERVER_URL;
     process.env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:3000';
@@ -421,6 +435,47 @@ describe('IPC Security & Origin Validation Subsystem', () => {
       knowledgeDocs: [{ id: 'd1', title: 'Doc', content: 'test', sourceType: 'file', chunks: ['c1', 'c2'] }],
     });
     expect(valid.knowledgeDocs?.length).toBe(1);
+  });
+
+  it('sanitizeSessionRecord strips screenshot payloads and enforces a 5MB aggregate size ceiling', () => {
+    const sessionWithScreenshot = {
+      id: 'sess_valid_1',
+      title: 'Valid Session',
+      createdAt: new Date().toISOString(),
+      durationSeconds: 15,
+      mode: 'copilot',
+      transcript: [],
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'Hello with screenshot',
+          createdAt: new Date().toISOString(),
+          screenshot: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        },
+      ],
+    };
+
+    const sanitized = router.sanitizeSessionRecord(sessionWithScreenshot);
+    expect(sanitized.messages[0].content).toBe('Hello with screenshot');
+    expect((sanitized.messages[0] as any).screenshot).toBeUndefined();
+
+    // Verify 5MB aggregate ceiling rejection
+    const oversizedSession = {
+      ...sessionWithScreenshot,
+      transcript: Array.from({ length: 4000 }, (_, idx) => ({
+        id: `t_${idx}`,
+        role: 'them' as const,
+        status: 'ready' as const,
+        text: 'A'.repeat(1500),
+        relativeMs: idx * 100,
+        createdAt: new Date().toISOString(),
+      })),
+    };
+
+    expect(() => router.sanitizeSessionRecord(oversizedSession)).toThrow(
+      /Session record exceeds maximum aggregate size limit of 5MB/
+    );
   });
 });
 

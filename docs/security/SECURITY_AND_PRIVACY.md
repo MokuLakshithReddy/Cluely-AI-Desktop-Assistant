@@ -37,11 +37,16 @@ Because a desktop copilot processes microphone audio, screen captures, documents
    - **Navigation & Window Open Lockdown**:
      - `will-navigate` listeners intercept and deny navigation to any untrusted external URLs.
      - `setWindowOpenHandler` denies all window creation (`action: 'deny'`).
-   - **IPC Origin Validation**:
+   - **IPC Origin Validation & Mode Boundaries**:
      - All IPC message handlers parse and validate `senderFrame.url` using strict `URL` parsing.
      - Development URLs must match `http://localhost:5173` or `http://127.0.0.1:5173` exactly.
-     - Production URLs must match the normalized file path of the trusted `dist/index.html`.
+     - In production / packaged mode (`app.isPackaged`), development origins are **strictly blocked and rejected**. Production URLs must match the exact canonical file path of the trusted `dist/index.html`.
      - Substring matches (e.g. `startsWith` or `includes`) are strictly disallowed.
+   - **Session Payload Size Limits & Deep Sanitization**:
+     - A strict 5MB aggregate ceiling is enforced across both `patch-shared-state` and `session-save` to prevent storage exhaustion or IPC message bloat.
+     - Base64 screenshot payloads are strictly stripped from session messages before disk persistence.
+   - **Scoped Cancellation & Concurrency Safety**:
+     - `ai-abort-request` and web bridge abort handlers enforce scoped cancellation: cancelling a specific request ID only aborts that specific controller without terminating unrelated concurrent requests. Global `isGenerating` state is derived dynamically from active controller count.
    - **Vite Server Isolation**:
      - Development server binds strictly to `localhost:5173` (no `0.0.0.0` or open network binding).
    - **Content Security Policy (CSP)**:

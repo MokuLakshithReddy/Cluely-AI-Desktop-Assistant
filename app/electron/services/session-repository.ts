@@ -96,7 +96,11 @@ export class SessionRepository {
     }
     const filePath = this.resolveSessionPath(session.id);
     session.updatedAt = new Date().toISOString();
-    fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf8');
+    const serialized = JSON.stringify(session, null, 2);
+    if (serialized.length > 5 * 1024 * 1024) {
+      throw new Error('[SessionRepository] Session exceeds maximum aggregate size limit of 5MB');
+    }
+    fs.writeFileSync(filePath, serialized, 'utf8');
   }
 
   public async getSession(id: string): Promise<SessionRecord | null> {
