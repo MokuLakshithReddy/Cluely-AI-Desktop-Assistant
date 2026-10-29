@@ -51,6 +51,7 @@ export const INITIAL_STATE: SharedState = {
 class StateManager {
   private state: SharedState = { ...INITIAL_STATE };
   private listeners: ((state: SharedState) => void)[] = [];
+  private saveTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
     this.load();
@@ -80,7 +81,7 @@ class StateManager {
 
   public patchState(patch: Partial<SharedState>): SharedState {
     this.state = { ...this.state, ...patch };
-    this.save();
+    this.scheduleSave();
     this.notify();
     return this.state;
   }
@@ -96,6 +97,23 @@ class StateManager {
     for (const listener of this.listeners) {
       listener(this.state);
     }
+  }
+
+  private scheduleSave() {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+    this.saveTimeout = setTimeout(() => {
+      this.flushSave();
+    }, 200);
+  }
+
+  public flushSave() {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.save();
   }
 
   private load() {

@@ -4,6 +4,7 @@ import path from 'path';
 import { windowCoordinator } from './domains/windows';
 import { shortcutManager } from './domains/shortcuts';
 import { ipcRouter } from './domains/ipc-router';
+import { stateManager } from './domains/state';
 
 // Prevent multiple instances
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -51,6 +52,7 @@ if (!gotSingleInstanceLock) {
 
   app.on('before-quit', () => {
     console.log('[APP_BEFORE_QUIT] Application lifecycle before-quit triggered.');
+    stateManager.flushSave();
   });
 
   app.on('will-quit', () => {

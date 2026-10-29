@@ -20,6 +20,7 @@ const desktopBridge: DesktopBridge = {
 
   // AI & Speech Providers executed through secure Main process
   executeAiStream: (options: any) => ipcRenderer.invoke('ai-stream-request', options),
+  abortAiStream: (requestId?: string) => ipcRenderer.invoke('ai-abort-request', { requestId }),
   transcribeAudioPayload: (options: any) => ipcRenderer.invoke('stt-transcribe-payload', options),
 
   // Session Repository
@@ -28,6 +29,7 @@ const desktopBridge: DesktopBridge = {
   getPastSession: (id: string) => ipcRenderer.invoke('session-get', id),
   deletePastSession: (id: string) => ipcRenderer.invoke('session-delete', id),
   purgeAllPastSessions: () => ipcRenderer.invoke('session-purge-all'),
+  purgeAllData: () => ipcRenderer.invoke('purge-all-data'),
 
   // Event Subscriptions
   onSharedStateUpdated: (callback: (state: SharedState) => void) => {
@@ -52,6 +54,12 @@ const desktopBridge: DesktopBridge = {
     const handler = (_event: any, token: string) => callback(token);
     ipcRenderer.on('ai-token-stream', handler);
     return () => ipcRenderer.off('ai-token-stream', handler);
+  },
+
+  onDashboardSwitchTab: (callback: (tab: string) => void) => {
+    const handler = (_event: any, tab: string) => callback(tab);
+    ipcRenderer.on('dashboard-switch-tab', handler);
+    return () => ipcRenderer.off('dashboard-switch-tab', handler);
   },
 };
 

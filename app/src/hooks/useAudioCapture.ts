@@ -6,9 +6,11 @@ import { AudioResampler, VADProcessor, arrayBufferToBase64 } from '../lib/vad';
 export function useAudioCapture(
   state: SharedState,
   patchState: (updater: StateUpdater) => Promise<SharedState>,
-  getLatestState: () => SharedState
+  getLatestState: () => SharedState,
+  isAudioOwner: boolean = true
 ) {
   const isRecording = state.isRecording;
+  const captureSessionIdRef = useRef(0);
 
   // Local Microphone State
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -23,6 +25,8 @@ export function useAudioCapture(
   const systemResamplerRef = useRef<AudioResampler | null>(null);
 
   useEffect(() => {
+    if (!isAudioOwner) return;
+
     if (!isRecording) {
       stopDualCapture();
       return;
@@ -33,7 +37,7 @@ export function useAudioCapture(
     return () => {
       stopDualCapture();
     };
-  }, [isRecording]);
+  }, [isRecording, isAudioOwner]);
 
   const handleSpeechSegmentReady = async (
     role: Role,
@@ -166,6 +170,8 @@ export function useAudioCapture(
   };
 
   const startDualCapture = async () => {
+    const currentSessionId = ++captureSessionIdRef.current;
+
     // 1. Channel A: Start Local Microphone Capture ('me')
     if (!navigator?.mediaDevices?.getUserMedia) {
       console.warn('[useAudioCapture] Microphone capture is not supported in this environment');
@@ -182,6 +188,13 @@ export function useAudioCapture(
           sampleRate: 48000,
         },
       });
+
+      // Abort and stop tracks if recording stopped or session changed while prompt was active
+      if (captureSessionIdRef.current !== currentSessionId || !getLatestState().isRecording) {
+        micStream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
       micStreamRef.current = micStream;
 
       const micAudioCtx = new AudioContext({ sampleRate: 48000 });
@@ -214,6 +227,7 @@ export function useAudioCapture(
       micSource.connect(micScriptNode);
       micScriptNode.connect(micAudioCtx.destination);
     } catch (err: any) {
+      if (captureSessionIdRef.current !== currentSessionId) return;
       console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
       // Gracefully reset recording state
       await patchState(prev => {
@@ -262,6 +276,12 @@ export function useAudioCapture(
           audio: true,
         });
 
+        // Abort and stop tracks if recording stopped or session changed while prompt was active
+        if (captureSessionIdRef.current !== currentSessionId || !getLatestState().isRecording) {
+          displayStream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
         // Disable and stop the video track immediately to conserve CPU and GPU
         displayStream.getVideoTracks().forEach(track => {
           track.enabled = false;
@@ -307,6 +327,8 @@ export function useAudioCapture(
   };
 
   const stopDualCapture = () => {
+    captureSessionIdRef.current++;
+
     // Stop Microphone
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach(t => t.stop());

@@ -4,13 +4,18 @@ import { windowCoordinator } from './windows';
 
 export class ShortcutManager {
   private registeredShortcuts: Map<string, string> = new Map();
+  private lastShortcutsJson: string = '';
 
   public init() {
     this.registerAll();
 
-    // Re-register if shortcuts config changes
+    // Re-register ONLY if shortcuts configuration actually changed
     stateManager.subscribe(state => {
-      this.syncShortcuts(state.shortcuts);
+      const shortcutsJson = JSON.stringify(state.shortcuts);
+      if (shortcutsJson !== this.lastShortcutsJson) {
+        this.lastShortcutsJson = shortcutsJson;
+        this.syncShortcuts(state.shortcuts);
+      }
     });
 
     app.on('will-quit', () => {
@@ -20,6 +25,7 @@ export class ShortcutManager {
 
   private registerAll() {
     const shortcuts = stateManager.getState().shortcuts;
+    this.lastShortcutsJson = JSON.stringify(shortcuts);
     this.syncShortcuts(shortcuts);
   }
 

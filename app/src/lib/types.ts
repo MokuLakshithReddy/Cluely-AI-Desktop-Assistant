@@ -72,7 +72,15 @@ export interface SharedState {
   isCapturingScreenshot: boolean;
   isRecording: boolean;
   activeMode: AssistantMode;
-  activeModel: 'gemini-2.5-flash' | 'gpt-4o' | 'claude-3-5-sonnet' | 'ollama';
+  activeModel:
+    | 'gemini-2.5-flash'
+    | 'gemini-2.5-pro'
+    | 'gpt-4o'
+    | 'gpt-4o-mini'
+    | 'claude-3-7-sonnet'
+    | 'claude-3-5-haiku'
+    | 'ollama';
+  isGenerating?: boolean;
   hasApiKeys: {
     gemini: boolean;
     openai: boolean;
@@ -95,6 +103,7 @@ export interface SharedState {
 }
 
 export interface DesktopBridge {
+  isWebMode?: boolean;
   getSharedState: () => Promise<SharedState>;
   patchSharedState: (patch: Partial<SharedState>) => Promise<SharedState>;
   captureScreenshot: () => Promise<{ data: string; contentType: string; width: number; height: number }>;
@@ -119,7 +128,11 @@ export interface DesktopBridge {
     screenshotBase64?: string;
     recentTranscript: TranscriptItem[];
     knowledgePassages?: string[];
+    conversationHistory?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+    requestId?: string;
   }) => Promise<{ content: string; sources?: string[] }>;
+
+  abortAiStream?: (requestId?: string) => Promise<boolean>;
 
   transcribeAudioPayload: (options: {
     wavBase64: string;
@@ -132,12 +145,14 @@ export interface DesktopBridge {
   getPastSession: (id: string) => Promise<SessionRecord | null>;
   deletePastSession: (id: string) => Promise<boolean>;
   purgeAllPastSessions: () => Promise<void>;
+  purgeAllData?: () => Promise<void>;
 
   // Event Subscriptions
   onSharedStateUpdated: (callback: (state: SharedState) => void) => () => void;
-  onAudioChunk: (callback: (data: { role: Role; chunk: ArrayBuffer }) => void) => () => void;
+  onAudioChunk?: (callback: (data: { role: Role; chunk: ArrayBuffer }) => void) => () => void;
   onShortcutAction: (callback: (action: string) => void) => () => void;
   onAiTokenStream: (callback: (token: string) => void) => () => void;
+  onDashboardSwitchTab?: (callback: (tab: string) => void) => () => void;
 }
 
 declare global {

@@ -3,9 +3,9 @@
 **Target Environment**: Windows 11 x64  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  
-**Test Status**: 62/62 Passing (100% Pass Rate)  
+**Test Status**: 77/77 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Verification Date**: 2026-10-28  
+**Verification Date**: 2026-10-29  
 
 ---
 
@@ -15,14 +15,18 @@
 |---|---|---|---|---|---|
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 7 | 7 | 0 | **PASSED** |
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
+| `audio-ownership.test.ts` | Dual-Channel Audio Ownership and Capture Lifecycle | 3 | 3 | 0 | **PASSED** |
 | `audio-vad.test.ts` | Audio Processing, VAD & Crosstalk Subsystem | 6 | 6 | 0 | **PASSED** |
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 7 | 7 | 0 | **PASSED** |
+| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 20 | 20 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 6 | 6 | 0 | **PASSED** |
+| `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 4 | 4 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 6 | 6 | 0 | **PASSED** |
+| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 4 | 4 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Native Electron Desktop Runtime Smoke Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **62** | **62** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **77** | **77** | **0** | **100% PASS** |
 
 ---
 
@@ -47,7 +51,14 @@
 ✓ guarantees state immutability when updating session records
 ```
 
-### 3. Audio Processing, VAD & Crosstalk Subsystem (`tests/audio-vad.test.ts`)
+### 3. Dual-Channel Audio Ownership and Capture Lifecycle (`tests/audio-ownership.test.ts`)
+```text
+✓ prevents background audio leaks by stopping tracks if cancelled while permission prompt is pending
+✓ crosstalk suppression zeroes frames when remote speaker has voice activity
+✓ audio owner check prevents multiple windows from creating duplicate hardware streams
+```
+
+### 4. Audio Processing, VAD & Crosstalk Subsystem (`tests/audio-vad.test.ts`)
 ```text
 ✓ resamples 48kHz audio buffer to 16kHz with correct sample count
 ✓ calculates RMS energy accurately across float audio frames
@@ -57,7 +68,7 @@
 ✓ correctly encodes Float32Array into valid 16-bit PCM WAV with RIFF header
 ```
 
-### 4. Credential Vault & Secret Protection Subsystem (`tests/credential-vault.test.ts`)
+### 5. Credential Vault & Secret Protection Subsystem (`tests/credential-vault.test.ts`)
 ```text
 ✓ encrypts and successfully decrypts an API key
 ✓ fails safely and refuses to persist credentials when OS keyring is unavailable and no test key is supplied
@@ -68,7 +79,15 @@
 ✓ rejects empty or non-string key and provider inputs
 ```
 
-### 5. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
+### 6. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+```text
+✓ parses empty or missing hash as default "all" view
+✓ parses direct routes without query parameters
+✓ correctly extracts route and tab query parameters from complex hashes
+✓ handles leading slash with query parameters
+```
+
+### 7. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
 ```text
 ✓ rejects IPC invocation when senderFrame is null or undefined
 ✓ rejects IPC invocation when senderFrame.url is empty or invalid
@@ -92,7 +111,7 @@
 ✓ enforces size limits and schema validation on knowledge documents
 ```
 
-### 6. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
+### 8. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
 ```text
 ✓ chunks documents with overlapping windows respecting paragraph breaks
 ✓ creates KnowledgeDoc record with correct metadata and chunks
@@ -102,7 +121,15 @@
 ✓ ranks higher frequency keyword occurrences with greater relevance
 ```
 
-### 7. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 9. AI Provider Model Propagation and Multi-Turn Serialization (`tests/provider-models.test.ts`)
+```text
+✓ streamGemini dynamically routes to configured Gemini 2.5 model and includes multi-turn history
+✓ streamOpenAI dynamically forwards gpt-4o-mini and serializes multi-turn turns
+✓ streamClaude maps claude-3-7-sonnet to 2026 model ID and preserves multi-turn context
+✓ streamClaude maps claude-3-5-haiku to active model ID
+```
+
+### 10. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
@@ -111,7 +138,7 @@
 ✓ handles boundary 1x1 minimal screen dimension safely
 ```
 
-### 8. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
+### 11. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
 ```text
 ✓ saves and reads a full session record with transcripts and messages
 ✓ lists past sessions ordered by newest creation date
@@ -121,7 +148,15 @@
 ✓ rejects path traversal attempts in session IDs and protects parent directories
 ```
 
-### 9. Native Electron Desktop Runtime Smoke Verification (`tests/electron-smoke.cjs`)
+### 12. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+```text
+✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
+✓ purgeAllData wipes in-memory vault keys and stored session archives
+✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
+✓ abortAiStream aborts active streaming requests cleanly
+```
+
+### 13. Native Electron Desktop Runtime Smoke Verification (`tests/electron-smoke.cjs`)
 ```text
 ✓ Spawns electron binary with stripped ELECTRON_RUN_AS_NODE
 ✓ Loads control window, chat panel, and dashboard without uncaught exceptions

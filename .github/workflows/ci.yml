@@ -21,26 +21,24 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: 'app/package-lock.json'
+          cache-dependency-path: 'package-lock.json'
 
       - name: Install dependencies
-        working-directory: app
         run: npm ci
 
-      - name: Run Vitest Suite (61 unit & integration tests across 8 suites)
-        working-directory: app
+      - name: Run Type Check & Lint
+        run: npm run lint
+
+      - name: Run Vitest Suite
         run: npm test
 
       - name: Build Renderer and Electron Bundle
-        working-directory: app
         run: npm run build
 
-      - name: Run Verified Electron Smoke Test (1 runtime smoke test with clean exit code 0)
-        working-directory: app
-        run: node tests/electron-smoke.cjs
+      - name: Run Verified Electron Smoke Test (Clean exit code 0)
+        run: npm run smoke
 
-      - name: Generate Automated Test Evidence Report (62 total verified tests)
-        working-directory: app
+      - name: Generate Automated Test Evidence Report
         run: npm run test:report
 
       - name: Upload Build Artifacts
@@ -58,4 +56,3 @@ jobs:
           name: test-results
           path: docs/testing/TEST_RESULTS.md
           retention-days: 14
-

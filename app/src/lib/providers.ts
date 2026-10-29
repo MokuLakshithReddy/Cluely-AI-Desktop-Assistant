@@ -8,6 +8,7 @@ export interface GenerationOptions {
   screenshotBase64?: string;
   recentTranscript: TranscriptItem[];
   knowledgePassages?: string[];
+  conversationHistory?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
   signal?: AbortSignal;
   onToken?: (token: string) => void;
 }
@@ -83,11 +84,11 @@ export function buildContextPrompt(
 }
 
 /**
- * Google Gemini 2.0 / 1.5 Flash streaming adapter.
+ * Google Gemini 2.5 streaming adapter.
  * Uses `x-goog-api-key` header to prevent credentials appearing in URL query strings or proxy logs.
  */
 export async function streamGemini(options: GenerationOptions): Promise<string> {
-  const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
+  const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
   if (!apiKey) throw new Error('Gemini API key is required. Please configure it in Settings.');
 
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
@@ -104,7 +105,20 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     });
   }
 
-  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse';
+  const modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-2.5-flash';
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
+
+  const contents: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
+  if (conversationHistory && conversationHistory.length > 0) {
+    for (const msg of conversationHistory) {
+      if (!msg.content || !msg.content.trim()) continue;
+      contents.push({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }],
+      });
+    }
+  }
+  contents.push({ role: 'user', parts });
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -113,7 +127,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
       'x-goog-api-key': apiKey.trim(), // Header-based auth avoids credential exposure in URL
     },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
+      contents,
       systemInstruction: { parts: [{ text: systemInstruction }] },
       generationConfig: {
         temperature: 0.2,
@@ -142,7 +156,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
  * OpenAI GPT-4o / GPT-4o-mini streaming adapter.
  */
 export async function streamOpenAI(options: GenerationOptions): Promise<string> {
-  const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
+  const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
   if (!apiKey) throw new Error('OpenAI API key is required. Please configure it in Settings.');
 
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
@@ -159,6 +173,21 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
     });
   }
 
+  const modelName = options.model?.startsWith('gpt-') ? options.model : 'gpt-4o';
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [
+    { role: 'system', content: systemInstruction },
+  ];
+  if (conversationHistory && conversationHistory.length > 0) {
+    for (const msg of conversationHistory) {
+      if (!msg.content || !msg.content.trim()) continue;
+      messages.push({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+      });
+    }
+  }
+  messages.push({ role: 'user', content: userContent });
+
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -166,11 +195,8 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
       Authorization: `Bearer ${apiKey.trim()}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: userContent },
-      ],
+      model: modelName,
+      messages,
       stream: true,
       temperature: 0.2,
       max_tokens: 2048,
@@ -194,10 +220,10 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
 }
 
 /**
- * Anthropic Claude 3.5 Sonnet streaming adapter.
+ * Anthropic Claude streaming adapter.
  */
 export async function streamClaude(options: GenerationOptions): Promise<string> {
-  const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
+  const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
   if (!apiKey) throw new Error('Anthropic API key is required. Please configure it in Settings.');
 
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
@@ -217,6 +243,27 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
   }
   content.push({ type: 'text', text: textPrompt });
 
+  let modelName = 'claude-3-7-sonnet-20250219';
+  if (options.model === 'claude-3-5-haiku') {
+    modelName = 'claude-3-5-haiku-20241022';
+  } else if (options.model === 'claude-3-7-sonnet') {
+    modelName = 'claude-3-7-sonnet-20250219';
+  } else if (options.model?.startsWith('claude-')) {
+    modelName = options.model;
+  }
+
+  const messages: Array<{ role: 'user' | 'assistant'; content: any }> = [];
+  if (conversationHistory && conversationHistory.length > 0) {
+    for (const msg of conversationHistory) {
+      if (!msg.content || !msg.content.trim()) continue;
+      messages.push({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+      });
+    }
+  }
+  messages.push({ role: 'user', content });
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -225,10 +272,10 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-3-5-sonnet-20241022',
+      model: modelName,
       max_tokens: 2048,
       system: systemInstruction,
-      messages: [{ role: 'user', content }],
+      messages,
       stream: true,
     }),
     signal,
@@ -256,7 +303,7 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
  * Local Ollama streaming adapter (Offline).
  */
 export async function streamOllama(options: GenerationOptions): Promise<string> {
-  const { mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
+  const { mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
   const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
 
@@ -265,12 +312,13 @@ export async function streamOllama(options: GenerationOptions): Promise<string> 
     images.push(screenshotBase64.replace(/^data:image\/\w+;base64,/, ''));
   }
 
+  const modelName = options.model && options.model !== 'ollama' ? options.model : (images.length > 0 ? 'llava' : 'llama3.2');
   const endpoint = 'http://localhost:11434/api/generate';
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: images.length > 0 ? 'llava' : 'llama3.2',
+      model: modelName,
       system: systemInstruction,
       prompt: textPrompt,
       images: images.length > 0 ? images : undefined,

@@ -26,10 +26,42 @@ import { createKnowledgeDoc, parseDocumentFile } from '../lib/knowledge';
 interface DashboardProps {
   state: SharedState;
   patchState: (updater: StateUpdater) => Promise<SharedState>;
+  initialTab?: 'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop';
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
-  const [activeTab, setActiveTab] = useState<'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop'>('models');
+export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initialTab }) => {
+  const [activeTab, setActiveTab] = useState<'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop'>(
+    initialTab || 'models'
+  );
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    const unsubscribe = window.desktopBridge?.onDashboardSwitchTab?.(tab => {
+      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop') {
+        setActiveTab(tab);
+      }
+    });
+
+    const handleCustomEvent = (e: any) => {
+      const tab = e.detail;
+      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop') {
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener('cluely-dashboard-tab', handleCustomEvent as EventListener);
+
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener('cluely-dashboard-tab', handleCustomEvent as EventListener);
+    };
+  }, []);
+
+  const isWeb = Boolean(window.desktopBridge?.isWebMode);
 
   // Vault Key Inputs
   const [geminiInput, setGeminiInput] = useState('');
@@ -159,12 +191,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
   };
 
   const handlePurgeAllSessions = async () => {
-    if (confirm('Permanently purge all archived sessions and active transcripts?')) {
-      if (window.desktopBridge?.purgeAllPastSessions) {
+    if (confirm('Permanently purge all archived sessions, knowledge documents, and active transcripts?')) {
+      if (window.desktopBridge?.purgeAllData) {
+        await window.desktopBridge.purgeAllData();
+      } else if (window.desktopBridge?.purgeAllPastSessions) {
         await window.desktopBridge.purgeAllPastSessions();
-        await loadSessions();
       }
-      await patchState({ session: null });
+      await loadSessions();
+      await patchState({ session: null, knowledgeDocs: [] });
       setSelectedSession(null);
     }
   };
@@ -273,10 +307,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
         {/* Security badge */}
         <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
           <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-            <ShieldCheck className="w-4 h-4" /> Secure OS Vault
+            <ShieldCheck className="w-4 h-4" /> {isWeb ? 'Ephemeral Memory' : 'Secure OS Vault'}
           </div>
           <p className="text-[10px] leading-tight text-slate-500">
-            Keys encrypted via Windows DPAPI / macOS Keychain. Plaintext keys never touch renderer state.
+            {isWeb
+              ? 'Web Mode: API keys kept in ephemeral browser memory only. Never written to disk or localStorage.'
+              : 'Keys encrypted via Windows DPAPI / macOS Keychain. Plaintext keys never touch renderer state.'}
           </p>
         </div>
       </div>
@@ -288,9 +324,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
             <div>
               <h3 className="text-lg font-bold text-slate-100">AI Model & Credential Vault</h3>
               <p className="text-xs text-slate-400 mt-1">
-                Keys are stored securely in your OS credential vault with header-based authorization.
+                {isWeb
+                  ? 'Keys are held ephemerally in session memory and cleared on reload. Use the Desktop app for hardware-backed vault storage.'
+                  : 'Keys are stored securely in your OS credential vault with header-based authorization.'}
               </p>
             </div>
+
+            {isWeb && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                <div>
+                  <span className="font-semibold">Web Mode Active:</span> API keys are stored in ephemeral browser session memory only. They will not persist across browser restarts and are never written to disk or localStorage. Run the desktop application for OS-level DPAPI / Keychain encryption.
+                </div>
+              </div>
+            )}
 
             {vaultError && (
               <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-400 flex items-center gap-2">
@@ -309,9 +356,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState }) => {
                   onChange={e => patchState({ activeModel: e.target.value as any })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-cyan-500"
                 >
-                  <option value="gemini-2.5-flash">Google Gemini 2.0 Flash (Recommended - Header Auth)</option>
+                  <option value="gemini-2.5-flash">Google Gemini 2.5 Flash (Recommended - Sub-second Latency)</option>
+                  <option value="gemini-2.5-pro">Google Gemini 2.5 Pro (Deep Multimodal Reasoning)</option>
                   <option value="gpt-4o">OpenAI GPT-4o (Multimodal Vision)</option>
-                  <option value="claude-3-5-sonnet">Anthropic Claude 3.5 Sonnet</option>
+                  <option value="gpt-4o-mini">OpenAI GPT-4o Mini (Fast & Efficient)</option>
+                  <option value="claude-3-7-sonnet">Anthropic Claude 3.7 Sonnet (Hybrid Reasoning)</option>
+                  <option value="claude-3-5-haiku">Anthropic Claude 3.5 Haiku (Ultra-Fast Coding)</option>
                   <option value="ollama">Local Ollama (Offline - localhost:11434)</option>
                 </select>
               </div>

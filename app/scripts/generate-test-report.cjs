@@ -10,8 +10,9 @@ console.log('Generating automated test evidence report from real test runners...
 
 // 1. Run Vitest with JSON reporter
 let vitestJsonRaw = '';
+const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 try {
-  vitestJsonRaw = execSync('npx vitest run --reporter=json', {
+  vitestJsonRaw = execSync(`${npxCmd} vitest run --reporter=json`, {
     cwd: appDir,
     encoding: 'utf8',
     env: { ...process.env, CI: 'true' },
@@ -60,13 +61,14 @@ const failedUnitTests = vitestData.numFailedTests;
 const grandTotalTests = totalUnitTests + (smokePassed ? 1 : 0);
 const grandPassedTests = passedUnitTests + (smokePassed ? 1 : 0);
 const grandFailedTests = failedUnitTests + (smokePassed ? 0 : 1);
+const passRate = grandTotalTests > 0 ? Math.round((grandPassedTests / grandTotalTests) * 100) : 0;
 
 // Build Markdown Output
 let md = `# Test Execution Log & Results\n\n`;
 md += `**Target Environment**: Windows 11 x64  \n`;
 md += `**Node Version**: ${process.version}  \n`;
 md += `**Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  \n`;
-md += `**Test Status**: ${grandPassedTests}/${grandTotalTests} Passing (100% Pass Rate)  \n`;
+md += `**Test Status**: ${grandPassedTests}/${grandTotalTests} Passing (${passRate}% Pass Rate)  \n`;
 md += `**Evidence Source**: Generated directly from automated runner JSON output and process exit verification  \n`;
 md += `**Verification Date**: ${new Date().toISOString().split('T')[0]}  \n\n`;
 md += `---\n\n`;
@@ -85,7 +87,7 @@ for (const suite of vitestData.testResults) {
 }
 
 md += `| \`electron-smoke.cjs\` | Native Electron Desktop Runtime Smoke Verification | 1 | ${smokePassed ? 1 : 0} | ${smokePassed ? 0 : 1} | ${smokePassed ? '**PASSED**' : '**FAILED**'} |\n`;
-md += `| **Total** | **All Core Domains & Runtime Smoke Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${grandFailedTests}** | **100% PASS** |\n\n`;
+md += `| **Total** | **All Core Domains & Runtime Smoke Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${grandFailedTests}** | **${passRate}% PASS** |\n\n`;
 md += `---\n\n`;
 md += `## Detailed Verified Test Logs\n\n`;
 
@@ -112,4 +114,9 @@ md += `\`\`\`\n`;
 
 fs.writeFileSync(resultsPath, md, 'utf8');
 console.log(`Successfully generated verified test report at: ${resultsPath}`);
+
+if (grandFailedTests > 0) {
+  console.error(`Test report verification FAILED: ${grandFailedTests} test(s) failed.`);
+  process.exit(1);
+}
 

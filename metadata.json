@@ -1,7 +1,5 @@
 {
   "name": "Cluely Copilot",
   "description": "Evidence-driven desktop & web AI copilot with real-time screen and audio understanding",
-  "capabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "capabilities": []
 }

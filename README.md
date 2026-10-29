@@ -1,7 +1,7 @@
 # Cluely Copilot: Reverse-Engineered Desktop AI Assistant
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
-[![Tests Passing](https://img.shields.io/badge/Tests-62%2F62%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-77%2F77%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -20,7 +20,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Threat Model](#5-security-privacy--threat-model)
-6. [Automated Verification & Test Suites (62/62 Passing)](#6-automated-verification--test-suites-6262-passing)
+6. [Automated Verification & Test Suites (77/77 Passing)](#6-automated-verification--test-suites-7777-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -259,22 +259,26 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (62/62 Passing)
+## 6. Automated Verification & Test Suites (77/77 Passing)
 
-The repository features an automated verification suite consisting of **62 automated tests** across 9 test files, with a verified **100% pass rate**:
+The repository features a comprehensive automated verification suite consisting of **77 automated tests** across 13 test files (12 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
 
 | Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |
 |---|---|:---:|:---:|:---:|
 | [`ai-context.test.ts`](app/tests/ai-context.test.ts) | AI Context Assembly, Dual-Speaker Tagging & 5 Modes | 7 | 7 | **PASSED** |
 | [`ai-streaming.test.ts`](app/tests/ai-streaming.test.ts) | Token Stream Accumulation, History Preservation & Abort | 4 | 4 | **PASSED** |
+| [`audio-ownership.test.ts`](app/tests/audio-ownership.test.ts) | Dual-Channel Audio Ownership & Stream Leak Prevention | 3 | 3 | **PASSED** |
 | [`audio-vad.test.ts`](app/tests/audio-vad.test.ts) | 48k->16k Resampling, RMS+ZCR Detection & Crosstalk Gating | 6 | 6 | **PASSED** |
 | [`credential-vault.test.ts`](app/tests/credential-vault.test.ts) | SafeStorage DPAPI, Fail-Safe Rejection & Write Error Propagation | 7 | 7 | **PASSED** |
+| [`dashboard-routing.test.ts`](app/tests/dashboard-routing.test.ts) | Dashboard Route Hash Parsing & Sub-Tab Query Routing | 4 | 4 | **PASSED** |
 | [`ipc-security.test.ts`](app/tests/ipc-security.test.ts) | Origin Guard, Substring Defense & Nested Schema Checks | 20 | 20 | **PASSED** |
 | [`knowledge-rag.test.ts`](app/tests/knowledge-rag.test.ts) | PDF Token Stream Parsing, Document Chunking & TF-IDF Scoring | 6 | 6 | **PASSED** |
+| [`provider-models.test.ts`](app/tests/provider-models.test.ts) | 2026 Model Routing, Header Auth & Multi-Turn History | 4 | 4 | **PASSED** |
 | [`screen-capture.test.ts`](app/tests/screen-capture.test.ts) | 4K & Ultrawide Proportional Scaling Capped at 1920px | 5 | 5 | **PASSED** |
 | [`session-archive.test.ts`](app/tests/session-archive.test.ts) | Multi-Session Persistence, Path Traversal Containment & Purge | 6 | 6 | **PASSED** |
+| [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Abort Handling | 4 | 4 | **PASSED** |
 | [`electron-smoke.cjs`](app/tests/electron-smoke.cjs) | Native Electron Runtime Readiness, Lifecycle Hooks & Exit Code 0 | 1 | 1 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **62** | **62** | **100% PASS** |
+| **Total** | **All Core Domains & Runtime Smoke Verification** | **77** | **77** | **100% PASS** |
 
 ### Execution Environments
 * **Local Verification Environment**: Windows 11 Pro x64 (Build 26200), Node.js v24.19.0, npm v11.x, Vitest v3.2.7.
@@ -381,7 +385,7 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 
 | Category | Supported Providers | Recommended Model | Latency |
 |---|---|---|:---:|
-| **Multimodal Vision & Reasoning** | Google Gemini, OpenAI, Anthropic Claude, Ollama (Local) | **Gemini 2.0 Flash** | ~400ms |
+| **Multimodal Vision & Reasoning** | Google Gemini (2.5 Flash / Pro), OpenAI (GPT-4o / GPT-4o Mini), Anthropic Claude (3.7 Sonnet / 3.5 Haiku), Ollama (Local) | **Gemini 2.5 Flash** | ~350ms |
 | **Speech Recognition (STT)** | Groq Whisper, OpenAI Whisper, Deepgram, Web Speech API | **Groq Whisper Large v3 Turbo** | <300ms |
 | **Document RAG** | Built-in in-memory TF-IDF keyword & semantic chunk scorer | Embedded | <5ms |
 

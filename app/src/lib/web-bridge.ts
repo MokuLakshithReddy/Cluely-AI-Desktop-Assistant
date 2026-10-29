@@ -13,9 +13,16 @@ import {
   transcribeAudio,
 } from './providers';
 
-const VAULT_STORAGE_KEY = 'cluely_vault_keys';
+// Sessions storage key (non-secret session summaries & notes)
 const SESSIONS_STORAGE_KEY = 'cluely_past_sessions';
 const SHARED_STATE_STORAGE_KEY = 'cluely_shared_state';
+
+// Ephemeral IN-MEMORY vault keys for Web Mode.
+// Secrets are NEVER stored in unencrypted browser localStorage.
+const inMemoryVaultKeys: Record<string, string> = {};
+
+// In-flight request cancellation controllers
+const activeWebControllers: Map<string, AbortController> = new Map();
 
 class WebBridgeEventEmitter {
   private listeners: Map<string, Set<Function>> = new Map();
@@ -45,23 +52,6 @@ class WebBridgeEventEmitter {
 
 export const webBridgeEvents = new WebBridgeEventEmitter();
 
-function getStoredVaultKeys(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(VAULT_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function setStoredVaultKeys(keys: Record<string, string>): void {
-  try {
-    localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(keys));
-  } catch (err) {
-    console.error('[WebBridge] Failed to persist vault keys:', err);
-  }
-}
-
 function getStoredSessions(): SessionRecord[] {
   try {
     const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
@@ -80,14 +70,11 @@ function setStoredSessions(sessions: SessionRecord[]): void {
 }
 
 export function initWebBridge(defaultState: SharedState): DesktopBridge {
-  const vaultKeys = getStoredVaultKeys();
-
-  // Update hasApiKeys in state
   const initialHasKeys = {
-    gemini: !!vaultKeys.gemini,
-    openai: !!vaultKeys.openai,
-    anthropic: !!vaultKeys.anthropic,
-    groq: !!vaultKeys.groq,
+    gemini: !!inMemoryVaultKeys.gemini,
+    openai: !!inMemoryVaultKeys.openai,
+    anthropic: !!inMemoryVaultKeys.anthropic,
+    groq: !!inMemoryVaultKeys.groq,
     ollama: true,
   };
 
@@ -111,7 +98,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     }
   } catch {}
 
-  // Set up global keyboard shortcuts in browser
+  // Global browser keyboard shortcuts
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -144,76 +131,73 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
 
     captureScreenshot: async () => {
-      try {
-        // Try browser screen capture if supported and permitted
-        if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
-          try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-              video: { displaySurface: 'browser' },
-              audio: false,
-            });
-            const track = stream.getVideoTracks()[0];
-            const imageCapture = (window as any).ImageCapture
-              ? new (window as any).ImageCapture(track)
-              : null;
+      // Real browser screen capture via getDisplayMedia
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+        throw new Error('Screen capture is not supported in this browser environment');
+      }
 
-            if (imageCapture) {
-              const bitmap = await imageCapture.grabFrame();
-              track.stop();
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.min(bitmap.width, 1920);
-              canvas.height = Math.round((canvas.width / bitmap.width) * bitmap.height);
-              const ctx = canvas.getContext('2d');
-              ctx?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-              const dataUrl = canvas.toDataURL('image/png');
-              const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-              return {
-                data: base64,
-                contentType: 'image/png',
-                width: canvas.width,
-                height: canvas.height,
-              };
-            }
-            track.stop();
-          } catch {
-            // Dismissed or blocked by iframe permissions, fall back to canvas screenshot
-          }
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { displaySurface: 'browser' },
+          audio: false,
+        });
+
+        const track = stream.getVideoTracks()[0];
+        if (!track) {
+          throw new Error('No video track available from screen capture');
         }
 
-        // Generate synthetic context snapshot
+        const imageCapture = (window as any).ImageCapture
+          ? new (window as any).ImageCapture(track)
+          : null;
+
+        if (imageCapture) {
+          const bitmap = await imageCapture.grabFrame();
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.min(bitmap.width, 1920);
+          canvas.height = Math.round((canvas.width / bitmap.width) * bitmap.height);
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/png');
+          const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+          return {
+            data: base64,
+            contentType: 'image/png',
+            width: canvas.width,
+            height: canvas.height,
+          };
+        }
+
+        // Fallback using HTML video element capture
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true;
+        await video.play();
+
         const canvas = document.createElement('canvas');
-        canvas.width = 1280;
-        canvas.height = 720;
-        const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(0, 0, 1280, 720);
-
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(40, 40, 1200, 640);
-
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = 'bold 24px -apple-system, sans-serif';
-        ctx.fillText('Cluely AI Desktop Copilot — Active Workspace Context', 70, 90);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '16px monospace';
-        ctx.fillText(`Timestamp: ${new Date().toISOString()}`, 70, 130);
-        ctx.fillText(`Active Mode: ${currentState.activeMode.toUpperCase()}`, 70, 160);
-        ctx.fillText(`Selected Model: ${currentState.activeModel}`, 70, 190);
-        ctx.fillText(`Active Transcripts: ${currentState.session?.transcript.length || 0}`, 70, 220);
-        ctx.fillText(`Knowledge Documents: ${currentState.knowledgeDocs.length}`, 70, 250);
+        canvas.width = Math.min(video.videoWidth || 1920, 1920);
+        canvas.height = Math.round((canvas.width / (video.videoWidth || 1920)) * (video.videoHeight || 1080));
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        video.pause();
+        video.srcObject = null;
 
         const dataUrl = canvas.toDataURL('image/png');
         const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
         return {
           data: base64,
           contentType: 'image/png',
-          width: 1280,
-          height: 720,
+          width: canvas.width,
+          height: canvas.height,
         };
-      } catch (err) {
-        console.warn('[WebBridge] Screen capture error:', err);
-        return { data: '', contentType: 'image/png', width: 0, height: 0 };
+      } catch (err: any) {
+        throw new Error(`Screen capture permission denied or unavailable: ${err?.message || err}`);
+      } finally {
+        // ALWAYS cleanly stop all acquired screen capture tracks
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+        }
       }
     },
 
@@ -235,16 +219,18 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     resizeChatWindow: () => {},
 
     openDashboard: (tab?: string) => {
-      window.location.hash = 'dashboard';
+      window.location.hash = tab ? `dashboard?tab=${tab}` : 'dashboard';
       if (tab) {
         window.dispatchEvent(new CustomEvent('cluely-dashboard-tab', { detail: tab }));
       }
     },
 
     saveApiKey: async (provider: string, key: string) => {
-      const keys = getStoredVaultKeys();
-      keys[provider] = key;
-      setStoredVaultKeys(keys);
+      if (!provider || typeof provider !== 'string') throw new Error('Invalid provider');
+      if (!key || typeof key !== 'string') throw new Error('Invalid API key');
+
+      // In Web Mode, store keys STRICTLY in ephemeral memory
+      inMemoryVaultKeys[provider] = key.trim();
 
       const hasKeys = {
         ...currentState.hasApiKeys,
@@ -254,9 +240,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
 
     deleteApiKey: async (provider: string) => {
-      const keys = getStoredVaultKeys();
-      delete keys[provider];
-      setStoredVaultKeys(keys);
+      delete inMemoryVaultKeys[provider];
 
       const hasKeys = {
         ...currentState.hasApiKeys,
@@ -266,151 +250,199 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
 
     getHasApiKeys: async () => {
-      const keys = getStoredVaultKeys();
       return {
-        gemini: !!keys.gemini,
-        openai: !!keys.openai,
-        anthropic: !!keys.anthropic,
-        groq: !!keys.groq,
+        gemini: !!inMemoryVaultKeys.gemini,
+        openai: !!inMemoryVaultKeys.openai,
+        anthropic: !!inMemoryVaultKeys.anthropic,
+        groq: !!inMemoryVaultKeys.groq,
         ollama: true,
       };
     },
 
+    abortAiStream: async (requestId?: string) => {
+      if (requestId && activeWebControllers.has(requestId)) {
+        activeWebControllers.get(requestId)!.abort();
+        activeWebControllers.delete(requestId);
+        await bridge.patchSharedState({ isGenerating: false });
+        return true;
+      }
+      for (const ctrl of activeWebControllers.values()) {
+        ctrl.abort();
+      }
+      activeWebControllers.clear();
+      await bridge.patchSharedState({ isGenerating: false });
+      return true;
+    },
+
     executeAiStream: async options => {
-      const { model, mode, query, screenshotBase64, recentTranscript, knowledgePassages } = options;
-      const keys = getStoredVaultKeys();
+      const {
+        model,
+        mode,
+        query,
+        screenshotBase64,
+        recentTranscript,
+        knowledgePassages,
+        conversationHistory,
+        requestId,
+      } = options;
 
-      let providerName = 'gemini';
-      if (model.includes('gpt') || model.includes('openai')) providerName = 'openai';
-      else if (model.includes('claude') || model.includes('anthropic')) providerName = 'anthropic';
-      else if (model.includes('ollama')) providerName = 'ollama';
+      const reqId = requestId || `web_req_${Date.now()}`;
+      const abortController = new AbortController();
+      activeWebControllers.set(reqId, abortController);
+      await bridge.patchSharedState({ isGenerating: true });
 
-      const apiKey = keys[providerName];
+      try {
+        let providerName = 'gemini';
+        if (model.includes('gpt') || model.includes('openai')) providerName = 'openai';
+        else if (model.includes('claude') || model.includes('anthropic')) providerName = 'anthropic';
+        else if (model.includes('ollama')) providerName = 'ollama';
 
-      const onToken = (token: string) => {
-        webBridgeEvents.emit('ai-token-stream', token);
-      };
+        const apiKey = inMemoryVaultKeys[providerName];
 
-      if (!apiKey && providerName !== 'ollama') {
-        const demoResponse = `**Cluely Copilot (${mode.toUpperCase()} Mode)**\n\n` +
-          `• **Screen Context**: ${screenshotBase64 ? 'Visible screenshot analyzed' : 'No screen attached'}\n` +
-          `• **Conversation Context**: ${recentTranscript.length} live speech items referenced\n` +
-          `• **Grounded Knowledge**: ${knowledgePassages?.length || 0} reference passages retrieved\n\n` +
-          `> **Tip**: Configure your **${providerName.toUpperCase()} API Key** in Settings (Vault) to enable live model reasoning!`;
+        const onToken = (token: string) => {
+          webBridgeEvents.emit('ai-token-stream', token);
+        };
 
-        let streamed = '';
-        for (const char of demoResponse) {
-          streamed += char;
-          onToken(char);
-          await new Promise(r => setTimeout(r, 10));
+        if (!apiKey && providerName !== 'ollama') {
+          const demoResponse =
+            `**Cluely Copilot (${mode.toUpperCase()} Mode)**\n\n` +
+            `• **Screen Context**: ${screenshotBase64 ? 'Visible screenshot analyzed' : 'No screen attached'}\n` +
+            `• **Conversation Context**: ${recentTranscript.length} live speech items referenced\n` +
+            `• **Grounded Knowledge**: ${knowledgePassages?.length || 0} reference passages retrieved\n\n` +
+            `> **Notice**: Configure your **${providerName.toUpperCase()} API Key** in Settings (held in ephemeral session memory) to enable live model reasoning!`;
+
+          let streamed = '';
+          for (const char of demoResponse) {
+            if (abortController.signal.aborted) break;
+            streamed += char;
+            onToken(char);
+            await new Promise(r => setTimeout(r, 10));
+          }
+          return { content: streamed, sources: knowledgePassages };
         }
-        return { content: demoResponse, sources: knowledgePassages };
-      }
 
-      let content = '';
-      if (providerName === 'gemini') {
-        content = await streamGemini({
-          model,
-          apiKey,
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
-      } else if (providerName === 'openai') {
-        content = await streamOpenAI({
-          model,
-          apiKey,
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
-      } else if (providerName === 'anthropic') {
-        content = await streamClaude({
-          model,
-          apiKey,
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
-      } else if (providerName === 'ollama') {
-        content = await streamOllama({
-          model,
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
-      }
+        let content = '';
+        if (providerName === 'gemini') {
+          content = await streamGemini({
+            model,
+            apiKey,
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: abortController.signal,
+            onToken,
+          });
+        } else if (providerName === 'openai') {
+          content = await streamOpenAI({
+            model,
+            apiKey,
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: abortController.signal,
+            onToken,
+          });
+        } else if (providerName === 'anthropic') {
+          content = await streamClaude({
+            model,
+            apiKey,
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: abortController.signal,
+            onToken,
+          });
+        } else if (providerName === 'ollama') {
+          content = await streamOllama({
+            model,
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: abortController.signal,
+            onToken,
+          });
+        }
 
-      return { content, sources: knowledgePassages };
+        return { content, sources: knowledgePassages };
+      } finally {
+        activeWebControllers.delete(reqId);
+        await bridge.patchSharedState({ isGenerating: false });
+      }
     },
 
     transcribeAudioPayload: async ({ wavBase64, language }) => {
-      const keys = getStoredVaultKeys();
-      const groqKey = keys.groq;
-      const openaiKey = keys.openai;
-      const activeKey = groqKey || openaiKey;
+      const groqKey = inMemoryVaultKeys['groq'];
+      const openaiKey = inMemoryVaultKeys['openai'];
+
+      if (!groqKey && !openaiKey) {
+        throw new Error('No STT API key configured. Please enter a Groq or OpenAI key in Settings.');
+      }
+
+      const binaryString = atob(wavBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
       const provider = groqKey ? 'groq' : 'openai';
-
-      if (!activeKey) {
-        throw new Error('No Speech-to-Text key configured. Set Groq or OpenAI key in Settings.');
-      }
-
-      const binaryStr = atob(wavBase64);
-      const len = binaryStr.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
-
+      const activeKey = groqKey || openaiKey;
       const text = await transcribeAudio(bytes.buffer, activeKey, provider, language || 'en');
+
       return { text };
     },
 
     saveSessionRecord: async (session: SessionRecord) => {
-      const sessions = getStoredSessions();
-      const idx = sessions.findIndex(s => s.id === session.id);
-      if (idx >= 0) {
-        sessions[idx] = session;
-      } else {
-        sessions.unshift(session);
-      }
-      setStoredSessions(sessions);
+      const existing = getStoredSessions();
+      // Strip screenshot base64 before saving to prevent megabytes of persistent data
+      const sanitizedSession: SessionRecord = {
+        ...session,
+        updatedAt: new Date().toISOString(),
+        messages: (session.messages || []).map(m => {
+          const { screenshot, ...rest } = m;
+          return rest;
+        }),
+      };
+
+      const updated = [
+        sanitizedSession,
+        ...existing.filter(s => s.id !== sanitizedSession.id),
+      ];
+      setStoredSessions(updated);
+    },
+
+    getPastSession: async (id: string) => {
+      const existing = getStoredSessions();
+      return existing.find(s => s.id === id) || null;
     },
 
     listPastSessions: async () => {
-      const sessions = getStoredSessions();
-      return sessions.map(s => ({
+      const existing = getStoredSessions();
+      return existing.map(s => ({
         id: s.id,
         title: s.title,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
         durationSeconds: s.durationSeconds,
         mode: s.mode,
-        transcriptCount: s.transcript.length,
-        messageCount: s.messages.length,
+        transcriptCount: s.transcript?.length || 0,
+        messageCount: s.messages?.length || 0,
       }));
     },
 
-    getPastSession: async (id: string) => {
-      const sessions = getStoredSessions();
-      return sessions.find(s => s.id === id) || null;
-    },
-
     deletePastSession: async (id: string) => {
-      const sessions = getStoredSessions();
-      const filtered = sessions.filter(s => s.id !== id);
+      const existing = getStoredSessions();
+      const filtered = existing.filter(s => s.id !== id);
       setStoredSessions(filtered);
       return true;
     },
@@ -419,20 +451,44 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
       setStoredSessions([]);
     },
 
-    onSharedStateUpdated: callback => {
+    purgeAllData: async () => {
+      setStoredSessions([]);
+      // Clear in-memory keys
+      for (const k of Object.keys(inMemoryVaultKeys)) {
+        delete inMemoryVaultKeys[k];
+      }
+      localStorage.removeItem(SHARED_STATE_STORAGE_KEY);
+      await bridge.patchSharedState({
+        session: null,
+        knowledgeDocs: [],
+        hasApiKeys: {
+          gemini: false,
+          openai: false,
+          anthropic: false,
+          groq: false,
+          ollama: true,
+        },
+      });
+    },
+
+    onAiTokenStream: (callback: (token: string) => void) => {
+      return webBridgeEvents.on('ai-token-stream', callback);
+    },
+
+    onSharedStateUpdated: (callback: (state: SharedState) => void) => {
       return webBridgeEvents.on('shared-state-updated', callback);
     },
 
-    onAudioChunk: callback => {
-      return webBridgeEvents.on('audio-chunk', callback);
-    },
-
-    onShortcutAction: callback => {
+    onShortcutAction: (callback: (action: string) => void) => {
       return webBridgeEvents.on('shortcut-action', callback);
     },
 
-    onAiTokenStream: callback => {
-      return webBridgeEvents.on('ai-token-stream', callback);
+    onAudioChunk: (callback: (data: { role: Role; chunk: ArrayBuffer }) => void) => {
+      return webBridgeEvents.on('audio-data', callback);
+    },
+
+    onDashboardSwitchTab: (callback: (tab: string) => void) => {
+      return webBridgeEvents.on('dashboard-switch-tab', callback);
     },
   };
 

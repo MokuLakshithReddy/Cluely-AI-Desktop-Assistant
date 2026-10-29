@@ -6,20 +6,38 @@ import { FloatingBar } from './components/FloatingBar';
 import { ChatPanel } from './components/ChatPanel';
 import { Dashboard } from './components/Dashboard';
 
+export function parseHashRoute(hashStr: string = (typeof window !== 'undefined' ? window.location.hash : '')): {
+  route: string;
+  tab?: string;
+} {
+  const clean = (hashStr || '').replace(/^#\/?/, '');
+  const [routePart, queryPart] = clean.split('?');
+  const route = routePart || 'all';
+  let tab: string | undefined;
+  if (queryPart) {
+    const params = new URLSearchParams(queryPart);
+    tab = params.get('tab') || undefined;
+  }
+  return { route, tab };
+}
+
 export function App() {
   const { state, patchState, getLatestState } = useSharedState();
-  const [route, setRoute] = useState(window.location.hash.replace('#', '') || 'all');
+  const [routeInfo, setRouteInfo] = useState(() =>
+    typeof window !== 'undefined' ? parseHashRoute(window.location.hash) : { route: 'all' }
+  );
 
   useEffect(() => {
     const handleHashChange = () => {
-      setRoute(window.location.hash.replace('#', '') || 'all');
+      setRouteInfo(parseHashRoute(window.location.hash));
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Initialize dual-channel audio capture (mic + loopback) and VAD
-  useAudioCapture(state, patchState, getLatestState);
+  // Dual-channel audio capture (mic + loopback) is gated to the primary audio owner
+  const isAudioOwner = routeInfo.route === 'control' || routeInfo.route === 'all';
+  useAudioCapture(state, patchState, getLatestState, isAudioOwner);
 
   // Initialize AI assistant handler with latest state updater
   const { askAssistant, stopGeneration, isGenerating } = useAiAssistant(
@@ -42,7 +60,7 @@ export function App() {
     }
   }, [askAssistant, patchState]);
 
-  if (route === 'control') {
+  if (routeInfo.route === 'control') {
     return (
       <div className="w-full h-full p-1 bg-transparent">
         <FloatingBar
@@ -55,7 +73,7 @@ export function App() {
     );
   }
 
-  if (route === 'chat') {
+  if (routeInfo.route === 'chat') {
     return (
       <div className="w-full h-screen p-1 bg-transparent">
         <ChatPanel
@@ -69,8 +87,8 @@ export function App() {
     );
   }
 
-  if (route === 'dashboard') {
-    return <Dashboard state={state} patchState={patchState} />;
+  if (routeInfo.route === 'dashboard') {
+    return <Dashboard state={state} patchState={patchState} initialTab={routeInfo.tab as any} />;
   }
 
   // Combined Web / Preview Mode

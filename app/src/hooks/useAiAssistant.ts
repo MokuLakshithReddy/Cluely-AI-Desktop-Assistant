@@ -10,11 +10,15 @@ export function useAiAssistant(
 ) {
   const [isGenerating, setIsGenerating] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const activeRequestIdRef = useRef<string | null>(null);
   const activeMessagesRef = useRef<ChatMessage[]>([]);
+  const lastPatchTimeRef = useRef<number>(0);
 
   const askAssistant = async (promptQuery: string, captureScreen: boolean = true) => {
     if (isGenerating) return;
 
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    activeRequestIdRef.current = requestId;
     setIsGenerating(true);
     abortControllerRef.current = new AbortController();
 
@@ -90,7 +94,7 @@ export function useAiAssistant(
     if (window.desktopBridge) {
       unsubTokens = window.desktopBridge.onAiTokenStream(token => {
         accumulatedContent += token;
-        updateActiveAssistantMessage(assistantMessageId, accumulatedContent, true);
+        updateActiveAssistantMessage(assistantMessageId, accumulatedContent, true, false);
       });
     }
 
@@ -106,6 +110,8 @@ export function useAiAssistant(
           screenshotBase64,
           recentTranscript,
           knowledgePassages: retrievedDocs,
+          conversationHistory: existingMessages,
+          requestId,
         });
 
         accumulatedContent = result.content;
@@ -114,13 +120,23 @@ export function useAiAssistant(
         accumulatedContent = `**Screen Context Analyzed**\n- Screenshot Attached: ${screenshotBase64 ? 'Yes (1920x1080)' : 'No'}\n- Transcripts in context: ${recentTranscript.length} entries\n- Mode: **${latestState.activeMode.toUpperCase()}**\n\nConfigure your API keys in the Dashboard to enable live cloud LLM reasoning.`;
       }
 
-      // Finalize message with complete content and isStreaming: false
-      updateActiveAssistantMessage(assistantMessageId, accumulatedContent, false);
+      // Finalize message with complete content and isStreaming: false (force durable patch)
+      updateActiveAssistantMessage(assistantMessageId, accumulatedContent, false, true);
 
-      // Save complete session to SessionRepository
+      // Save complete session to SessionRepository with stripped screenshots
       const finalState = getLatestState();
       if (finalState.session && window.desktopBridge?.saveSessionRecord) {
-        await window.desktopBridge.saveSessionRecord(finalState.session);
+        const sessionToPersist: SessionRecord = {
+          ...finalState.session,
+          messages: finalState.session.messages.map(m => {
+            if (m.screenshot) {
+              const { screenshot, ...rest } = m;
+              return rest;
+            }
+            return m;
+          }),
+        };
+        await window.desktopBridge.saveSessionRecord(sessionToPersist);
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -129,39 +145,53 @@ export function useAiAssistant(
         console.error('[useAiAssistant] AI generation error:', err);
         accumulatedContent = `**Generation Error**: ${err.message || 'Failed to complete request'}`;
       }
-      updateActiveAssistantMessage(assistantMessageId, accumulatedContent, false);
+      updateActiveAssistantMessage(assistantMessageId, accumulatedContent, false, true);
     } finally {
       if (unsubTokens) unsubTokens();
       setIsGenerating(false);
       abortControllerRef.current = null;
+      activeRequestIdRef.current = null;
     }
   };
 
   const updateActiveAssistantMessage = (
     msgId: string,
     content: string,
-    isStreaming: boolean
+    isStreaming: boolean,
+    forcePatch: boolean = false
   ) => {
     // Update activeMessagesRef
     activeMessagesRef.current = activeMessagesRef.current.map(m =>
       m.id === msgId ? { ...m, content, isStreaming } : m
     );
 
-    // Functional update guaranteeing we never overwrite new messages with old state
-    patchState(prev => {
-      if (!prev.session) return {};
-      return {
-        session: {
-          ...prev.session,
-          messages: [...activeMessagesRef.current],
-        },
-      };
-    });
+    const now = Date.now();
+    // Only patch durable shared state if forced (start/finish/abort) or throttled (>150ms)
+    if (forcePatch || !isStreaming || now - lastPatchTimeRef.current > 150) {
+      lastPatchTimeRef.current = now;
+      patchState(prev => {
+        if (!prev.session) return {};
+        return {
+          session: {
+            ...prev.session,
+            messages: [...activeMessagesRef.current],
+          },
+        };
+      });
+    }
   };
 
-  const stopGeneration = () => {
+  const stopGeneration = async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+    }
+    const currentReqId = activeRequestIdRef.current;
+    if (currentReqId && window.desktopBridge?.abortAiStream) {
+      try {
+        await window.desktopBridge.abortAiStream(currentReqId);
+      } catch (err) {
+        console.warn('[useAiAssistant] Failed to abort stream:', err);
+      }
     }
   };
 

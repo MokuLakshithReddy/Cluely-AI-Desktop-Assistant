@@ -7,9 +7,16 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=app",
+    "dev:vite": "npm run dev:vite --workspace=app",
     "build": "npm run build --workspace=app",
+    "build:vite": "npm run build:vite --workspace=app",
+    "build:electron": "npm run build:electron --workspace=app",
     "lint": "npm run lint --workspace=app",
-    "start": "npm run dev --workspace=app"
+    "test": "npm run test --workspace=app",
+    "test:report": "npm run test:report --workspace=app",
+    "smoke": "node app/tests/electron-smoke.cjs",
+    "pack": "npm run pack --workspace=app",
+    "start": "npm run start --workspace=app"
   },
   "devDependencies": {
     "@types/electron": "^1.4.38"

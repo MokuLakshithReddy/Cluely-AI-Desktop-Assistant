@@ -59,6 +59,7 @@ const ALLOWED_STATE_KEYS = new Set([
 
 export class IpcRouter {
   private customTrustedHtmlPath?: string;
+  private activeAiControllers: Map<string, AbortController> = new Map();
 
   constructor(customTrustedHtmlPath?: string) {
     if (customTrustedHtmlPath) {
@@ -78,6 +79,23 @@ export class IpcRouter {
    */
   private setupDisplayMediaHandler() {
     session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      // 1. Verify that the requesting frame originates from a trusted local origin
+      try {
+        this.validateOrigin({ senderFrame: request.frame } as any);
+      } catch (e) {
+        console.warn('[IpcRouter] Denied display media request: Unauthorized frame origin');
+        callback({});
+        return;
+      }
+
+      // 2. Verify that recording is explicitly active in shared state
+      const state = stateManager.getState();
+      if (!state.isRecording) {
+        console.warn('[IpcRouter] Denied display media request: Recording is not active');
+        callback({});
+        return;
+      }
+
       desktopCapturer
         .getSources({ types: ['screen'] })
         .then(sources => {
@@ -466,73 +484,125 @@ export class IpcRouter {
     // 9. AI Execution Bridge (Executes with keys fetched directly from vault)
     ipcMain.handle('ai-stream-request', async (event, options: any) => {
       this.validateOrigin(event);
-      const { model, mode, query, screenshotBase64, recentTranscript, knowledgePassages } = options;
+      const {
+        model,
+        mode,
+        query,
+        screenshotBase64,
+        recentTranscript,
+        knowledgePassages,
+        conversationHistory,
+        requestId,
+      } = options;
       const senderWebContents = event.sender;
+      const reqId = requestId || `req_${Date.now()}`;
+      const controller = new AbortController();
+      this.activeAiControllers.set(reqId, controller);
+      stateManager.patchState({ isGenerating: true });
 
-      // Determine required provider
-      let providerName = 'gemini';
-      if (model.includes('gpt') || model.includes('openai')) providerName = 'openai';
-      else if (model.includes('claude') || model.includes('anthropic')) providerName = 'anthropic';
-      else if (model.includes('ollama')) providerName = 'ollama';
+      try {
+        // Determine required provider
+        let providerName = 'gemini';
+        if (model && (model.includes('gpt') || model.includes('openai'))) providerName = 'openai';
+        else if (model && (model.includes('claude') || model.includes('anthropic'))) providerName = 'anthropic';
+        else if (model && model.includes('ollama')) providerName = 'ollama';
 
-      const apiKey = await credentialVault.getKey(providerName);
-      if (!apiKey && providerName !== 'ollama') {
-        throw new Error(`No API key configured for ${providerName}. Please add it in Settings.`);
-      }
-
-      const onToken = (token: string) => {
-        if (!senderWebContents.isDestroyed()) {
-          senderWebContents.send('ai-token-stream', token);
+        const apiKey = await credentialVault.getKey(providerName);
+        if (!apiKey && providerName !== 'ollama') {
+          throw new Error(`No API key configured for ${providerName}. Please add it in Settings.`);
         }
-      };
 
-      let resultText = '';
-      if (providerName === 'gemini') {
-        resultText = await streamGemini({
-          model,
-          apiKey: apiKey || '',
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
-      } else if (providerName === 'openai') {
-        resultText = await streamOpenAI({
-          model,
-          apiKey: apiKey || '',
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
-      } else if (providerName === 'anthropic') {
-        resultText = await streamClaude({
-          model,
-          apiKey: apiKey || '',
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
-      } else if (providerName === 'ollama') {
-        resultText = await streamOllama({
-          model,
-          mode,
-          query,
-          screenshotBase64,
-          recentTranscript,
-          knowledgePassages,
-          onToken,
-        });
+        const onToken = (token: string) => {
+          if (!senderWebContents.isDestroyed()) {
+            senderWebContents.send('ai-token-stream', token);
+          }
+        };
+
+        let resultText = '';
+        if (providerName === 'gemini') {
+          resultText = await streamGemini({
+            model,
+            apiKey: apiKey || '',
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: controller.signal,
+            onToken,
+          });
+        } else if (providerName === 'openai') {
+          resultText = await streamOpenAI({
+            model,
+            apiKey: apiKey || '',
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: controller.signal,
+            onToken,
+          });
+        } else if (providerName === 'anthropic') {
+          resultText = await streamClaude({
+            model,
+            apiKey: apiKey || '',
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: controller.signal,
+            onToken,
+          });
+        } else if (providerName === 'ollama') {
+          resultText = await streamOllama({
+            model,
+            mode,
+            query,
+            screenshotBase64,
+            recentTranscript,
+            knowledgePassages,
+            conversationHistory,
+            signal: controller.signal,
+            onToken,
+          });
+        }
+
+        return { content: resultText, sources: knowledgePassages };
+      } finally {
+        this.activeAiControllers.delete(reqId);
+        stateManager.patchState({ isGenerating: false });
       }
+    });
 
-      return { content: resultText, sources: knowledgePassages };
+    ipcMain.handle('ai-abort-request', (event, { requestId }: any) => {
+      this.validateOrigin(event);
+      if (requestId && this.activeAiControllers.has(requestId)) {
+        this.activeAiControllers.get(requestId)!.abort();
+        this.activeAiControllers.delete(requestId);
+        stateManager.patchState({ isGenerating: false });
+        return true;
+      }
+      for (const ctrl of this.activeAiControllers.values()) {
+        ctrl.abort();
+      }
+      this.activeAiControllers.clear();
+      stateManager.patchState({ isGenerating: false });
+      return true;
+    });
+
+    ipcMain.handle('purge-all-data', async event => {
+      this.validateOrigin(event);
+      await sessionRepository.purgeAll();
+      stateManager.patchState({
+        session: null,
+        knowledgeDocs: [],
+      });
+      return true;
     });
 
     // 10. STT Transcription Bridge
@@ -559,7 +629,15 @@ export class IpcRouter {
     // 11. Multi-Session Repository Handlers
     ipcMain.handle('session-save', async (event, session: SessionRecord) => {
       this.validateOrigin(event);
-      await sessionRepository.saveSession(session);
+      // Strip screenshot payloads before persisting to disk to prevent storage bloat and protect privacy
+      const cleanSession: SessionRecord = {
+        ...session,
+        messages: (session.messages || []).map(m => {
+          const { screenshot, ...rest } = m;
+          return rest;
+        }),
+      };
+      await sessionRepository.saveSession(cleanSession);
     });
 
     ipcMain.handle('session-list', async event => {

@@ -67,9 +67,11 @@ export class WindowCoordinator {
         preload: this.getPreloadPath(),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        sandbox: true,
       },
     });
+
+    this.attachSecurityGuards(this.controlWin);
 
     this.controlWin.loadURL(this.getRendererUrl('control'));
     this.controlWin.once('ready-to-show', () => {
@@ -110,9 +112,11 @@ export class WindowCoordinator {
         preload: this.getPreloadPath(),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        sandbox: true,
       },
     });
+
+    this.attachSecurityGuards(this.chatWin);
 
     this.chatWin.loadURL(this.getRendererUrl('chat'));
     this.chatWin.once('ready-to-show', () => {
@@ -125,10 +129,34 @@ export class WindowCoordinator {
     return this.chatWin;
   }
 
+  private attachSecurityGuards(win: BrowserWindow | null) {
+    if (!win) return;
+    win.webContents.on('will-navigate', (event, url) => {
+      try {
+        const parsed = new URL(url);
+        const isDev = parsed.origin === 'http://localhost:5173' || parsed.origin === 'http://127.0.0.1:5173';
+        const isProd = parsed.protocol === 'file:';
+        if (!isDev && !isProd) {
+          event.preventDefault();
+          console.warn('[WindowCoordinator] Blocked untrusted external navigation to:', url);
+        }
+      } catch {
+        event.preventDefault();
+      }
+    });
+
+    win.webContents.setWindowOpenHandler(() => {
+      return { action: 'deny' };
+    });
+  }
+
   public openDashboardWindow(tab?: string): BrowserWindow {
     if (this.dashboardWin && !this.dashboardWin.isDestroyed()) {
       this.dashboardWin.show();
       this.dashboardWin.focus();
+      if (tab) {
+        this.dashboardWin.webContents.send('dashboard-switch-tab', tab);
+      }
       return this.dashboardWin;
     }
 
@@ -144,8 +172,11 @@ export class WindowCoordinator {
         preload: this.getPreloadPath(),
         contextIsolation: true,
         nodeIntegration: false,
+        sandbox: true,
       },
     });
+
+    this.attachSecurityGuards(this.dashboardWin);
 
     this.dashboardWin.loadURL(this.getRendererUrl(`dashboard${tab ? `?tab=${tab}` : ''}`));
     this.dashboardWin.once('ready-to-show', () => {
