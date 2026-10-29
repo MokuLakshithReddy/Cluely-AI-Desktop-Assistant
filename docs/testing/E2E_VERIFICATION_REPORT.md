@@ -220,3 +220,4 @@ npx vitest run tests/e2e-desktop-session.test.ts
 # Run the full automated verification test suite (89/89 tests)
 npm run test:report
 ```
+

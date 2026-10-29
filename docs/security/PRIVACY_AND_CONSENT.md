@@ -112,3 +112,4 @@ Users retain total ownership and control over their stored data. At any time, na
 3. **Active State**: In-memory transcript items and message histories are reset to empty arrays (`[]`).
 4. **Credential Purge**: User-specified option to clear all hardware-stored DPAPI vault keys.
 5. **No Residual State**: The application returns to a clean-install state with zero residual logs or cache artifacts.
+

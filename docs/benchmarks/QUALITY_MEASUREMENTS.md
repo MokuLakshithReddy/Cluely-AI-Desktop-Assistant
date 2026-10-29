@@ -150,3 +150,4 @@ Measured over a **3-hour continuous desktop session** (active meeting listening,
 
 * **Memory Leak Assessment**: Zero progressive heap degradation detected over 10,000 simulated VAD cycles. The private working set returned to within ±3MB of baseline following garbage collection.
 * **Storage Footprint**: Session JSON files average **4.2 KB per session** due to strict base64 screenshot stripping prior to disk persistence.
+

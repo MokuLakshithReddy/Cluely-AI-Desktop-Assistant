@@ -124,3 +124,4 @@ npm run dist:win
 ```
 
 The resulting executable will be generated in `app/release/Cluely-Copilot-1.0.1-Windows-x64.exe`.
+
