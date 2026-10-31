@@ -23,7 +23,12 @@ if (fs.existsSync(triggerPath)) {
   try { fs.unlinkSync(triggerPath); } catch {}
 }
 
-const child = spawn(electronBinary, [appPath], {
+// Detect if running on Linux in a headless environment without DISPLAY
+const isLinuxHeadless = process.platform === 'linux' && !process.env.DISPLAY;
+const spawnCmd = isLinuxHeadless ? 'xvfb-run' : electronBinary;
+const spawnArgs = isLinuxHeadless ? ['-a', electronBinary, appPath] : [appPath];
+
+const child = spawn(spawnCmd, spawnArgs, {
   cwd: appPath,
   env: cleanEnv,
   stdio: ['pipe', 'pipe', 'pipe'],

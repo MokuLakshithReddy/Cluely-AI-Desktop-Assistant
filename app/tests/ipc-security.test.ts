@@ -4,7 +4,7 @@ import { pathToFileURL } from 'url';
 import { IpcRouter } from '../electron/domains/ipc-router';
 
 describe('IPC Security & Origin Validation Subsystem', () => {
-  const trustedHtml = path.normalize('C:/Users/nsrfl/OneDrive/Desktop/Cluely_Reverse_Engineering/app/dist/index.html');
+  const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
 
   it('rejects IPC invocation when senderFrame is null or undefined', () => {
