@@ -21,7 +21,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (89/89 Passing)](#6-automated-verification--test-suites-8989-passing)
+6. [Automated Verification & Test Suites (91/91 Passing)](#6-automated-verification--test-suites-9191-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -276,7 +276,7 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (89/89 Passing)
+## 6. Automated Verification & Test Suites (91/91 Passing)
 
 The repository features a comprehensive automated verification suite consisting of **89 automated tests** across 14 test files (13 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
 
