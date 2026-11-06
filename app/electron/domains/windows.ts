@@ -206,13 +206,16 @@ export class WindowCoordinator {
   }
 
   public updateStealthMode(isStealth: boolean) {
-    // Windows: WDA_EXCLUDEFROMCAPTURE | macOS: NSWindowSharingNone
-    try {
-      this.controlWin?.setContentProtection(isStealth);
-      this.chatWin?.setContentProtection(isStealth);
-      this.dashboardWin?.setContentProtection(isStealth);
-    } catch (e) {
-      console.warn('[WindowCoordinator] Failed to set content protection:', e);
+    // Windows: WDA_EXCLUDEFROMCAPTURE | macOS: NSWindowSharingNone.
+    // Optional chaining only checks for null; Electron methods still throw on destroyed windows.
+    const windows = [this.controlWin, this.chatWin, this.dashboardWin];
+    for (const win of windows) {
+      if (!win || win.isDestroyed()) continue;
+      try {
+        win.setContentProtection(isStealth);
+      } catch (e) {
+        console.warn('[WindowCoordinator] Failed to set content protection:', e);
+      }
     }
   }
 
