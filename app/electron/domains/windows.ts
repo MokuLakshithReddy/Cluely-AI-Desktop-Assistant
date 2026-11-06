@@ -262,6 +262,10 @@ export class WindowCoordinator {
   public getChatWindow(): BrowserWindow | null {
     return this.chatWin;
   }
+
+  public getDashboardWindow(): BrowserWindow | null {
+    return this.dashboardWin;
+  }
 }
 
 export const windowCoordinator = new WindowCoordinator();

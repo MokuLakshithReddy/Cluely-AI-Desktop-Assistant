@@ -30,6 +30,18 @@ if (!gotSingleInstanceLock) {
     console.log('[APP_READY] Cluely Desktop Coordinator Ready');
 
     if (process.env.SMOKE_TEST === 'true') {
+      try {
+        const { runDesktopE2E } = require(path.join(app.getAppPath(), 'tests', 'electron-e2e.cjs'));
+        runDesktopE2E({ windowCoordinator }).then(
+          () => console.log('[E2E_COMPLETE] Electron UI, preload bridge, IPC, and persistence flows passed.'),
+          (error: any) => console.error('[E2E_FAILED]', error?.stack || error?.message || error)
+        );
+      } catch (error: any) {
+        console.error('[E2E_FAILED]', error?.stack || error?.message || error);
+      }
+    }
+
+    if (process.env.SMOKE_TEST === 'true') {
       const shutdownTrigger = path.join(app.getAppPath(), '.smoke-shutdown.trigger');
       if (fs.existsSync(shutdownTrigger)) {
         try { fs.unlinkSync(shutdownTrigger); } catch {}
