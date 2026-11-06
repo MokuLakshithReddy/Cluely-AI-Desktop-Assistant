@@ -2,8 +2,8 @@
 
 **Document Version**: 1.0.0  
 **Target Application**: Cluely Copilot (Desktop AI Assistant)  
-**Verification Date**: 2026-10-29  
-**Execution Environment**: Windows 11 Pro x64 (Build 26200), Node.js v24.19.0, Electron v34.2.0  
+**Verification Date**: 2026-11-07  
+**Automated E2E Environment**: Windows Server 2025 x64, Node.js v20.20.2, Electron v34.2.0  
 **Test Suite Reference**: [`app/tests/e2e-desktop-session.test.ts`](../../app/tests/e2e-desktop-session.test.ts)  
 **Scope**: Synthetic pipeline integration plus separate Electron UI/IPC E2E smoke coverage
 
@@ -21,37 +21,37 @@ The six stages below describe synthetic pipeline integration, not a live meeting
 The synthetic pipeline used for those six stages is:
 
 ```
-[Consented Spoken Audio (Mic + Loopback)]
-                   ↓
- [Acoustic Crosstalk Gate & VAD Resampling] 
-                   ↓
-  [Chronological Timestamped Transcript] 
-                   ↓
-    [Active Display Capture & Max-1920 Proportional Scaling] 
-                   ↓
-   [User Document Ingestion & RAG Citation Retrieval]
-                   ↓
-     [Multimodal Context Prompt Fusion]
-                   ↓
-      [Streaming LLM Response & Token Accumulator]
-                   ↓
-     [Mid-Stream Cancellation & Provider Error Self-Healing]
-                   ↓
-      [Zero-Leakage Session Persistence & One-Click Data Purge]
+[Generated Audio Samples]
+          ↓
+[Resampling, RMS/ZCR Metrics, Test-Only Zeroing]
+          ↓
+[Manually Constructed Transcript Items]
+          ↓
+[Pure Display-Dimension Scaling Helper]
+          ↓
+[Synthetic Markdown Fixture + Retrieval Helper]
+          ↓
+[Manually Assembled Prompt Context]
+          ↓
+[Mocked Gemini SSE Response + Pre-Aborted Signal]
+          ↓
+[Direct SessionRepository Save / Strip / Delete]
 ```
 
 All 6 synthetic stages are represented by assertions in `tests/e2e-desktop-session.test.ts`. The test does not exercise the physical devices or live application workflow described by the scenario.
 
 ---
 
-## 2. Test Scenario: Technical Architecture Review
+## 2. Synthetic Test Fixtures
 
-* **Session Type**: Consented Technical Architecture & Reliability Review.
-* **Participants**:
-  * **Remote Participant / Team Lead** (`role: "them"`): Captured via Windows desktop system-audio loopback.
-  * **Local User / Lead Engineer** (`role: "me"`): Captured via local workstation microphone.
-* **Grounding Document**: `Redis-Cluster-Failover-Spec.pdf` (Uploaded into local Knowledge Base).
-* **Active Screen**: Visual architecture diagram depicting Redis Sentinel quorum and network partition topology.
+The original six-stage Vitest suite does not replay a real meeting. Its inputs are created inside the test file:
+
+* **Audio fixture**: generated 300 Hz sine samples plus a four-value local sample array.
+* **Transcript fixture**: two manually created transcript objects used only for prompt construction.
+* **Display fixture**: fixed 4K, ultrawide, and 1080p dimensions passed to a pure scaling helper.
+* **Knowledge fixture**: an in-memory Markdown string titled `Cache Architecture Policy`; no PDF is uploaded.
+* **Provider fixture**: mocked Gemini SSE chunks and an already-aborted signal; no live provider request is made.
+* **Persistence fixture**: a temporary session record passed directly to `SessionRepository`.
 
 ---
 
@@ -67,12 +67,6 @@ All 6 synthetic stages are represented by assertions in `tests/e2e-desktop-sessi
   2. The test itself sets `themHasVoiceActivity = true` and constructs a zero-filled local array. It does not execute the production mic/loopback ownership or crosstalk wiring.
   3. It validates the generated PCM WAV header only. No STT request is made in this stage.
 * **Not covered here**: `getUserMedia`, `getDisplayMedia`, device permissions, actual acoustic bleed, or a physical Whisper transcription.
-* **Verified Transcript Output**:
-  ```text
-  [00:00:02.100] [Speaker]: "We are finalizing the distributed caching architecture for the Q3 release. Our primary objective is ensuring Redis fallback behavior maintains zero data loss under cluster split-brain."
-  [00:00:07.450] [You]: "Understood. I have our Redis failover runbook loaded in my local workspace knowledge base."
-  [00:00:12.800] [Speaker]: "Can you verify our specific failover quorum requirement and tell me how our circuit breaker handles partition re-joining?"
-  ```
 * **Status**: **PASSED** — Synthetic resampling, VAD metrics, and WAV header assertions pass. No physical speech was captured or transcribed.
 
 ---
@@ -123,16 +117,11 @@ All 6 synthetic stages are represented by assertions in `tests/e2e-desktop-sessi
 ### Synthetic Stage 5: Mocked AI Streaming & Pre-Aborted Request Handling
 
 * **Provider behavior**: `global.fetch` is replaced with a mocked Gemini SSE response. No live Gemini, Claude, or OpenAI API request is made by this test.
-* **Test Case 5A: Complete Grounded Response Generation**:
-  * **Streaming Output**:
-    ```text
-    Based on the Redis-Cluster-Failover-Spec.pdf:
-    1. Quorum Requirement: Automatic master promotion requires a strict majority quorum of N/2 + 1 nodes (at least 3 out of 5 Sentinels across our 3 datacenters).
-    2. Partition Re-joining: When the partitioned node re-enters the cluster, the Envoy circuit breaker transitions to a half-open state, aborting uncommitted writes and reconciling state with the canonical WAL.
-    ```
-  * **Verified Grounding**: Directly cites document source; zero hallucinations.
-  * **Time to First Token (TTFT)**: 340ms (Gemini 3.8 Flash).
-  * **Throughput**: 88 tokens/sec.
+* **Test Case 5A: Mocked Gemini SSE Parsing**:
+  * The test replaces `global.fetch` with a synthetic SSE response split into four chunks.
+  * The accumulated response is asserted to contain the synthetic cache invalidation SLA (250 milliseconds) and chunk threshold (4096 bytes).
+  * The test checks that the mocked adapter emits four token callbacks.
+  * No citation correctness, latency, tokens-per-second throughput, live model behavior, or external network request is measured.
 * **Test Case 5B: Pre-Aborted Request**:
   * The test constructs an `AbortController`, aborts it before calling the provider adapter, then asserts that the adapter rejects.
   * It does not cancel a running stream while tokens are arriving, dispatch an Escape key event, or verify renderer message retention.
@@ -143,12 +132,11 @@ All 6 synthetic stages are represented by assertions in `tests/e2e-desktop-sessi
 
 ### Synthetic Stage 6: Direct SessionRepository Save, Screenshot Stripping & Delete
 
-* **Test Case 6A: Disk Persistence Defense-in-Depth**:
-  * Session record saved to disk via `SessionRepository.saveSession()`.
-  * Saved JSON inspected on disk:
-    * Message text, timestamps, roles, and citations preserved.
-    * **`screenshot` field stripped completely** (`msg.screenshot === undefined`).
-    * Disk file size: **4.2 KB** (vs >2.1 MB if screenshots remained unstripped).
+* **Test Case 6A: Direct SessionRepository Persistence**:
+  * A synthetic session record is saved and read back through `SessionRepository`.
+  * The test checks that the session title and message count are present.
+  * The on-disk JSON is checked to ensure the test screenshot's base64 payload is absent.
+  * The test does not benchmark file size or verify the full application state-purge workflow.
 * **Test Case 6B: Direct Session Deletion**:
   * The test calls `SessionRepository.deleteSession()` directly and verifies that the specific test JSON file is removed.
   * It does not invoke the Dashboard, the `purge-all-data` IPC handler, clear credentials, or verify a full application data purge.
