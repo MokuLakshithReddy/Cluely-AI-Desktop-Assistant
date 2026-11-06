@@ -126,8 +126,8 @@ md += `${smokeMark} Verifies graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], 
 md += `${smokeMark} Confirms [E2E_COMPLETE] and a normal exit (code 0, signal null)\n`;
 md += `⚠ Physical microphone, system-audio loopback, active-display capture, and live provider networking remain manual/device-dependent tests\n`;
 md += `\`\`\`\n`;
-if (!smokePassed && (smokeStdout || smokeStderr)) {
-  md += `\nSmoke runner output:\n\n\`\`\`text\n${(smokeStdout + '\n' + smokeStderr).slice(-6000)}\n\`\`\`\n`;
+if (!smokePassed && (smokeStdout || smokeStderr || smokeResult.error)) {
+  md += `\nSmoke runner output:\n\n\`\`\`text\n${(smokeStdout + '\n' + smokeStderr + '\n' + (smokeResult.error?.message || '')).slice(-6000)}\n\`\`\`\n`;
 }
 
 
