@@ -2,7 +2,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Release%20v1.0.1)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1)
-[![Tests Passing](https://img.shields.io/badge/Tests-89%2F89%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-91%2F91%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -278,7 +278,7 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ## 6. Automated Verification & Test Suites (91/91 Passing)
 
-The repository features a comprehensive automated verification suite consisting of **89 automated tests** across 14 test files (13 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
+The repository features **91 automated checks** across 15 test files (14 Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **100% pass rate**:
 
 | Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |
 |---|---|:---:|:---:|:---:|
@@ -297,7 +297,7 @@ The repository features a comprehensive automated verification suite consisting 
 | [`session-archive.test.ts`](app/tests/session-archive.test.ts) | Multi-Session Persistence, Path Traversal Containment & 5MB Limit | 7 | 7 | **PASSED** |
 | [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort | 5 | 5 | **PASSED** |
 | [`electron-smoke.cjs`](app/tests/electron-smoke.cjs) | Electron Dashboard UI, preload bridge, IPC persistence & clean shutdown | 1 | 1 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **89** | **89** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **91** | **91** | **100% PASS** |
 
 > [!NOTE]
 > * **Desktop E2E Scope**: [`docs/testing/E2E_VERIFICATION_REPORT.md`](docs/testing/E2E_VERIFICATION_REPORT.md) distinguishes synthetic pipeline integration from the Electron Dashboard/preload/IPC smoke flow. Physical microphone, system-loopback and active-display capture still require manual device-backed verification.
