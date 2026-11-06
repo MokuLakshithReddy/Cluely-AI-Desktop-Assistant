@@ -136,7 +136,8 @@ console.log(`Successfully generated verified test report at: ${resultsPath}`);
 // 4. Synchronize the README suite rows and summaries from the real test data.
 const readmePath = path.join(repoRoot, 'README.md');
 if (fs.existsSync(readmePath)) {
-  let readme = fs.readFileSync(readmePath, 'utf8');
+  // Windows checkouts may use CRLF; normalize before parsing Markdown anchors.
+  let readme = fs.readFileSync(readmePath, 'utf8').replace(/\r\n/g, '\n');
   const heading = '| Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |';
   const headingStart = readme.indexOf(heading);
   const firstBreak = headingStart >= 0 ? readme.indexOf('\n', headingStart) : -1;
@@ -205,7 +206,8 @@ if (fs.existsSync(readmePath)) {
 // 5. Synchronize the production-readiness counts and suite breakdown.
 const prodDocPath = path.join(repoRoot, 'docs', 'production', 'PRODUCTION_READINESS.md');
 if (fs.existsSync(prodDocPath)) {
-  let prodDoc = fs.readFileSync(prodDocPath, 'utf8');
+  // Normalize line endings so row parsing is consistent on Windows and Unix runners.
+  let prodDoc = fs.readFileSync(prodDocPath, 'utf8').replace(/\r\n/g, '\n');
 
   prodDoc = replaceRequired(
     prodDoc,
