@@ -139,29 +139,60 @@ async function runDesktopE2E({ windowCoordinator }) {
       }],
     };
 
-    const sessionWorkflow = async function (value) {
+    const sessionWorkflow = async function (value, canStoreCredentials) {
       const bridge = window.desktopBridge;
       await bridge.saveSessionRecord(value);
       const sessions = await bridge.listPastSessions();
       const loaded = await bridge.getPastSession(value.id);
       const deleted = await bridge.deletePastSession(value.id);
       const sessionsAfterDelete = await bridge.listPastSessions();
+
+      // Re-seed one archived record and (when OS secure storage is available) one
+      // encrypted provider credential so the real desktop purge path is exercised.
+      await bridge.saveSessionRecord(value);
+      let credentialSeeded = false;
+      if (canStoreCredentials) {
+        await bridge.saveApiKey('openai', 'e2e-invalid-test-openai-key');
+        credentialSeeded = true;
+      }
+
+      const purgeResult = await bridge.purgeAllData();
+      const keysAfterPurge = await bridge.getHasApiKeys();
+      const sessionsAfterPurge = await bridge.listPastSessions();
+      const stateAfterPurge = await bridge.getSharedState();
+
       return {
         listed: sessions.some(item => item.id === value.id),
         loadedTitle: loaded && loaded.title,
         loadedMessage: loaded && loaded.messages && loaded.messages[0] && loaded.messages[0].content,
         deleted,
         remainsAfterDelete: sessionsAfterDelete.some(item => item.id === value.id),
+        purgeResult,
+        sessionsAfterPurge: sessionsAfterPurge.length,
+        configuredProvidersAfterPurge: Object.entries(keysAfterPurge)
+          .filter(([, configured]) => configured)
+          .map(([provider]) => provider),
+        activeSessionAfterPurge: stateAfterPurge.session,
+        knowledgeDocsAfterPurge: stateAfterPurge.knowledgeDocs.length,
+        credentialSeeded,
       };
     };
-    const sessionResult = await execute(dashboard, sessionWorkflow, record);
+    const sessionResult = await execute(dashboard, sessionWorkflow, [record, vaultAvailable]);
 
     assert.equal(sessionResult.listed, true, 'Saved session should appear in the session list');
     assert.equal(sessionResult.loadedTitle, record.title, 'Saved session should load through IPC');
     assert.equal(sessionResult.loadedMessage, record.messages[0].content, 'Saved message should survive persistence');
     assert.equal(sessionResult.deleted, true, 'Session delete IPC should return true');
     assert.equal(sessionResult.remainsAfterDelete, false, 'Deleted session should disappear from the session list');
+    assert.equal(sessionResult.purgeResult, true, 'Native purge-all-data IPC should resolve successfully');
+    assert.equal(sessionResult.sessionsAfterPurge, 0, 'Native purge should remove archived session records');
+    assert.deepEqual(sessionResult.configuredProvidersAfterPurge, [], 'Native purge should remove every saved provider credential');
+    assert.equal(sessionResult.activeSessionAfterPurge, null, 'Native purge should clear the active session');
+    assert.equal(sessionResult.knowledgeDocsAfterPurge, 0, 'Native purge should clear knowledge documents');
     evidence.push('Preload bridge exercised session save/list/get/delete against the disk-backed repository');
+    evidence.push(sessionResult.credentialSeeded
+      ? 'Native purge-all-data removed archived sessions, reset active state, and deleted the encrypted credential vault'
+      : 'Native purge-all-data removed archived sessions and reset active state; credential storage was unavailable on this runner');
 
     console.log('[E2E_EVIDENCE]', JSON.stringify(evidence));
   } finally {
