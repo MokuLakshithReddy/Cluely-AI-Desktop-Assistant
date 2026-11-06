@@ -93,61 +93,30 @@ All 6 synthetic stages are represented by assertions in `tests/e2e-desktop-sessi
 
 ---
 
-### Stage 3: User Document Ingestion & RAG Retrieval
+### Synthetic Stage 3: Knowledge-Document Chunking & Retrieval Helper
 
-* **Input**: Technical specification document ingested into local RAG engine:
+* **Input**: A synthetic Markdown string created inside the test, titled `Cache Architecture Policy` (not an uploaded PDF or a real user document).
+* **Test content**:
   ```text
-  Title: Redis-Cluster-Failover-Spec.pdf
-  Content:
-  Section 3.1: Failover Quorum Requirements
-  In our three-datacenter configuration, the Redis Sentinel cluster requires a strict majority quorum of N/2 + 1 nodes (minimum 3 out of 5 sentinels) to authorize automatic master promotion.
-
-  Section 3.2: Network Partition Re-joining and Split-Brain Recovery
-  When a partitioned master node rejoins the cluster, the Envoy circuit breaker enters half-open recovery state. All pending writes to the demoted master are aborted and rolled back against the canonical WAL.
+  Edge invalidation SLA: all multi-region edge nodes must complete invalidation within 250 milliseconds.
+  Stale-while-revalidate grace period: 60 seconds for anonymous reads.
+  Maximum vector-search chunk threshold: 4096 bytes with 20 percent stride overlap.
   ```
-* **Search Query**: `"failover quorum requirements and circuit breaker partition re-joining"`
-* **Pipeline Action**: In-memory tokenization, TF-IDF vectorization, cosine similarity ranking, passage chunking with 80-token overlap.
-* **Retrieved Grounding Passages**:
-  ```text
-  [Passage 1] [Source: Redis-Cluster-Failover-Spec.pdf]
-  In our three-datacenter configuration, the Redis Sentinel cluster requires a strict majority quorum of N/2 + 1 nodes (minimum 3 out of 5 sentinels) to authorize automatic master promotion.
-
-  [Passage 2] [Source: Redis-Cluster-Failover-Spec.pdf]
-  When a partitioned master node rejoins the cluster, the Envoy circuit breaker enters half-open recovery state. All pending writes to the demoted master are aborted and rolled back against the canonical WAL.
-  ```
-* **Status**: **PASSED** — Recall: 100%, Precision: 100%, exact source attribution tagged.
+* **Search Query**: `"What is our edge cache invalidation SLA?"`
+* **Test behavior**: Calls `createKnowledgeDoc()` and `retrieveRelevantPassages()` directly, then asserts that the returned passage includes the 250-millisecond SLA.
+* **Status**: **PASSED** — Synthetic document chunking and retrieval assertions pass. No PDF upload UI or end-to-end ingestion workflow is exercised.
 
 ---
 
-### Stage 4: Multimodal Context Prompt Fusion
+### Synthetic Stage 4: Transcript-and-Knowledge Prompt Assembly
 
 * **Synthesizer Input**:
-  * Mode: `Copilot` (Concise, high-speed general productivity guidance).
-  * System Prompt: Mode operational boundary contract.
-  * Spoken Context: 3 timestamped transcript segments from Stage 1.
-  * Visual Context: Base64 thumbnail string from Stage 2.
-  * Knowledge Context: 2 retrieved passages from Stage 3.
-  * User Query: `"Summarize the failover quorum and re-join behavior for the team lead."`
-* **Synthesized Prompt**:
-  ```text
-  [System Instruction]
-  You are Cluely Copilot, a helpful desktop AI assistant... Mode: Copilot.
-
-  [Spoken Conversation Context]
-  [00:00:02.100] [Speaker]: "We are finalizing the distributed caching architecture..."
-  [00:00:07.450] [You]: "Understood. I have our Redis failover runbook loaded..."
-  [00:00:12.800] [Speaker]: "Can you verify our specific failover quorum requirement..."
-
-  [Retrieved Reference Documents]
-  [Source: Redis-Cluster-Failover-Spec.pdf]
-  In our three-datacenter configuration, the Redis Sentinel cluster requires a strict majority quorum of N/2 + 1 nodes...
-  [Source: Redis-Cluster-Failover-Spec.pdf]
-  When a partitioned master node rejoins the cluster, the Envoy circuit breaker enters half-open recovery state...
-
-  [User Request]
-  Summarize the failover quorum and re-join behavior for the team lead.
-  ```
-* **Status**: **PASSED** — All 5 context sources unified into a single structured prompt payload without delimiter collisions.
+  * Mode: `Copilot`.
+  * Transcript: two hard-coded entries, one for a remote speaker and one for the local user.
+  * Knowledge Context: one manually supplied string containing the synthetic 250-millisecond cache invalidation SLA.
+  * User Query: `"Summarize our edge SLA and chunk threshold for the team."`
+  * **No screenshot or image is passed to this prompt-building test.**
+* **Status**: **PASSED** — The test asserts that the constructed prompt contains the speaker labels, reference passage, and user request. It does not prove live audio/screen context fusion.
 
 ---
 
@@ -193,12 +162,12 @@ The test suite executed with all 6 tests passing:
 
 | Test Name | Focus Area | Exec Time | Result |
 |---|---|:---:|:---:|
-| `Stage 1: Dual-stream consented audio capture, VAD resampling & crosstalk gating` | Audio Pipeline & VAD | 24ms | **PASSED** |
-| `Stage 2: Active screen capture, display matching & max-1920 proportional downscaling` | Vision Processing | 12ms | **PASSED** |
-| `Stage 3: Knowledge base document ingestion, chunking & RAG retrieval with citations` | Retrieval (RAG) | 16ms | **PASSED** |
-| `Stage 4: Unified multimodal prompt synthesis across audio, screen, and RAG context` | Context Fusion | 14ms | **PASSED** |
-| `Stage 5: Streaming AI generation, citation grounding, mid-stream abort & 404 healing` | LLM Resilience | 31ms | **PASSED** |
-| `Stage 6: Zero-leakage session archive, screenshot stripping on disk & clean purge` | Privacy & Purge | 22ms | **PASSED** |
+| `Synthetic Stage 1: Audio resampling, VAD metrics and test-only crosstalk condition` | Audio helper calculations | 24ms | **PASSED** |
+| `Synthetic Stage 2: Display-dimension scaling helper` | Pure scaling calculation | 12ms | **PASSED** |
+| `Synthetic Stage 3: Knowledge-document chunking and retrieval helper` | Synthetic RAG data | 16ms | **PASSED** |
+| `Synthetic Stage 4: Transcript-and-knowledge prompt assembly` | Prompt construction | 14ms | **PASSED** |
+| `Synthetic Stage 5: Mocked SSE parsing and pre-aborted request` | Mocked provider adapter | 31ms | **PASSED** |
+| `Synthetic Stage 6: Direct session save, screenshot stripping and delete` | SessionRepository helper | 22ms | **PASSED** |
 | **Total** | **Synthetic Pipeline Integration Scenarios** | **119ms** | **100% PASS** |
 
 ---
