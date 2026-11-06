@@ -1,11 +1,11 @@
 # Test Execution Log & Results
 
-**Target Environment**: Windows 11 x64  
-**Node Version**: v22.22.1
-**Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  
-**Test Status**: 89/89 Passing (100% Pass Rate)  
+**Target Environment**: Windows Server 2025 x64 (GitHub Actions)  
+**Node Version**: v20.20.2 (npm 10.8.2)
+**Test Framework**: Vitest v3.2.7 & Electron UI/IPC E2E Smoke Runner  
+**Test Status**: 91/91 Passing (100% Pass Rate: 90 Vitest tests + 1 Electron UI/IPC E2E smoke)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Verification Date**: 2026-10-31
+**Verification Date**: 2026-11-07
 
 ---
 
@@ -19,15 +19,16 @@
 | `audio-vad.test.ts` | Audio Processing, VAD & Crosstalk Subsystem | 6 | 6 | 0 | **PASSED** |
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 7 | 7 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
-| `e2e-desktop-session.test.ts` | Real Desktop Session End-to-End Workflow & Verification | 6 | 6 | 0 | **PASSED** |
+| `e2e-desktop-session.test.ts` | Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs) | 6 | 6 | 0 | **PASSED** |
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 22 | 22 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 6 | 6 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 6 | 6 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 7 | 7 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
-| `electron-smoke.cjs` | Native Electron Desktop Runtime Smoke Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **89** | **89** | **0** | **100% PASS** |
+| `state-broadcast.test.ts` | Shared-State Renderer Broadcast to Control/Chat/Dashboard | 2 | 2 | 0 | **PASSED** |
+| `electron-smoke.cjs` | Electron Dashboard UI, Preload Bridge, IPC & Session Persistence E2E | 1 | 1 | 0 | **PASSED** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **91** | **91** | **0** | **100% PASS** |
 
 ---
 
@@ -88,14 +89,14 @@
 ✓ handles leading slash with query parameters
 ```
 
-### 7. Real Desktop Session End-to-End Workflow & Verification (`tests/e2e-desktop-session.test.ts`)
+### 7. Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs) (`tests/e2e-desktop-session.test.ts`)
 ```text
-✓ Stage 1: Captures dual-stream consented meeting audio with VAD and crosstalk suppression
-✓ Stage 2: Captures active display bounds with proportional aspect ratio downscaling
-✓ Stage 3: Ingests user knowledge document and retrieves relevant SLA context via cosine RAG
-✓ Stage 4: Synthesizes multimodal context prompt from spoken transcript, screen, and RAG knowledge
-✓ Stage 5: Streams grounded AI response, verifies citation, and tests mid-stream cancellation
-✓ Stage 6: Verifies zero-leakage session persistence, screenshot stripping, and session deletion
+✓ Stage 1: Checks synthetic audio resampling, VAD metrics, test-only crosstalk zeroing, and WAV header
+✓ Stage 2: Checks proportional scaling calculations for synthetic display bounds
+✓ Stage 3: Creates an in-memory Markdown fixture and retrieves a matching knowledge passage
+✓ Stage 4: Builds a prompt from manually supplied transcript and knowledge context
+✓ Stage 5: Parses mocked Gemini SSE and rejects a pre-aborted request
+✓ Stage 6: Saves a synthetic session, strips screenshot data, and deletes the repository record
 ```
 
 ### 8. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
@@ -173,11 +174,21 @@
 ✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
-### 14. Native Electron Desktop Runtime Smoke Verification (`tests/electron-smoke.cjs`)
+### 14. Shared-State Renderer Broadcast (`tests/state-broadcast.test.ts`)
 ```text
-✓ Spawns electron binary with stripped ELECTRON_RUN_AS_NODE
-✓ Loads control window, chat panel, and dashboard without uncaught exceptions
-✓ Verified explicit [APP_READY] signal emitted by windowCoordinator
-✓ Verifies clean graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])
-✓ Cleanly exits with code 0 and null OS termination signal
+✓ updates control, chat, and Dashboard windows
+✓ skips missing or destroyed windows without preventing other updates
+```
+
+### 15. Electron Dashboard UI/IPC E2E Smoke (`tests/electron-smoke.cjs` + `tests/electron-e2e.cjs`)
+```text
+✓ Loads the actual Dashboard renderer and credential form
+✓ Submits the rendered Gemini credential form and verifies the visible Stored in Vault state through IPC
+✓ Clicks the rendered Delete action and verifies Not Configured plus the vault's key-presence state
+✓ Exercises preload bridge session save/list/get/delete against the disk-backed repository
+✓ Uses an isolated temporary application-data profile for E2E records and credentials
+✓ Verifies [APP_READY], [E2E_COMPLETE], [APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], and [APP_WILL_QUIT]
+✓ Exits with code 0 and no destroyed-window content-protection warning
+
+Hardware-dependent microphone, system loopback, active-display screenshot capture, live-provider networking, meeting-app compatibility, and packaged installer behavior are not part of this automated smoke test.
 ```
