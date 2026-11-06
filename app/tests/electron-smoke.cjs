@@ -96,15 +96,6 @@ child.stdout.on('data', data => {
     requestGracefulShutdown();
   }
 
-  if (str.includes('[APP_WILL_QUIT]')) {
-    // Graceful quit completed. On Windows, helper workers may hold stdio handles open briefly.
-    // Ensure clean process detachment after graceful hooks have fully emitted.
-    setTimeout(() => {
-      try {
-        child.kill();
-      } catch {}
-    }, 500);
-  }
 });
 
 child.stderr.on('data', data => {
@@ -122,7 +113,8 @@ const readinessTimeoutHandle = setTimeout(() => {
   process.exit(1);
 }, 45000);
 
-child.on('exit', (code, signal) => {
+// Wait for stdio to close too, so all lifecycle markers are captured before validation.
+child.on('close', (code, signal) => {
   clearTimeout(readinessTimeoutHandle);
   if (shutdownTimeoutHandle) clearTimeout(shutdownTimeoutHandle);
 
@@ -163,9 +155,10 @@ child.on('exit', (code, signal) => {
     process.exit(1);
   }
 
-  // 4. Verify clean exit: Graceful lifecycle verified
-  if (code !== 0 && signal !== 'SIGTERM') {
-    console.error(`Smoke test failure: Unexpected termination signal: ${signal}, code: ${code}!`);
+  // 4. Require a genuine normal process exit. A forced signal is never a passing result,
+  // even if the application emitted its graceful lifecycle markers beforehand.
+  if (code !== 0 || signal !== null) {
+    console.error(`Smoke test failure: Electron did not exit normally (signal: ${signal}, code: ${code}).`);
     process.exit(1);
   }
 

@@ -80,6 +80,33 @@ describe('Credential Vault & Secret Protection Subsystem', () => {
     expect(status.anthropic).toBe(false);
   });
 
+  it('removes the complete encrypted vault and all provider credentials', async () => {
+    await vault.setKey('gemini', 'e2e-gemini-test-key');
+    await vault.setKey('openai', 'e2e-openai-test-key');
+    await vault.setKey('groq', 'e2e-groq-test-key');
+
+    expect(fs.existsSync(testVaultFile)).toBe(true);
+    expect((await vault.hasKeys()).gemini).toBe(true);
+    expect((await vault.hasKeys()).openai).toBe(true);
+
+    await vault.deleteAllKeys();
+
+    expect(fs.existsSync(testVaultFile)).toBe(false);
+    expect(await vault.getKey('gemini')).toBeNull();
+    expect(await vault.getKey('openai')).toBeNull();
+    expect(await vault.getKey('groq')).toBeNull();
+    expect(await vault.hasKeys()).toEqual({
+      gemini: false,
+      openai: false,
+      anthropic: false,
+      groq: false,
+      ollama: false,
+    });
+
+    // Deleting an already absent vault is intentionally idempotent.
+    await expect(vault.deleteAllKeys()).resolves.toBeUndefined();
+  });
+
   it('rejects empty or non-string key and provider inputs', async () => {
     await expect(vault.setKey('', 'valid_key')).rejects.toThrow(/Invalid provider/);
     await expect(vault.setKey('gemini', '')).rejects.toThrow(/Invalid API key/);

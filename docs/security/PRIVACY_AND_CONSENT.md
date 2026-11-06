@@ -105,11 +105,11 @@ Cluely Copilot provides a user toggle for Display Protection / Overlay Affinity 
 
 ## 6. Complete Data Sovereignty: One-Click Data Purge
 
-Users retain total ownership and control over their stored data. At any time, navigating to **Dashboard → Session Manager** or calling the IPC endpoint `purge-all-data` triggers an exhaustive disk and memory wipe:
+Users retain total ownership and control over their stored data. At any time, navigating to **Dashboard → Session Manager** or calling the IPC endpoint `purge-all-data` triggers an application-level purge of the data stores owned by Cluely Copilot:
 
 1. **Session Archives**: All `.json` session history files in `userData/sessions/` are deleted from disk.
 2. **Knowledge Documents**: In-memory document chunk indices, TF-IDF vector tables, and parsed PDF tokens are deallocated.
 3. **Active State**: In-memory transcript items and message histories are reset to empty arrays (`[]`).
-4. **Credential Purge**: User-specified option to clear all hardware-stored DPAPI vault keys.
-5. **No Residual State**: The application returns to a clean-install state with zero residual logs or cache artifacts.
+4. **Credential Vault File**: The encrypted `userData/credentials.vault` file is deleted, removing all saved provider credentials from the application profile. Shared state is then synchronized so provider-presence flags are false.
+5. **Deletion Boundary**: This is logical application-level deletion. The application does not guarantee forensic or physical erasure of old storage blocks on SSDs, filesystem snapshots, backups, or unrelated operating-system logs and caches.
 

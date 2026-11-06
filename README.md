@@ -268,7 +268,7 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ### 🗑️ Transient Vision Grounding & Zero-Leakage Purge
 * **Screenshot Stripping on Disk**: In `session-repository.ts`, base64 screenshot blobs are stripped prior to saving session files to disk, preventing disk bloat (~4 KB files) and visual leakage.
-* **One-Click Comprehensive Purge**: Users can permanently shred all session histories, knowledge embeddings, and credentials in a single click.
+* **One-Click Data Purge**: Removes archived session files and the encrypted `credentials.vault` file from the app's user-data profile, resets active session/knowledge state, and aborts active AI requests. This is application-level deletion, not a guarantee of forensic erasure from SSD or filesystem remnants.
 
 ### 🕵️ Screen Sharing Display Protection (`setContentProtection`)
 * **Operating Mechanism**: `win.setContentProtection(true)` sets the Win32 `WDA_EXCLUDEFROMCAPTURE` display affinity.
@@ -305,8 +305,8 @@ The repository features **91 automated checks** across 15 test files (14 Vitest 
 > * **Windows Authenticode & Signature Verification**: For code-signing thumbprints, PowerShell verification commands, and SmartScreen guidance, see [`docs/production/RELEASE_VERIFICATION.md`](docs/production/RELEASE_VERIFICATION.md).
 
 ### Execution Environments
-* **Local Verification Environment**: Windows 11 Pro x64 (Build 26200), Node.js v24.19.0, npm v11.x, Vitest v3.2.7.
-* **Hosted CI Environment**: Windows Server 2022 (`windows-latest`), Node.js v20.x, npm v10.x (`npm ci`), automated GitHub Actions workflow (`.github/workflows/ci.yml`).
+* **Local Verification Environment**: Developer workstation; the generated test report records the exact OS/kernel, architecture, and Node.js version for each run.
+* **Hosted CI Environment**: GitHub-hosted Windows runner selected by `windows-latest`; the runner image can change, so consult the generated test report and workflow logs for the exact environment.
 
 ---
 
