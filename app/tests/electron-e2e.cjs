@@ -174,6 +174,7 @@ async function runDesktopE2E({ windowCoordinator }) {
           .map(([provider]) => provider),
         activeSessionAfterPurge: stateAfterPurge.session,
         knowledgeDocsAfterPurge: stateAfterPurge.knowledgeDocs.length,
+        providerFlagsAfterPurge: stateAfterPurge.hasApiKeys,
         credentialSeeded,
       };
     };
@@ -189,6 +190,11 @@ async function runDesktopE2E({ windowCoordinator }) {
     assert.deepEqual(sessionResult.configuredProvidersAfterPurge, [], 'Native purge should remove every saved provider credential');
     assert.equal(sessionResult.activeSessionAfterPurge, null, 'Native purge should clear the active session');
     assert.equal(sessionResult.knowledgeDocsAfterPurge, 0, 'Native purge should clear knowledge documents');
+    assert.deepEqual(
+      Object.values(sessionResult.providerFlagsAfterPurge),
+      [false, false, false, false, false],
+      'Native purge should clear all shared provider-presence flags'
+    );
     evidence.push('Preload bridge exercised session save/list/get/delete against the disk-backed repository');
     evidence.push(sessionResult.credentialSeeded
       ? 'Native purge-all-data removed archived sessions, reset active state, and deleted the encrypted credential vault'
