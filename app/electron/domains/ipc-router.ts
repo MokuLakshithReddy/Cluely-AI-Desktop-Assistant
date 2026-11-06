@@ -669,10 +669,24 @@ export class IpcRouter {
 
     ipcMain.handle('purge-all-data', async event => {
       this.validateOrigin(event);
+
+      // Stop active provider requests before removing credentials from the vault.
+      for (const controller of this.activeAiControllers.values()) {
+        controller.abort();
+      }
+      this.activeAiControllers.clear();
+
+      // Remove both persistent data stores. A failed deletion rejects the IPC call
+      // instead of reporting a successful purge with credentials still present.
+      await credentialVault.deleteAllKeys();
       await sessionRepository.purgeAll();
+      await stateManager.syncVaultKeys();
+
       stateManager.patchState({
         session: null,
         knowledgeDocs: [],
+        isRecording: false,
+        isGenerating: false,
       });
       return true;
     });
