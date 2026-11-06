@@ -217,7 +217,7 @@ if (fs.existsSync(prodDocPath)) {
   );
   prodDoc = replaceRequired(
     prodDoc,
-    /consists of \*\*\d+ automated checks\*\* across \d+ test files \([^)]*Electron UI\/preload\/IPC E2E smoke runner\)/,
+    /consists of \*\*\d+ automated checks\*\* across \d+ test files \([^)]*Electron UI(?:\/preload)?\/IPC E2E smoke runner\)/,
     `consists of **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner)`,
     'production readiness test count'
   );
