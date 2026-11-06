@@ -22,16 +22,16 @@
 To ensure strict separation of local development artifacts from continuous integration, tests are executed and tracked across two validated environments:
 
 ### Environment A: Local Verification Environment
-* **Operating System**: Windows 11 Pro x64 (Build 26200)
-* **Node.js Runtime**: v24.19.0
-* **Package Manager**: npm v11.x
-* **Test Runner**: Vitest v3.2.7 & Native Electron v34.2.0 Smoke Runner
-* **Scope**: Full test suite execution, live Electron coordinator initialization, interactive window coordinator, and local report generation (`npm run test:report`).
+* **Operating System**: Developer workstation; exact OS/kernel and architecture are recorded by the generated test report for each run.
+* **Node.js Runtime**: Recorded from the active `process.version` by the generated test report.
+* **Package Manager**: npm version is determined by the local installation and lockfile workflow.
+* **Test Runner**: Vitest JSON reporter and Electron UI/IPC E2E smoke runner.
+* **Scope**: Full test suite execution, Electron coordinator initialization, window lifecycle regression tests, and local report generation (`npm run test:report`).
 
 ### Environment B: Hosted Continuous Integration (CI)
-* **Runner Environment**: Windows Server 2022 (`windows-latest`) on GitHub Actions
-* **Node.js Runtime**: v20.x LTS
-* **Package Manager**: npm v10.x (clean install via `npm ci` enforcing lockfile integrity)
+* **Runner Environment**: GitHub-hosted Windows runner selected by `windows-latest`; the specific runner image can change over time.
+* **Node.js Runtime**: Set by the CI workflow; the exact version is captured in the generated test report and workflow logs.
+* **Package Manager**: Installed npm version used by the runner (clean install via `npm ci`, enforcing lockfile integrity).
 * **Workflow**: `.github/workflows/ci.yml`
 * **Automated Gates**:
   1. Strict dependency verification (`npm ci`)
