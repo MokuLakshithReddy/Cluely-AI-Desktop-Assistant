@@ -12,7 +12,7 @@
 | **Multimodal Intelligence** | Real-time streaming LLM reasoning | **Complete** | Active 2026 models (`gemini-3.6-flash`, `claude-sonnet-5-5`, `gpt-4o-mini`, `ollama`) with non-destructive token accumulation |
 | **Knowledge & RAG** | Chunking, search, grounded citation | **Complete** | In-memory TF-IDF and semantic chunk retriever with 500-token chunking and 80-token overlap |
 | **Security & Privacy** | IPC origin check, zero raw audio retention, encrypted vault | **Complete** | Strict URL parsing, sender frame validation, deep payload sanitization, OS-backed `safeStorage` vault, 5MB ceiling, screenshot stripping |
-| **Automated Verification** | All unit, integration, and runtime smoke tests passing | **Complete** | **89 automated tests passing (88 Vitest unit & integration tests + 1 native Electron smoke test) with 100% pass rate** |
+| **Automated Verification** | All unit, integration, and runtime smoke tests passing | **Complete** | **91 automated checks passing (90 Vitest tests + 1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate** |
 | **Packaging & Distribution** | Native Windows executable & unpackaged portable build | **Complete** | Packaged via `electron-builder` (`npm run pack` / `npm run dist:win`) producing `release/win-unpacked/Cluely Copilot.exe` |
 
 ---
@@ -35,17 +35,17 @@ To ensure strict separation of local development artifacts from continuous integ
 * **Workflow**: `.github/workflows/ci.yml`
 * **Automated Gates**:
   1. Strict dependency verification (`npm ci`)
-  2. Vitest unit and integration suite execution (`npm test` — 88 automated tests across 13 suites)
+  2. Vitest unit and integration suite execution (`npm test` — 90 automated tests across 14 suites)
   3. Production build compilation (`npm run build` — Vite + TypeScript Electron compiler)
-  4. Runtime Electron smoke test (`npm run smoke` — 1 runtime smoke test verifying clean code 0 shutdown)
-  5. Automated test report generation (`npm run test:report` — 89 total verified tests)
+  4. Electron UI/IPC E2E smoke (`npm run smoke` — Dashboard credential form, preload bridge, IPC session persistence, and clean shutdown)
+  5. Automated test report generation (`npm run test:report` — 91 total checks: 90 Vitest + 1 Electron E2E smoke)
   6. Build artifact archiving (`dist`, `dist-electron`)
 
 ---
 
 ## 3. Automated Test Suite Reconciliation
 
-The test suite consists of **89 verified automated tests** across 14 test files (13 Vitest suites + 1 Electron smoke runner), with zero failures:
+The test suite consists of **91 automated checks** across 15 test files (14 Vitest suites + 1 Electron UI/IPC E2E smoke runner), with zero failures when the CI workflow passes:
 
 ```text
 ============================== TEST EXECUTION BREAKDOWN ==============================
@@ -55,26 +55,27 @@ The test suite consists of **89 verified automated tests** across 14 test files 
 4.  tests/audio-vad.test.ts           6 passed (Audio Resampling, VAD, Crosstalk & RIFF WAV Encoding)
 5.  tests/credential-vault.test.ts    7 passed (Credential Vault, OS Keyring, Safe Storage & Error Propagation)
 6.  tests/dashboard-routing.test.ts   4 passed (Dashboard Hash Parsing & Sub-Tab Query Routing)
-7.  tests/e2e-desktop-session.test.ts 6 passed (Real Desktop Session E2E Workflow & Zero-Leakage Purge)
+7.  tests/e2e-desktop-session.test.ts 6 passed (Synthetic Pipeline Integration; mocked hardware/provider inputs)
 8.  tests/ipc-security.test.ts       22 passed (IPC Origin Guard, Sender URL Validation & Deep Payload Schema Checks)
 9.  tests/knowledge-rag.test.ts       6 passed (Knowledge Document Ingestion, PDF Token Parsing & TF-IDF Retrieval)
 10. tests/provider-models.test.ts     6 passed (2026 Model Routing, Diagnostic Errors & Multi-Turn History Serialization)
 11. tests/screen-capture.test.ts      5 passed (Display Thumbnail Scaling, Max-1920 Proportional Downscaling)
 12. tests/session-archive.test.ts     7 passed (Multi-Session Storage, Path Traversal Boundary Containment & 5MB Limit)
 13. tests/web-bridge.test.ts          5 passed (Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort)
+14. tests/state-broadcast.test.ts     2 passed (Shared State Fan-out to Control/Chat/Dashboard)
 --------------------------------------------------------------------------------------
-Subtotal (Vitest Test Suites):      88 passing unit & integration tests
-14. tests/electron-smoke.cjs          1 passed (Native Electron Runtime Smoke & Graceful Lifecycle Exit Code 0)
+Subtotal (Vitest Test Suites):      90 passing unit & integration tests
+15. tests/electron-smoke.cjs          1 passed (Electron Dashboard UI, Preload/IPC Persistence & Graceful Exit)
 ======================================================================================
-Grand Total:                        89 passing tests (100% Pass Rate)
+Grand Total:                        91 passing checks (100% Pass Rate)
 ======================================================================================
 ```
 
 ---
 
-## 4. Real-World User-Facing Operational Verification Matrix
+## 4. Hardware-Dependent Operational Verification Matrix
 
-Beyond automated unit testing and synthetic mocks, the following operational verification matrix documents the implementation, real-world testing procedures, and edge-case behavior across the 6 critical user-facing operational areas:
+The automated Electron E2E smoke covers real Dashboard UI, preload, IPC, and file-backed session persistence. The following microphone, system-loopback, live screenshot, provider-network, meeting-app, and packaged-installer scenarios are separate hardware/environment-dependent checks; they are not executed by the headless Electron smoke flow. Use the procedures below as a manual verification matrix and record environment-specific evidence when run:
 
 ```mermaid
 flowchart TD
@@ -194,4 +195,4 @@ flowchart TD
 - [x] **Automated CI Validation**: 62 automated tests passing in continuous integration.
 - [x] **Production Packaging**: Unpacked Windows executable (`Cluely Copilot.exe`) verified via `electron-builder`.
 
-**Production Status**: **READY FOR DEPLOYMENT**
+**Production Status**: **CORE AUTOMATED UI/IPC CHECKS PASS; HARDWARE/PROVIDER/RELEASE VALIDATION REMAINS ENVIRONMENT-DEPENDENT**
