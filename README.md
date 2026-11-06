@@ -268,7 +268,7 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ### 🗑️ Transient Vision Grounding & Zero-Leakage Purge
 * **Screenshot Stripping on Disk**: In `session-repository.ts`, base64 screenshot blobs are stripped prior to saving session files to disk, preventing disk bloat (~4 KB files) and visual leakage.
-* **One-Click Comprehensive Purge**: Users can permanently shred all session histories, knowledge embeddings, and credentials in a single click.
+* **One-Click Data Purge**: Removes archived session files and the encrypted `credentials.vault` file from the app's user-data profile, resets active session/knowledge state, and aborts active AI requests. This is application-level deletion, not a guarantee of forensic erasure from SSD or filesystem remnants.
 
 ### 🕵️ Screen Sharing Display Protection (`setContentProtection`)
 * **Operating Mechanism**: `win.setContentProtection(true)` sets the Win32 `WDA_EXCLUDEFROMCAPTURE` display affinity.
