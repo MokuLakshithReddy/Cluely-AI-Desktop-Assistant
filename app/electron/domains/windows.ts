@@ -7,16 +7,19 @@ export class WindowCoordinator {
   private controlWin: BrowserWindow | null = null;
   private chatWin: BrowserWindow | null = null;
   private dashboardWin: BrowserWindow | null = null;
+  private unsubscribeState?: () => void;
 
   public init() {
     this.createControlWindow();
     this.createChatWindow();
 
-    // Subscribe to state changes for content protection and visibility
-    stateManager.subscribe(state => {
-      this.updateStealthMode(state.isStealthMode);
-      this.syncVisibility(state.showChat, state.showDashboard);
-    });
+    // Reinitialization after the last macOS window closes must not stack listeners.
+    if (!this.unsubscribeState) {
+      this.unsubscribeState = stateManager.subscribe(state => {
+        this.updateStealthMode(state.isStealthMode);
+        this.syncVisibility(state.showChat, state.showDashboard);
+      });
+    }
   }
 
   private getPreloadPath(): string {
@@ -74,6 +77,14 @@ export class WindowCoordinator {
 
     this.attachSecurityGuards(this.controlWin);
 
+    const controlWindow = this.controlWin;
+    controlWindow?.on('closed', () => {
+      if (this.controlWin === controlWindow) {
+        this.controlWin = null;
+      }
+      stateManager.patchState({ isControlWindowLoaded: false });
+    });
+
     this.controlWin.loadURL(this.getRendererUrl('control'));
     this.controlWin.once('ready-to-show', () => {
       this.controlWin?.show();
@@ -130,6 +141,14 @@ export class WindowCoordinator {
     });
 
     this.attachSecurityGuards(this.chatWin);
+
+    const chatWindow = this.chatWin;
+    chatWindow?.on('closed', () => {
+      if (this.chatWin === chatWindow) {
+        this.chatWin = null;
+      }
+      stateManager.patchState({ isChatWindowLoaded: false });
+    });
 
     this.chatWin.loadURL(this.getRendererUrl('chat'));
     this.chatWin.once('ready-to-show', () => {
@@ -259,14 +278,26 @@ export class WindowCoordinator {
   }
 
   public getControlWindow(): BrowserWindow | null {
+    if (!this.controlWin || this.controlWin.isDestroyed()) {
+      this.controlWin = null;
+      return null;
+    }
     return this.controlWin;
   }
 
   public getChatWindow(): BrowserWindow | null {
+    if (!this.chatWin || this.chatWin.isDestroyed()) {
+      this.chatWin = null;
+      return null;
+    }
     return this.chatWin;
   }
 
   public getDashboardWindow(): BrowserWindow | null {
+    if (!this.dashboardWin || this.dashboardWin.isDestroyed()) {
+      this.dashboardWin = null;
+      return null;
+    }
     return this.dashboardWin;
   }
 }
