@@ -23,8 +23,8 @@ async function waitFor(check, description, timeoutMs = 15000) {
 
 async function execute(win, fn, args) {
   if (!win || win.isDestroyed()) throw new Error('Dashboard window was destroyed during E2E test');
-  const serializedArgs = args === undefined ? '' : JSON.stringify(args);
-  return win.webContents.executeJavaScript('(' + fn.toString() + ')(' + serializedArgs + ')');
+  const serializedArgs = args === undefined ? [] : (Array.isArray(args) ? args : [args]);
+  return win.webContents.executeJavaScript('(' + fn.toString() + ').apply(null,' + JSON.stringify(serializedArgs) + ')');
 }
 
 async function runDesktopE2E({ windowCoordinator }) {

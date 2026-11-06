@@ -7,7 +7,7 @@ import { SessionRecord, TranscriptItem } from '../src/lib/types';
 import { SessionRepository } from '../electron/services/session-repository';
 import fs from 'fs';
 
-describe('Real Desktop Session End-to-End Workflow & Verification', () => {
+describe('Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs)', () => {
   const sessionRepo = new SessionRepository();
   const testSessionId = 'consented-e2e-session-001';
 
