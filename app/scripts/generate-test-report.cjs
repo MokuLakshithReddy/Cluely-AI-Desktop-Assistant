@@ -7,6 +7,14 @@ const appDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(appDir, '..');
 const resultsPath = path.join(repoRoot, 'docs', 'testing', 'TEST_RESULTS.md');
 
+function replaceRequired(content, pattern, replacement, label) {
+  const updated = content.replace(pattern, replacement);
+  if (updated === content) {
+    throw new Error(`Could not synchronize ${label}; its expected source text was not found.`);
+  }
+  return updated;
+}
+
 console.log('Generating automated test evidence report from real test runners...');
 
 // 1. Run Vitest with JSON reporter
@@ -166,21 +174,29 @@ if (fs.existsSync(readmePath)) {
   generatedRows.push(`| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`);
 
   readme = readme.slice(0, alignBreak + 1) + generatedRows.join('\n') + readme.slice(tableEnd);
-  readme = readme.replace(
+  readme = replaceRequired(
+    readme,
     /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/,
-    `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`
+    `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`,
+    'README test heading'
   );
-  readme = readme.replace(
+  readme = replaceRequired(
+    readme,
     /The repository features \*\*\d+ automated checks\*\* across \d+ test files \([^)]*\), with a verified \*\*\d+% pass rate\*\*:/,
-    `The repository features **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **${passRate}% pass rate**:`
+    `The repository features **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **${passRate}% pass rate**:`,
+    'README test summary'
   );
-  readme = readme.replace(
+  readme = replaceRequired(
+    readme,
     /# Run the \d+ Vitest unit & integration tests/,
-    `# Run the ${totalUnitTests} Vitest unit & integration tests`
+    `# Run the ${totalUnitTests} Vitest unit & integration tests`,
+    'README Vitest command count'
   );
-  readme = readme.replace(
-    /# Generate the automated test results markdown report \(\d+ total verified tests\)/,
-    `# Generate the automated test results markdown report (${grandTotalTests} total verified checks)`
+  readme = replaceRequired(
+    readme,
+    /# Generate the automated test results markdown report \(\d+ total verified (?:tests|checks)\)/,
+    `# Generate the automated test results markdown report (${grandTotalTests} total verified checks)`,
+    'README report command count'
   );
 
   fs.writeFileSync(readmePath, readme, 'utf8');
@@ -192,21 +208,29 @@ const prodDocPath = path.join(repoRoot, 'docs', 'production', 'PRODUCTION_READIN
 if (fs.existsSync(prodDocPath)) {
   let prodDoc = fs.readFileSync(prodDocPath, 'utf8');
 
-  prodDoc = prodDoc.replace(
+  prodDoc = replaceRequired(
+    prodDoc,
     /\*\*(?:\d+ automated checks passing \(\d+ Vitest tests \+ 1 Electron UI\/preload\/IPC E2E smoke test\)|\d+\/\d+ automated checks passing \(\d+\/\d+ Vitest tests \+ \d+\/1 Electron UI\/preload\/IPC E2E smoke test\)) with \d+% pass rate\*\*/,
-    `**${grandPassedTests}/${grandTotalTests} automated checks passing (${passedUnitTests}/${totalUnitTests} Vitest tests + ${smokePassed ? 1 : 0}/1 Electron UI/preload/IPC E2E smoke test) with ${passRate}% pass rate**`
+    `**${grandPassedTests}/${grandTotalTests} automated checks passing (${passedUnitTests}/${totalUnitTests} Vitest tests + ${smokePassed ? 1 : 0}/1 Electron UI/preload/IPC E2E smoke test) with ${passRate}% pass rate**`,
+    'production readiness summary'
   );
-  prodDoc = prodDoc.replace(
+  prodDoc = replaceRequired(
+    prodDoc,
     /consists of \*\*\d+ automated checks\*\* across \d+ test files \([^)]*Electron UI\/preload\/IPC E2E smoke runner\)/,
-    `consists of **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner)`
+    `consists of **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner)`,
+    'production readiness test count'
   );
-  prodDoc = prodDoc.replace(
+  prodDoc = replaceRequired(
+    prodDoc,
     /npm test.*?— \d+ automated tests across \d+ suites/,
-    `npm test — ${totalUnitTests} automated tests across ${totalSuites} suites`
+    `npm test — ${totalUnitTests} automated tests across ${totalSuites} suites`,
+    'production readiness Vitest command count'
   );
-  prodDoc = prodDoc.replace(
+  prodDoc = replaceRequired(
+    prodDoc,
     /npm run test:report.*?— \d+ total checks: \d+ Vitest \+ 1 Electron E2E smoke/,
-    `npm run test:report — ${grandTotalTests} total checks: ${totalUnitTests} Vitest + 1 Electron E2E smoke`
+    `npm run test:report — ${grandTotalTests} total checks: ${totalUnitTests} Vitest + 1 Electron E2E smoke`,
+    'production readiness report command count'
   );
 
   const breakdownMarker = '============================== TEST EXECUTION BREAKDOWN ==============================';
