@@ -113,7 +113,8 @@ const readinessTimeoutHandle = setTimeout(() => {
   process.exit(1);
 }, 45000);
 
-child.on('exit', (code, signal) => {
+// Wait for stdio to close too, so all lifecycle markers are captured before validation.
+child.on('close', (code, signal) => {
   clearTimeout(readinessTimeoutHandle);
   if (shutdownTimeoutHandle) clearTimeout(shutdownTimeoutHandle);
 
