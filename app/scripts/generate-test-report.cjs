@@ -117,10 +117,11 @@ md += `${smokeMark} Exercises session save/list/get/delete and archive purge aga
 md += `${smokeMark} Verifies graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])\n`;
 md += `${smokeMark} Confirms [E2E_COMPLETE] and a normal exit (code 0, signal null)\n`;
 md += `⚠ Physical microphone, system-audio loopback, active-display capture, and live provider networking remain manual/device-dependent tests\n`;
+md += `\`\`\`\n`;
 if (!smokePassed && (smokeStdout || smokeStderr)) {
   md += `\nSmoke runner output:\n\n\`\`\`text\n${(smokeStdout + '\n' + smokeStderr).slice(-6000)}\n\`\`\`\n`;
 }
-md += `\`\`\`\n`;
+
 
 fs.writeFileSync(resultsPath, md, 'utf8');
 console.log(`Successfully generated verified test report at: ${resultsPath}`);
@@ -192,8 +193,8 @@ if (fs.existsSync(prodDocPath)) {
   let prodDoc = fs.readFileSync(prodDocPath, 'utf8');
 
   prodDoc = prodDoc.replace(
-    /\*\*\d+ automated checks passing \(\d+ Vitest tests \+ 1 Electron UI\/preload\/IPC E2E smoke test\) with \d+% pass rate\*\*/,
-    `**${grandTotalTests} automated checks passing (${totalUnitTests} Vitest tests + 1 Electron UI/preload/IPC E2E smoke test) with ${passRate}% pass rate**`
+    /\*\*(?:\d+ automated checks passing \(\d+ Vitest tests \+ 1 Electron UI\/preload\/IPC E2E smoke test\)|\d+\/\d+ automated checks passing \(\d+\/\d+ Vitest tests \+ \d+\/1 Electron UI\/preload\/IPC E2E smoke test\)) with \d+% pass rate\*\*/,
+    `**${grandPassedTests}/${grandTotalTests} automated checks passing (${passedUnitTests}/${totalUnitTests} Vitest tests + ${smokePassed ? 1 : 0}/1 Electron UI/preload/IPC E2E smoke test) with ${passRate}% pass rate**`
   );
   prodDoc = prodDoc.replace(
     /consists of \*\*\d+ automated checks\*\* across \d+ test files \([^)]*Electron UI\/preload\/IPC E2E smoke runner\)/,
@@ -221,7 +222,7 @@ if (fs.existsSync(prodDocPath)) {
   const currentBreakdown = prodDoc.slice(breakdownStart + breakdownMarker.length, breakdownEnd);
   const descriptions = new Map();
   for (const line of currentBreakdown.split('\n')) {
-    const match = line.match(/^\s*\d+\.\s+tests\/([^\s]+)\s+\d+ passed \((.*)\)\s*$/);
+    const match = line.match(/^\s*\d+\.\s+tests\/([^\s]+)\s+\d+(?:\/\d+)? passed \((.*)\)\s*$/);
     if (match) descriptions.set(match[1], match[2]);
   }
 
@@ -233,7 +234,8 @@ if (fs.existsSync(prodDocPath)) {
       (fileName === 'window-coordinator.test.ts'
         ? 'Window close recovery, macOS reinitialization & listener idempotency'
         : (suite.assertionResults[0]?.ancestorTitles[0] || fileName));
-    return `${index + 1}.  tests/${fileName.padEnd(30)} ${passed}/${total} passed (${description})`;
+    const passSummary = passed === total ? `${passed} passed` : `${passed}/${total} passed`;
+    return `${index + 1}.  tests/${fileName.padEnd(30)} ${passSummary} (${description})`;
   });
   rows.push(`${totalSuites + 1}.  tests/electron-smoke.cjs         ${smokePassed ? '1/1' : '0/1'} passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)`);
 
@@ -241,7 +243,7 @@ if (fs.existsSync(prodDocPath)) {
     breakdownMarker,
     ...rows,
     '--------------------------------------------------------------------------------------',
-    `Subtotal (Vitest Test Suites):      ${totalUnitTests} passing unit & integration tests`,
+    `Subtotal (Vitest Test Suites):      ${passedUnitTests} passing unit & integration tests`,
     `Grand Total:                        ${grandPassedTests} passing checks / ${grandTotalTests} total (${passRate}% Pass Rate)`,
     separator,
   ].join('\n');
