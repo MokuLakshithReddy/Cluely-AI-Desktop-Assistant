@@ -192,7 +192,7 @@ flowchart TD
 - [x] **AI Streaming Stability**: Functional state updater guarantees non-destructive token accumulation.
 - [x] **Secure Credential Vault**: OS-backed encryption (`safeStorage`) isolates API keys from plaintext persistence.
 - [x] **Clean Electron Teardown**: Verified smoke test asserts clean lifecycle exit with status code 0 and null termination signal.
-- [x] **Automated CI Validation**: 62 automated tests passing in continuous integration.
+- [x] **Automated CI Validation**: 91 automated checks passing in the latest Windows CI run (90 Vitest tests + 1 Electron UI/IPC E2E smoke).
 - [x] **Production Packaging**: Unpacked Windows executable (`Cluely Copilot.exe`) verified via `electron-builder`.
 
 **Production Status**: **CORE AUTOMATED UI/IPC CHECKS PASS; HARDWARE/PROVIDER/RELEASE VALIDATION REMAINS ENVIRONMENT-DEPENDENT**
