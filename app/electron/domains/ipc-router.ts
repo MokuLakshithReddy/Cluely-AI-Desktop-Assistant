@@ -7,6 +7,7 @@ import { windowCoordinator } from './windows';
 import { credentialVault } from '../services/vault';
 import { sessionRepository, SessionRecord } from '../services/session-repository';
 import { SharedState } from '../../src/lib/types';
+import { broadcastSharedStateToAppWindows } from './state-broadcast';
 import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio } from '../../src/lib/providers';
 
 const BOOLEAN_STATE_KEYS = new Set([
@@ -726,12 +727,7 @@ export class IpcRouter {
 
     // Broadcast state updates to windows
     stateManager.subscribe(state => {
-      const wins = [windowCoordinator.getControlWindow(), windowCoordinator.getChatWindow()];
-      for (const win of wins) {
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('shared-state-updated', state);
-        }
-      }
+      broadcastSharedStateToAppWindows(windowCoordinator, state);
     });
   }
 }

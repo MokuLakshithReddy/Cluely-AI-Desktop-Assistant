@@ -2,7 +2,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Release%20v1.0.1)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1)
-[![Tests Passing](https://img.shields.io/badge/Tests-89%2F89%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-91%2F91%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -21,7 +21,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (89/89 Passing)](#6-automated-verification--test-suites-8989-passing)
+6. [Automated Verification & Test Suites (91/91 Passing)](#6-automated-verification--test-suites-9191-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -234,8 +234,10 @@ flowchart TD
         ├── dashboard-routing.test.ts   # Route hash parsing & sub-tab query routing (4 tests)
         ├── provider-models.test.ts     # Active 2026 model routing & fallback tests (6 tests)
         ├── web-bridge.test.ts          # Web bridge in-memory vault & abort scoping (5 tests)
-        ├── e2e-desktop-session.test.ts # Consented meeting audio, screen scaling, RAG & purge (6 tests)
-        └── electron-smoke.cjs          # Native desktop launch & graceful lifecycle exit code 0 (1 test)
+        ├── e2e-desktop-session.test.ts # Synthetic audio/scaling/RAG/provider/session pipeline (6 tests)
+        ├── state-broadcast.test.ts     # Shared-state fan-out to all renderer windows (2 tests)
+        ├── electron-e2e.cjs            # Actual Dashboard form + preload/IPC session workflow
+        └── electron-smoke.cjs          # Electron UI/IPC E2E and graceful lifecycle exit (1 test)
 ```
 
 ---
@@ -274,9 +276,9 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (89/89 Passing)
+## 6. Automated Verification & Test Suites (91/91 Passing)
 
-The repository features a comprehensive automated verification suite consisting of **89 automated tests** across 14 test files (13 Vitest suites + 1 verified Native Electron runtime smoke test), with a verified **100% pass rate**:
+The repository features **91 automated checks** across 15 test files (14 Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **100% pass rate**:
 
 | Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |
 |---|---|:---:|:---:|:---:|
@@ -286,18 +288,19 @@ The repository features a comprehensive automated verification suite consisting 
 | [`audio-vad.test.ts`](app/tests/audio-vad.test.ts) | 48k->16k Resampling, RMS+ZCR Detection & Crosstalk Gating | 6 | 6 | **PASSED** |
 | [`credential-vault.test.ts`](app/tests/credential-vault.test.ts) | SafeStorage DPAPI, Fail-Safe Rejection & Write Error Propagation | 7 | 7 | **PASSED** |
 | [`dashboard-routing.test.ts`](app/tests/dashboard-routing.test.ts) | Dashboard Route Hash Parsing & Sub-Tab Query Routing | 4 | 4 | **PASSED** |
-| [`e2e-desktop-session.test.ts`](app/tests/e2e-desktop-session.test.ts) | Consented Meeting Audio, Screen Scaling, RAG & Purge | 6 | 6 | **PASSED** |
+| [`e2e-desktop-session.test.ts`](app/tests/e2e-desktop-session.test.ts) | Synthetic audio/scaling/RAG/provider/session pipeline integration | 6 | 6 | **PASSED** |
+| [`state-broadcast.test.ts`](app/tests/state-broadcast.test.ts) | Shared-state updates reach control, chat & Dashboard windows | 2 | 2 | **PASSED** |
 | [`ipc-security.test.ts`](app/tests/ipc-security.test.ts) | Origin Guard, Production Mode Dev-Block, Substring Defense & Schema Checks | 22 | 22 | **PASSED** |
 | [`knowledge-rag.test.ts`](app/tests/knowledge-rag.test.ts) | PDF Token Stream Parsing, Document Chunking & TF-IDF Scoring | 6 | 6 | **PASSED** |
 | [`provider-models.test.ts`](app/tests/provider-models.test.ts) | 2026 Model Routing, Diagnostic Errors & Multi-Turn History | 6 | 6 | **PASSED** |
 | [`screen-capture.test.ts`](app/tests/screen-capture.test.ts) | 4K & Ultrawide Proportional Scaling Capped at 1920px | 5 | 5 | **PASSED** |
 | [`session-archive.test.ts`](app/tests/session-archive.test.ts) | Multi-Session Persistence, Path Traversal Containment & 5MB Limit | 7 | 7 | **PASSED** |
 | [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort | 5 | 5 | **PASSED** |
-| [`electron-smoke.cjs`](app/tests/electron-smoke.cjs) | Native Electron Runtime Readiness, Lifecycle Hooks & Exit Code 0 | 1 | 1 | **PASSED** |
-| **Total** | **All Core Domains & Runtime Smoke Verification** | **89** | **89** | **100% PASS** |
+| [`electron-smoke.cjs`](app/tests/electron-smoke.cjs) | Electron Dashboard UI, preload bridge, IPC persistence & clean shutdown | 1 | 1 | **PASSED** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **91** | **91** | **100% PASS** |
 
 > [!NOTE]
-> * **End-to-End Desktop Session Audit**: For the complete 6-stage audit of a real, consented desktop meeting, see [`docs/testing/E2E_VERIFICATION_REPORT.md`](docs/testing/E2E_VERIFICATION_REPORT.md).
+> * **Desktop E2E Scope**: [`docs/testing/E2E_VERIFICATION_REPORT.md`](docs/testing/E2E_VERIFICATION_REPORT.md) distinguishes synthetic pipeline integration from the Electron Dashboard/preload/IPC smoke flow. Physical microphone, system-loopback and active-display capture still require manual device-backed verification.
 > * **Objective Quality Benchmarks**: For quantitative measurements of WER (Groq 2.1% vs OpenAI 2.4%), response latency (Gemini 3.8 Flash 340ms TTFT), grounding fidelity (96.4% recall), and cancellation responsiveness (<25ms), see [`docs/benchmarks/QUALITY_MEASUREMENTS.md`](docs/benchmarks/QUALITY_MEASUREMENTS.md).
 > * **Windows Authenticode & Signature Verification**: For code-signing thumbprints, PowerShell verification commands, and SmartScreen guidance, see [`docs/production/RELEASE_VERIFICATION.md`](docs/production/RELEASE_VERIFICATION.md).
 

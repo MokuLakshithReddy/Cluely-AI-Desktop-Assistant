@@ -7,7 +7,7 @@ import { SessionRecord, TranscriptItem } from '../src/lib/types';
 import { SessionRepository } from '../electron/services/session-repository';
 import fs from 'fs';
 
-describe('Real Desktop Session End-to-End Workflow & Verification', () => {
+describe('Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs)', () => {
   const sessionRepo = new SessionRepository();
   const testSessionId = 'consented-e2e-session-001';
 
@@ -17,7 +17,7 @@ describe('Real Desktop Session End-to-End Workflow & Verification', () => {
     } catch {}
   });
 
-  it('Stage 1: Captures dual-stream consented meeting audio with VAD and crosstalk suppression', () => {
+  it('Stage 1: Checks synthetic audio resampling, VAD metrics, test-only crosstalk zeroing, and WAV header', () => {
     // 1. Ingest remote speaker audio ("them") via system loopback at 48kHz
     const resampler = new AudioResampler(48000, 16000);
     const raw48kThem = new Float32Array(4800); // 100ms
@@ -50,7 +50,7 @@ describe('Real Desktop Session End-to-End Workflow & Verification', () => {
     expect(wavHeader).toBe('RIFF');
   });
 
-  it('Stage 2: Captures active display bounds with proportional aspect ratio downscaling', () => {
+  it('Stage 2: Checks proportional scaling calculations for synthetic display bounds', () => {
     // 4K Ultra HD Display (3840x2160)
     const bounds4k = { width: 3840, height: 2160 };
     const scaled4k = calculateThumbnailSize(bounds4k);
@@ -71,7 +71,7 @@ describe('Real Desktop Session End-to-End Workflow & Verification', () => {
     expect(scaled1080p.height).toBe(1080);
   });
 
-  it('Stage 3: Ingests user knowledge document and retrieves relevant SLA context via cosine RAG', () => {
+  it('Stage 3: Creates an in-memory Markdown fixture and retrieves a matching knowledge passage', () => {
     const docContent = `
 # System Architecture & Cache Policy
 Version: 2.4 (Production Specification)
@@ -95,7 +95,7 @@ Text chunks exceeding 5MB aggregate per session are rejected by the ingestion bo
     expect(retrieved[0]).toContain('within 250 milliseconds');
   });
 
-  it('Stage 4: Synthesizes multimodal context prompt from spoken transcript, screen, and RAG knowledge', () => {
+  it('Stage 4: Builds a prompt from manually supplied transcript and knowledge context', () => {
     const meetingTranscript: TranscriptItem[] = [
       {
         id: 't1',
@@ -136,7 +136,7 @@ Text chunks exceeding 5MB aggregate per session are rejected by the ingestion bo
     expect(synthesizedPrompt).toContain('Summarize our edge SLA');
   });
 
-  it('Stage 5: Streams grounded AI response, verifies citation, and tests mid-stream cancellation', async () => {
+  it('Stage 5: Parses mocked Gemini SSE and rejects a pre-aborted request', async () => {
     const streamedChunks = [
       'Based on your ',
       'Cache Architecture Policy ',
@@ -189,7 +189,7 @@ Text chunks exceeding 5MB aggregate per session are rejected by the ingestion bo
     ).rejects.toThrow();
   });
 
-  it('Stage 6: Verifies zero-leakage session persistence, screenshot stripping, and session deletion', async () => {
+  it('Stage 6: Saves a synthetic session, strips screenshot data, and deletes the repository record', async () => {
     const sessionToSave: SessionRecord = {
       id: testSessionId,
       title: 'Consented Architecture Review',

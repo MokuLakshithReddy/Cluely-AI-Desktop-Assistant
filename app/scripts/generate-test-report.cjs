@@ -43,12 +43,14 @@ const smokeResult = spawnSync('node', ['tests/electron-smoke.cjs'], {
   cwd: appDir,
   encoding: 'utf8',
   env: { ...process.env, CI: 'true' },
-  timeout: 30000,
+  timeout: 60000,
 });
 
 const smokeStdout = smokeResult.stdout || '';
 const smokeStderr = smokeResult.stderr || '';
-const smokePassed = smokeResult.status === 0 && smokeStdout.includes('[APP_READY]');
+const smokePassed = smokeResult.status === 0 &&
+  smokeStdout.includes('[APP_READY]') &&
+  smokeStdout.includes('[E2E_COMPLETE]');
 
 console.log(`Smoke test passed: ${smokePassed}`);
 
@@ -107,10 +109,12 @@ for (let i = 0; i < vitestData.testResults.length; i++) {
 md += `### ${vitestData.testResults.length + 1}. Native Electron Desktop Runtime Smoke Verification (\`tests/electron-smoke.cjs\`)\n`;
 md += `\`\`\`text\n`;
 md += `✓ Spawns electron binary with stripped ELECTRON_RUN_AS_NODE\n`;
-md += `✓ Loads control window, chat panel, and dashboard without uncaught exceptions\n`;
-md += `✓ Verified explicit [APP_READY] signal emitted by windowCoordinator\n`;
-md += `✓ Verifies clean graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])\n`;
-md += `✓ Cleanly exits with code 0 and null OS termination signal\n`;
+md += `✓ Loads the control, chat, and Dashboard Electron windows\n`;
+md += `✓ Submits the Dashboard Gemini credential form and verifies Stored in Vault → Delete → Not Configured via IPC state broadcast (when safeStorage is available)\n`;
+md += `✓ Exercises preload bridge session save/list/get/delete against the disk-backed repository\n`;
+md += `✓ Verifies graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])\n`;
+md += `✓ Confirms [E2E_COMPLETE] and a clean process exit\n`;
+md += `⚠ Physical microphone, system-audio loopback, and active-display capture remain manual hardware tests\n`;
 md += `\`\`\`\n`;
 
 fs.writeFileSync(resultsPath, md, 'utf8');

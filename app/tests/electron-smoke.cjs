@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const electronBinary = require('electron');
 const appPath = path.resolve(__dirname, '..');
@@ -9,12 +10,19 @@ console.log('--- Initiating Electron Desktop Runtime Smoke Test ---');
 console.log('Electron binary:', electronBinary);
 console.log('App root:', appPath);
 
-// Ensure clean environment without ELECTRON_RUN_AS_NODE so Electron runs as a desktop app
+// Keep all test writes inside a disposable Electron profile.
+const smokeUserDataRoot = path.join(os.tmpdir(), 'cluely-electron-smoke-' + process.pid);
+fs.mkdirSync(smokeUserDataRoot, { recursive: true });
+
+// Ensure clean environment without ELECTRON_RUN_AS_NODE so Electron runs as a desktop app.
 const cleanEnv = {
   ...process.env,
   CI: 'true',
   SMOKE_TEST: 'true',
   ELECTRON_ENABLE_LOGGING: '1',
+  APPDATA: smokeUserDataRoot,
+  XDG_CONFIG_HOME: smokeUserDataRoot,
+  HOME: smokeUserDataRoot,
 };
 delete cleanEnv.ELECTRON_RUN_AS_NODE;
 
@@ -35,6 +43,8 @@ const child = spawn(spawnCmd, spawnArgs, {
 });
 
 let appReadyObserved = false;
+let e2eCompleted = false;
+let e2eFailed = false;
 let shutdownCommandDelivered = false;
 let shutdownTimeoutHandle = null;
 let stdoutCaptured = '';
@@ -45,6 +55,26 @@ child.on('error', err => {
   process.exit(1);
 });
 
+function requestGracefulShutdown() {
+  if (shutdownCommandDelivered) return;
+  shutdownCommandDelivered = true;
+  console.log('Delivering graceful shutdown trigger after desktop E2E result...');
+  const shutdownPath = path.join(appPath, '.smoke-shutdown.trigger');
+  try {
+    fs.writeFileSync(shutdownPath, 'QUIT', 'utf8');
+  } catch (e) {
+    console.error('Error writing shutdown trigger file:', e);
+    process.exit(1);
+  }
+
+  // Hard timeout for graceful shutdown: must complete lifecycle within 10 seconds of trigger.
+  shutdownTimeoutHandle = setTimeout(() => {
+    console.error('Smoke test failure: Electron failed to exit cleanly within 10 seconds after shutdown trigger!');
+    try { child.kill('SIGKILL'); } catch {}
+    process.exit(1);
+  }, 10000);
+}
+
 child.stdout.on('data', data => {
   const str = data.toString();
   stdoutCaptured += str;
@@ -52,29 +82,18 @@ child.stdout.on('data', data => {
 
   if (str.includes('[APP_READY]') && !appReadyObserved) {
     appReadyObserved = true;
-    console.log('✓ Verified application-ready event observed from Electron runtime.');
+    console.log('✓ Verified Electron application-ready event.');
+  }
 
-    // Wait a brief stabilization tick before delivering graceful shutdown trigger
-    setTimeout(() => {
-      shutdownCommandDelivered = true;
-      console.log('Delivering graceful shutdown trigger to verify clean lifecycle exit...');
-      const triggerPath = path.join(appPath, '.smoke-shutdown.trigger');
-      try {
-        fs.writeFileSync(triggerPath, 'QUIT', 'utf8');
-      } catch (e) {
-        console.error('Error writing shutdown trigger file:', e);
-        process.exit(1);
-      }
+  if (str.includes('[E2E_COMPLETE]')) {
+    e2eCompleted = true;
+    requestGracefulShutdown();
+  }
 
-      // Hard timeout for graceful shutdown: must complete lifecycle within 10 seconds of trigger
-      shutdownTimeoutHandle = setTimeout(() => {
-        console.error('Smoke test failure: Electron failed to exit cleanly within 10 seconds after shutdown trigger!');
-        try {
-          child.kill('SIGKILL');
-        } catch {}
-        process.exit(1);
-      }, 10000);
-    }, 400);
+  if (str.includes('[E2E_FAILED]')) {
+    e2eCompleted = true;
+    e2eFailed = true;
+    requestGracefulShutdown();
   }
 
   if (str.includes('[APP_WILL_QUIT]')) {
@@ -94,14 +113,14 @@ child.stderr.on('data', data => {
   console.log('[Electron stderr]:', str.trim());
 });
 
-// Maximum timeout of 15 seconds waiting for initial readiness signal
+// Allow the real renderer/UI/IPC flow to finish before forcing shutdown.
 const readinessTimeoutHandle = setTimeout(() => {
-  console.error('Smoke test failure: Timed out waiting for [APP_READY] signal after 15 seconds.');
+  console.error('Smoke test failure: Timed out waiting for desktop E2E completion after 45 seconds.');
   try {
     child.kill('SIGKILL');
   } catch {}
   process.exit(1);
-}, 15000);
+}, 45000);
 
 child.on('exit', (code, signal) => {
   clearTimeout(readinessTimeoutHandle);
@@ -115,7 +134,14 @@ child.on('exit', (code, signal) => {
     process.exit(1);
   }
 
-  // 2. Verify that shutdown command was delivered before exit (distinguish crash in stabilization interval)
+  // 2. Verify that the real desktop UI/preload/IPC workflow completed.
+  if (!e2eCompleted || e2eFailed) {
+    console.error('Smoke test failure: Desktop UI/IPC E2E did not complete successfully.');
+    try { fs.rmSync(smokeUserDataRoot, { recursive: true, force: true }); } catch {}
+    process.exit(1);
+  }
+
+  // 3. Verify that shutdown command was delivered before exit.
   if (!shutdownCommandDelivered) {
     console.error(`Smoke test failure: Process crashed unexpectedly after [APP_READY] before clean shutdown command was delivered (code: ${code}, signal: ${signal})!`);
     process.exit(1);
@@ -138,7 +164,7 @@ child.on('exit', (code, signal) => {
   }
 
   // 4. Verify clean exit: Graceful lifecycle verified
-  if (code !== 0 && signal !== 'SIGTERM' && signal !== null) {
+  if (code !== 0 && signal !== 'SIGTERM') {
     console.error(`Smoke test failure: Unexpected termination signal: ${signal}, code: ${code}!`);
     process.exit(1);
   }
@@ -149,6 +175,7 @@ child.on('exit', (code, signal) => {
     process.exit(1);
   }
 
-  console.log('--- Electron Desktop Runtime Smoke Test: PASSED (Verified Clean Shutdown with Exit Code 0) ---');
+  console.log('--- Electron Desktop UI/IPC E2E Smoke Test: PASSED (Dashboard, preload bridge, IPC, persistence, and clean shutdown) ---');
+  try { fs.rmSync(smokeUserDataRoot, { recursive: true, force: true }); } catch {}
   process.exit(0);
 });
