@@ -8,11 +8,10 @@ const repoRoot = path.resolve(appDir, '..');
 const resultsPath = path.join(repoRoot, 'docs', 'testing', 'TEST_RESULTS.md');
 
 function replaceRequired(content, pattern, replacement, label) {
-  const updated = content.replace(pattern, replacement);
-  if (updated === content) {
+  if (!pattern.test(content)) {
     throw new Error(`Could not synchronize ${label}; its expected source text was not found.`);
   }
-  return updated;
+  return content.replace(pattern, replacement);
 }
 
 console.log('Generating automated test evidence report from real test runners...');
