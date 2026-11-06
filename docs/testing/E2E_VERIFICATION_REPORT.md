@@ -5,13 +5,20 @@
 **Verification Date**: 2026-10-29  
 **Execution Environment**: Windows 11 Pro x64 (Build 26200), Node.js v24.19.0, Electron v34.2.0  
 **Test Suite Reference**: [`app/tests/e2e-desktop-session.test.ts`](../../app/tests/e2e-desktop-session.test.ts)  
-**Overall Result**: **VERIFIED — ALL 6 STAGES PASSED (100%)**
+**Scope**: Synthetic pipeline integration plus separate Electron UI/IPC E2E smoke coverage
 
 ---
 
-## 1. Executive Summary & Objective
+## 1. Executive Summary & Verification Scope
 
-The objective of this test report is to prove a **real desktop copilot workflow end-to-end** under realistic, consented session conditions. Unlike isolated unit tests that evaluate functions in isolation, this end-to-end audit exercises the complete data pipeline across all core application subsystems:
+This report documents two different verification layers. They must not be conflated:
+
+1. **Synthetic pipeline integration** (`app/tests/e2e-desktop-session.test.ts`): uses generated audio arrays, manually supplied crosstalk conditions, calculated display dimensions, constructed transcript/document data, mocked provider HTTP responses, and direct `SessionRepository` calls. It does **not** open a microphone, acquire system loopback audio, capture a real display, drive the Electron UI, or invoke the preload/IPC layer.
+2. **Electron UI/IPC E2E smoke** (`app/tests/electron-smoke.cjs` + `app/tests/electron-e2e.cjs`): launches the compiled Electron application, drives the actual Dashboard credential form, verifies the save/delete status round-trip through the preload bridge and IPC state broadcast, and exercises session save/list/get/delete through IPC against the disk-backed repository.
+
+The six stages below describe synthetic pipeline integration, not a live meeting or complete hardware E2E test. Physical microphone, system-audio loopback, screen capture, external AI provider behavior, and packaged clean-machine startup still require separate manual/device-backed validation.
+
+The synthetic pipeline used for those six stages is:
 
 ```
 [Consented Spoken Audio (Mic + Loopback)]
@@ -33,7 +40,7 @@ The objective of this test report is to prove a **real desktop copilot workflow 
       [Zero-Leakage Session Persistence & One-Click Data Purge]
 ```
 
-All 6 pipeline stages were verified through deterministic automated execution in `tests/e2e-desktop-session.test.ts` and manual runtime validation in the packaged Windows application.
+All 6 synthetic stages are represented by assertions in `tests/e2e-desktop-session.test.ts`. The test does not exercise the physical devices or live application workflow described by the scenario.
 
 ---
 
@@ -50,38 +57,39 @@ All 6 pipeline stages were verified through deterministic automated execution in
 
 ## 3. Stage-by-Stage Verification Evidence
 
-### Stage 1: Dual-Stream Audio Capture, VAD & Crosstalk Suppression
+### Synthetic Stage 1: Audio Resampling, VAD Metrics & Test-Only Crosstalk Condition
 
 * **Inputs**:
-  * Remote Audio Stream: Simulated speech frames (`them`) with RMS amplitude 0.28, ZCR 0.12 (well above voice threshold 0.015).
-  * Local Workstation Audio Stream: Workstation microphone (`me`) picking up acoustic room bleed from desktop speakers.
-* **Pipeline Action**:
-  1. Audio frames resampled from 48kHz down to 16kHz mono.
-  2. VAD energy state machine detected active speech from `them` (`themHasVoiceActivity = true`).
-  3. **Acoustic Crosstalk Gate Triggered**: The acoustic crosstalk gate automatically zeroed out local microphone frames during remote speaker activity.
-  4. Audio segments packaged into 16-bit PCM RIFF WAV chunks and submitted to Whisper STT.
+  * Remote channel: generated 300 Hz sine-wave samples in a `Float32Array`.
+  * Local channel: a four-value synthetic sample array.
+* **Test behavior**:
+  1. The test validates 48 kHz → 16 kHz resampling and VAD RMS/ZCR calculations.
+  2. The test itself sets `themHasVoiceActivity = true` and constructs a zero-filled local array. It does not execute the production mic/loopback ownership or crosstalk wiring.
+  3. It validates the generated PCM WAV header only. No STT request is made in this stage.
+* **Not covered here**: `getUserMedia`, `getDisplayMedia`, device permissions, actual acoustic bleed, or a physical Whisper transcription.
 * **Verified Transcript Output**:
   ```text
   [00:00:02.100] [Speaker]: "We are finalizing the distributed caching architecture for the Q3 release. Our primary objective is ensuring Redis fallback behavior maintains zero data loss under cluster split-brain."
   [00:00:07.450] [You]: "Understood. I have our Redis failover runbook loaded in my local workspace knowledge base."
   [00:00:12.800] [Speaker]: "Can you verify our specific failover quorum requirement and tell me how our circuit breaker handles partition re-joining?"
   ```
-* **Status**: **PASSED** — Remote speech attributed to `[Speaker]`, local response attributed to `[You]`, zero acoustic crosstalk feedback recorded.
+* **Status**: **PASSED** — Synthetic resampling, VAD metrics, and WAV header assertions pass. No physical speech was captured or transcribed.
 
 ---
 
-### Stage 2: Display Perception & Aspect-Ratio Scaling
+### Synthetic Stage 2: Display-Dimension Scaling Helper
 
-* **Input**: Active display capture from a 4K UHD monitor (3840 × 2160 pixels, aspect ratio 1.7778).
-* **Pipeline Action**:
-  1. `desktopCapturer` queried active display bounds matching the assistant window.
-  2. Scaling subsystem checked max dimension: `3840 > 1920`.
-  3. Proportional downscaler calculated:
+* **Input**: Hard-coded 4K and ultrawide display dimensions passed directly to `calculateThumbnailSize()`.
+* **Test behavior**:
+  1. The test validates that a 3840 × 2160 size scales to 1920 × 1080.
+  2. It validates the ultrawide and standard 1080p calculations.
+  3. It does not call `ScreenshotService.captureScreen()`, `desktopCapturer`, or capture real pixels.
+* **Scaling calculation**:
      $$\text{Target Width} = 1920\text{ px}$$
      $$\text{Target Height} = \text{round}(2160 \times (1920 / 3840)) = 1080\text{ px}$$
      $$\text{Aspect Ratio Error} = |(1920 / 1080) - (3840 / 2160)| = 0.000$$
-* **Verified Dimensions**: Output resolution exactly **1920 × 1080**, downscaled with bilinear interpolation to preserve text legibility while minimizing vision API token latency.
-* **Status**: **PASSED** — Zero geometric distortion, image size reduced by 75% in memory.
+* **Verified Dimensions**: The helper returns **1920 × 1080** for the 4K input while preserving the aspect ratio.
+* **Status**: **PASSED** — Pure dimension calculations pass; live display-source selection and screenshot creation are not covered.
 
 ---
 
@@ -143,9 +151,9 @@ All 6 pipeline stages were verified through deterministic automated execution in
 
 ---
 
-### Stage 5: Streaming AI Generation, Cancellation & Error Self-Healing
+### Synthetic Stage 5: Mocked AI Streaming & Pre-Aborted Request Handling
 
-* **Provider Integration**: Tested against modern 2026 model configurations (`gemini-3.8-flash`, `claude-sonnet-5-5`, `gpt-4o-mini`).
+* **Provider behavior**: `global.fetch` is replaced with a mocked Gemini SSE response. No live Gemini, Claude, or OpenAI API request is made by this test.
 * **Test Case 5A: Complete Grounded Response Generation**:
   * **Streaming Output**:
     ```text
@@ -156,22 +164,15 @@ All 6 pipeline stages were verified through deterministic automated execution in
   * **Verified Grounding**: Directly cites document source; zero hallucinations.
   * **Time to First Token (TTFT)**: 340ms (Gemini 3.8 Flash).
   * **Throughput**: 88 tokens/sec.
-* **Test Case 5B: User Mid-Stream Cancellation (`Escape` / UI Abort)**:
-  * **Trigger**: Abort signal fired at token index 35.
-  * **Result**: HTTP connection aborted within **18ms**.
-  * **State Verification**:
-    * 35 tokens retained in conversation state.
-    * `isStreaming` flipped to `false`.
-    * No dangling promises or unhandled rejections.
-* **Test Case 5C: Provider Error Self-Healing (404 Fallback)**:
-  * **Condition**: API endpoint returned `404 NOT_FOUND` for deprecated `gemini-2.5-flash` ("restricted to legacy projects").
-  * **Self-Healing Action**: Provider adapter intercepted 404, logged diagnostic warning, and automatically re-routed request to `gemini-3.8-flash`.
-  * **Result**: Query succeeded transparently without user interruption or crash.
-* **Status**: **PASSED** — Grounding verified, cancellation responsive, 404 self-healing verified.
+* **Test Case 5B: Pre-Aborted Request**:
+  * The test constructs an `AbortController`, aborts it before calling the provider adapter, then asserts that the adapter rejects.
+  * It does not cancel a running stream while tokens are arriving, dispatch an Escape key event, or verify renderer message retention.
+* **Not covered by this test**: It does not test provider 404 fallback or a live API key/model configuration.
+* **Status**: **PASSED** — Mocked SSE parsing and pre-aborted request handling pass. Active-stream cancellation and live-provider recovery remain unverified by this suite.
 
 ---
 
-### Stage 6: Zero-Leakage Session Persistence & One-Click Data Purge
+### Synthetic Stage 6: Direct SessionRepository Save, Screenshot Stripping & Delete
 
 * **Test Case 6A: Disk Persistence Defense-in-Depth**:
   * Session record saved to disk via `SessionRepository.saveSession()`.
@@ -179,18 +180,14 @@ All 6 pipeline stages were verified through deterministic automated execution in
     * Message text, timestamps, roles, and citations preserved.
     * **`screenshot` field stripped completely** (`msg.screenshot === undefined`).
     * Disk file size: **4.2 KB** (vs >2.1 MB if screenshots remained unstripped).
-* **Test Case 6B: One-Click Data Purge (`purgeAllData`)**:
-  * User triggered one-click data purge.
-  * File system verification:
-    * All session JSON files in `userData/sessions/` deleted.
-    * Active transcript state cleared (`transcripts = []`).
-    * Active messages state cleared (`messages = []`).
-    * In-memory cached API keys zeroed.
-* **Status**: **PASSED** — Zero screenshot leakage to disk; clean, complete data purge verified.
+* **Test Case 6B: Direct Session Deletion**:
+  * The test calls `SessionRepository.deleteSession()` directly and verifies that the specific test JSON file is removed.
+  * It does not invoke the Dashboard, the `purge-all-data` IPC handler, clear credentials, or verify a full application data purge.
+* **Status**: **PASSED** — Screenshot stripping and direct session save/delete behavior are verified. Full data purge is not covered by this suite.
 
 ---
 
-## 4. Automated Verification Matrix
+## 4. Synthetic Pipeline Integration Matrix
 
 The test suite executed with all 6 tests passing:
 
@@ -202,11 +199,23 @@ The test suite executed with all 6 tests passing:
 | `Stage 4: Unified multimodal prompt synthesis across audio, screen, and RAG context` | Context Fusion | 14ms | **PASSED** |
 | `Stage 5: Streaming AI generation, citation grounding, mid-stream abort & 404 healing` | LLM Resilience | 31ms | **PASSED** |
 | `Stage 6: Zero-leakage session archive, screenshot stripping on disk & clean purge` | Privacy & Purge | 22ms | **PASSED** |
-| **Total** | **Full Desktop Session E2E Lifecycle** | **119ms** | **100% PASS** |
+| **Total** | **Synthetic Pipeline Integration Scenarios** | **119ms** | **100% PASS** |
 
 ---
 
-## 5. Reproduction Instructions
+## 5. Electron UI/IPC E2E Smoke Coverage
+
+The separate Electron smoke flow launches the compiled desktop app and exercises real application windows and bridges:
+
+* Opens the actual Dashboard renderer and waits for the credential form to mount.
+* Submits the Gemini key through the rendered form and verifies the visible `Stored in Vault` state after the main-process IPC broadcast.
+* Clicks the visible Delete action and verifies `Not Configured` plus the vault's key-presence state.
+* Saves, lists, reads, and deletes a session through the exposed preload API, invoking the main-process IPC handlers and disk-backed repository.
+* Uses a temporary application-data profile so test records and credentials do not touch the developer's normal profile.
+
+This is a genuine renderer → preload → IPC → main-process/filesystem smoke flow. It does not prove physical microphone/loopback capture, screenshot pixels, live provider networking, meeting-app compatibility, or packaged installation behavior.
+
+## 6. Reproduction Instructions
 
 To execute this end-to-end verification suite locally on Windows, macOS, or Linux:
 
@@ -214,10 +223,11 @@ To execute this end-to-end verification suite locally on Windows, macOS, or Linu
 # Navigate to the application directory
 cd app
 
-# Run the dedicated E2E desktop session test suite
+# Run the synthetic data-pipeline integration suite
 npx vitest run tests/e2e-desktop-session.test.ts
 
-# Run the full automated verification test suite (89/89 tests)
+# Run the Electron UI/preload/IPC E2E smoke plus all Vitest suites
+npm run smoke
 npm run test:report
 ```
 
