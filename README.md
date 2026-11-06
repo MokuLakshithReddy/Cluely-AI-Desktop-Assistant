@@ -305,8 +305,8 @@ The repository features **91 automated checks** across 15 test files (14 Vitest 
 > * **Windows Authenticode & Signature Verification**: For code-signing thumbprints, PowerShell verification commands, and SmartScreen guidance, see [`docs/production/RELEASE_VERIFICATION.md`](docs/production/RELEASE_VERIFICATION.md).
 
 ### Execution Environments
-* **Local Verification Environment**: Windows 11 Pro x64 (Build 26200), Node.js v24.19.0, npm v11.x, Vitest v3.2.7.
-* **Hosted CI Environment**: Windows Server 2022 (`windows-latest`), Node.js v20.x, npm v10.x (`npm ci`), automated GitHub Actions workflow (`.github/workflows/ci.yml`).
+* **Local Verification Environment**: Developer workstation; the generated test report records the exact OS/kernel, architecture, and Node.js version for each run.
+* **Hosted CI Environment**: GitHub-hosted Windows runner selected by `windows-latest`; the runner image can change, so consult the generated test report and workflow logs for the exact environment.
 
 ---
 
