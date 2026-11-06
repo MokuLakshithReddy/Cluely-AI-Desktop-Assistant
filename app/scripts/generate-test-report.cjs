@@ -1,6 +1,7 @@
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const appDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(appDir, '..');
@@ -67,9 +68,9 @@ const passRate = grandTotalTests > 0 ? Math.round((grandPassedTests / grandTotal
 
 // Build Markdown Output
 let md = `# Test Execution Log & Results\n\n`;
-md += `**Target Environment**: Windows 11 x64  \n`;
+md += `**Target Environment**: ${os.type()} ${os.release()} (${os.arch()})  \n`;
 md += `**Node Version**: ${process.version}  \n`;
-md += `**Test Framework**: Vitest v3.2.7 & Native Electron Smoke Runner  \n`;
+md += `**Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  \n`;
 md += `**Test Status**: ${grandPassedTests}/${grandTotalTests} Passing (${passRate}% Pass Rate)  \n`;
 md += `**Evidence Source**: Generated directly from automated runner JSON output and process exit verification  \n`;
 md += `**Verification Date**: ${new Date().toISOString().split('T')[0]}  \n\n`;
@@ -88,8 +89,8 @@ for (const suite of vitestData.testResults) {
   md += `| \`${fileName}\` | ${subName} | ${total} | ${passed} | ${failed} | ${status} |\n`;
 }
 
-md += `| \`electron-smoke.cjs\` | Native Electron Desktop Runtime Smoke Verification | 1 | ${smokePassed ? 1 : 0} | ${smokePassed ? 0 : 1} | ${smokePassed ? '**PASSED**' : '**FAILED**'} |\n`;
-md += `| **Total** | **All Core Domains & Runtime Smoke Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${grandFailedTests}** | **${passRate}% PASS** |\n\n`;
+md += `| \`electron-smoke.cjs\` | Electron Dashboard UI/IPC E2E Verification | 1 | ${smokePassed ? 1 : 0} | ${smokePassed ? 0 : 1} | ${smokePassed ? '**PASSED**' : '**FAILED**'} |\n`;
+md += `| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${grandFailedTests}** | **${passRate}% PASS** |\n\n`;
 md += `---\n\n`;
 md += `## Detailed Verified Test Logs\n\n`;
 
@@ -106,66 +107,149 @@ for (let i = 0; i < vitestData.testResults.length; i++) {
   md += `\`\`\`\n\n`;
 }
 
-md += `### ${vitestData.testResults.length + 1}. Native Electron Desktop Runtime Smoke Verification (\`tests/electron-smoke.cjs\`)\n`;
+const smokeMark = smokePassed ? '✓' : '✗';
+md += `### ${vitestData.testResults.length + 1}. Electron UI/IPC E2E Verification (\`tests/electron-smoke.cjs\`)\n`;
 md += `\`\`\`text\n`;
-md += `✓ Spawns electron binary with stripped ELECTRON_RUN_AS_NODE\n`;
-md += `✓ Loads the control, chat, and Dashboard Electron windows\n`;
-md += `✓ Submits the Dashboard Gemini credential form and verifies Stored in Vault → Delete → Not Configured via IPC state broadcast (when safeStorage is available)\n`;
-md += `✓ Exercises preload bridge session save/list/get/delete against the disk-backed repository\n`;
-md += `✓ Verifies graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])\n`;
-md += `✓ Confirms [E2E_COMPLETE] and a clean process exit\n`;
-md += `⚠ Physical microphone, system-audio loopback, and active-display capture remain manual hardware tests\n`;
+md += `${smokeMark} Spawns Electron with ELECTRON_RUN_AS_NODE removed\n`;
+md += `${smokeMark} Loads the control/chat windows and mounts the real Dashboard renderer\n`;
+md += `${smokeMark} Exercises credential save/delete and native purge-all-data through the Dashboard/preload/IPC path (vault check when safeStorage is available)\n`;
+md += `${smokeMark} Exercises session save/list/get/delete and archive purge against the disk-backed repository\n`;
+md += `${smokeMark} Verifies graceful shutdown lifecycle ([APP_CLEAN_SHUTDOWN], [APP_BEFORE_QUIT], [APP_WILL_QUIT])\n`;
+md += `${smokeMark} Confirms [E2E_COMPLETE] and a normal exit (code 0, signal null)\n`;
+md += `⚠ Physical microphone, system-audio loopback, active-display capture, and live provider networking remain manual/device-dependent tests\n`;
+if (!smokePassed && (smokeStdout || smokeStderr)) {
+  md += `\nSmoke runner output:\n\n\`\`\`text\n${(smokeStdout + '\n' + smokeStderr).slice(-6000)}\n\`\`\`\n`;
+}
 md += `\`\`\`\n`;
 
 fs.writeFileSync(resultsPath, md, 'utf8');
 console.log(`Successfully generated verified test report at: ${resultsPath}`);
 
-// 4. Synchronize Single Source of Truth into README.md
+// 4. Synchronize the README suite rows and summaries from the real test data.
 const readmePath = path.join(repoRoot, 'README.md');
 if (fs.existsSync(readmePath)) {
   let readme = fs.readFileSync(readmePath, 'utf8');
+  const heading = '| Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |';
+  const headingStart = readme.indexOf(heading);
+  const firstBreak = headingStart >= 0 ? readme.indexOf('\n', headingStart) : -1;
+  const alignBreak = firstBreak >= 0 ? readme.indexOf('\n', firstBreak + 1) : -1;
+  const tableEnd = alignBreak >= 0 ? readme.indexOf('\n\n> [!NOTE]', alignBreak) : -1;
+
+  if (headingStart < 0 || firstBreak < 0 || alignBreak < 0 || tableEnd < 0) {
+    throw new Error('README test table structure changed; refusing to silently skip test-count synchronization.');
+  }
+
+  const existingRows = readme.slice(alignBreak + 1, tableEnd).split('\n');
+  const descriptions = new Map();
+  for (const row of existingRows) {
+    const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
+    const codeMatch = cells[0]?.match(new RegExp('`([^`]+)`'));
+    if (codeMatch && cells[1]) descriptions.set(codeMatch[1], cells[1]);
+  }
+
+  const generatedRows = [];
+  for (const suite of vitestData.testResults) {
+    const fileName = path.basename(suite.name);
+    const total = suite.assertionResults.length;
+    const passed = suite.assertionResults.filter(a => a.status === 'passed').length;
+    const status = passed === total ? 'PASSED' : 'FAILED';
+    const fallbackDescription = suite.assertionResults[0]?.ancestorTitles[0] || fileName;
+    const description = descriptions.get(fileName) ||
+      (fileName === 'window-coordinator.test.ts'
+        ? 'Window close recovery, macOS reinitialization & listener idempotency'
+        : fallbackDescription);
+    generatedRows.push(`| [\`${fileName}\`](app/tests/${fileName}) | ${description} | ${total} | ${passed} | **${status}** |`);
+  }
+
+  generatedRows.push(`| [\`electron-smoke.cjs\`](app/tests/electron-smoke.cjs) | Electron Dashboard UI/IPC E2E, purge, persistence & graceful shutdown | 1 | ${smokePassed ? 1 : 0} | **${smokePassed ? 'PASSED' : 'FAILED'}** |`);
+  generatedRows.push(`| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`);
+
+  readme = readme.slice(0, alignBreak + 1) + generatedRows.join('\n') + readme.slice(tableEnd);
   readme = readme.replace(
-    /badge\/Tests-\d+%2F\d+%20Passing%20\(\d+(?:%25|%)\)-success/g,
-    `badge/Tests-${grandPassedTests}%2F${grandTotalTests}%20Passing%20(${passRate}%25)-success`
-  );
-  readme = readme.replace(
-    /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/g,
+    /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/,
     `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`
   );
   readme = readme.replace(
-    /consisting of \*\*\d+ automated tests\*\* across \d+ test files \(\d+ Vitest suites/g,
-    `consisting of **${grandTotalTests} automated tests** across ${totalSuites + 1} test files (${totalSuites} Vitest suites`
+    /The repository features \*\*\d+ automated checks\*\* across \d+ test files \([^)]*\), with a verified \*\*\d+% pass rate\*\*:/,
+    `The repository features **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **${passRate}% pass rate**:`
   );
   readme = readme.replace(
-    /\|\s*\*\*Total\*\*\s*\|\s*\*\*All Core Domains & Runtime Smoke Verification\*\*\s*\|\s*\*\*\d+\*\*\s*\|\s*\*\*\d+\*\*\s*\|\s*\*\*\d+%\s*PASS\*\*\s*\|/g,
-    `| **Total** | **All Core Domains & Runtime Smoke Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`
+    /# Run the \d+ Vitest unit & integration tests/,
+    `# Run the ${totalUnitTests} Vitest unit & integration tests`
   );
+  readme = readme.replace(
+    /# Generate the automated test results markdown report \(\d+ total verified tests\)/,
+    `# Generate the automated test results markdown report (${grandTotalTests} total verified checks)`
+  );
+
   fs.writeFileSync(readmePath, readme, 'utf8');
-  console.log(`Synchronized single source of truth test count (${grandPassedTests}/${grandTotalTests}) into README.md`);
+  console.log(`Synchronized README test table and totals (${grandPassedTests}/${grandTotalTests}).`);
 }
 
-// 5. Synchronize Single Source of Truth into PRODUCTION_READINESS.md
+// 5. Synchronize the production-readiness counts and suite breakdown.
 const prodDocPath = path.join(repoRoot, 'docs', 'production', 'PRODUCTION_READINESS.md');
 if (fs.existsSync(prodDocPath)) {
   let prodDoc = fs.readFileSync(prodDocPath, 'utf8');
+
   prodDoc = prodDoc.replace(
-    /\*\*\d+ automated tests passing \(\d+ Vitest unit & integration tests \+ 1 native Electron smoke test\) with \d+% pass rate\*\*/g,
-    `**${grandTotalTests} automated tests passing (${totalUnitTests} Vitest unit & integration tests + 1 native Electron smoke test) with ${passRate}% pass rate**`
+    /\*\*\d+ automated checks passing \(\d+ Vitest tests \+ 1 Electron UI\/preload\/IPC E2E smoke test\) with \d+% pass rate\*\*/,
+    `**${grandTotalTests} automated checks passing (${totalUnitTests} Vitest tests + 1 Electron UI/preload/IPC E2E smoke test) with ${passRate}% pass rate**`
   );
   prodDoc = prodDoc.replace(
-    /consists of \*\*\d+ verified automated tests\*\* across \d+ test files \(\d+ Vitest suites/g,
-    `consists of **${grandTotalTests} verified automated tests** across ${totalSuites + 1} test files (${totalSuites} Vitest suites`
+    /consists of \*\*\d+ automated checks\*\* across \d+ test files \([^)]*Electron UI\/preload\/IPC E2E smoke runner\)/,
+    `consists of **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner)`
   );
   prodDoc = prodDoc.replace(
-    /Subtotal \(Vitest Test Suites\):\s+\d+ passing unit & integration tests/g,
-    `Subtotal (Vitest Test Suites):      ${totalUnitTests} passing unit & integration tests`
+    /npm test.*?— \d+ automated tests across \d+ suites/,
+    `npm test — ${totalUnitTests} automated tests across ${totalSuites} suites`
   );
   prodDoc = prodDoc.replace(
-    /Grand Total:\s+\d+ passing tests \(\d+% Pass Rate\)/g,
-    `Grand Total:                        ${grandTotalTests} passing tests (${passRate}% Pass Rate)`
+    /npm run test:report.*?— \d+ total checks: \d+ Vitest \+ 1 Electron E2E smoke/,
+    `npm run test:report — ${grandTotalTests} total checks: ${totalUnitTests} Vitest + 1 Electron E2E smoke`
   );
+
+  const breakdownMarker = '============================== TEST EXECUTION BREAKDOWN ==============================';
+  const breakdownStart = prodDoc.indexOf(breakdownMarker);
+  const separator = '======================================================================================';
+  const breakdownEnd = breakdownStart >= 0
+    ? prodDoc.indexOf(separator, breakdownStart + breakdownMarker.length)
+    : -1;
+  if (breakdownStart < 0 || breakdownEnd < 0) {
+    throw new Error('PRODUCTION_READINESS test breakdown markers changed; refusing to skip synchronization.');
+  }
+
+  const currentBreakdown = prodDoc.slice(breakdownStart + breakdownMarker.length, breakdownEnd);
+  const descriptions = new Map();
+  for (const line of currentBreakdown.split('\n')) {
+    const match = line.match(/^\s*\d+\.\s+tests\/([^\s]+)\s+\d+ passed \((.*)\)\s*$/);
+    if (match) descriptions.set(match[1], match[2]);
+  }
+
+  const rows = vitestData.testResults.map((suite, index) => {
+    const fileName = path.basename(suite.name);
+    const total = suite.assertionResults.length;
+    const passed = suite.assertionResults.filter(a => a.status === 'passed').length;
+    const description = descriptions.get(fileName) ||
+      (fileName === 'window-coordinator.test.ts'
+        ? 'Window close recovery, macOS reinitialization & listener idempotency'
+        : (suite.assertionResults[0]?.ancestorTitles[0] || fileName));
+    return `${index + 1}.  tests/${fileName.padEnd(30)} ${passed}/${total} passed (${description})`;
+  });
+  rows.push(`${totalSuites + 1}.  tests/electron-smoke.cjs         ${smokePassed ? '1/1' : '0/1'} passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)`);
+
+  const breakdown = [
+    breakdownMarker,
+    ...rows,
+    '--------------------------------------------------------------------------------------',
+    `Subtotal (Vitest Test Suites):      ${totalUnitTests} passing unit & integration tests`,
+    `Grand Total:                        ${grandPassedTests} passing checks / ${grandTotalTests} total (${passRate}% Pass Rate)`,
+    separator,
+  ].join('\n');
+  prodDoc = prodDoc.slice(0, breakdownStart) + breakdown +
+    prodDoc.slice(breakdownEnd + separator.length);
+
   fs.writeFileSync(prodDocPath, prodDoc, 'utf8');
-  console.log(`Synchronized single source of truth test count (${grandPassedTests}/${grandTotalTests}) into PRODUCTION_READINESS.md`);
+  console.log(`Synchronized PRODUCTION_READINESS counts and suite breakdown (${grandPassedTests}/${grandTotalTests}).`);
 }
 
 if (grandFailedTests > 0) {
