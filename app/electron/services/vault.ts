@@ -135,6 +135,21 @@ export class CredentialVault {
     this.writeVault(vault);
   }
 
+  /**
+   * Removes the complete encrypted credential vault from this application profile.
+   * This is logical application-level deletion; the filesystem may retain recoverable
+   * storage blocks, so it is not described as forensic or physical secure erasure.
+   */
+  public async deleteAllKeys(): Promise<void> {
+    try {
+      fs.unlinkSync(this.vaultPath);
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
   public async hasKeys(): Promise<Record<string, boolean>> {
     const vault = this.readVault();
     const providers = ['gemini', 'openai', 'anthropic', 'groq', 'ollama'];
