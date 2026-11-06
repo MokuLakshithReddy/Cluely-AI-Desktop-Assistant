@@ -680,9 +680,14 @@ export class IpcRouter {
       // instead of reporting a successful purge with credentials still present.
       await credentialVault.deleteAllKeys();
       await sessionRepository.purgeAll();
-      await stateManager.syncVaultKeys();
-
       stateManager.patchState({
+        hasApiKeys: {
+          gemini: false,
+          openai: false,
+          anthropic: false,
+          groq: false,
+          ollama: false,
+        },
         session: null,
         knowledgeDocs: [],
         isRecording: false,
