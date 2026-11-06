@@ -34,10 +34,10 @@ if (!gotSingleInstanceLock) {
         const { runDesktopE2E } = require(path.join(app.getAppPath(), 'tests', 'electron-e2e.cjs'));
         runDesktopE2E({ windowCoordinator }).then(
           () => console.log('[E2E_COMPLETE] Electron UI, preload bridge, IPC, and persistence flows passed.'),
-          (error: any) => console.error('[E2E_FAILED]', error?.stack || error?.message || error)
+          (error: any) => console.log('[E2E_FAILED]', error?.stack || error?.message || error)
         );
       } catch (error: any) {
-        console.error('[E2E_FAILED]', error?.stack || error?.message || error);
+        console.log('[E2E_FAILED]', error?.stack || error?.message || error);
       }
     }
 

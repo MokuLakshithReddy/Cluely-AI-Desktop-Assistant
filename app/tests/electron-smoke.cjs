@@ -164,7 +164,7 @@ child.on('exit', (code, signal) => {
   }
 
   // 4. Verify clean exit: Graceful lifecycle verified
-  if (code !== 0 && signal !== 'SIGTERM' && signal !== null) {
+  if (code !== 0 && signal !== 'SIGTERM') {
     console.error(`Smoke test failure: Unexpected termination signal: ${signal}, code: ${code}!`);
     process.exit(1);
   }
