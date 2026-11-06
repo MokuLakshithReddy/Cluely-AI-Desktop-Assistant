@@ -191,7 +191,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
   };
 
   const handlePurgeAllSessions = async () => {
-    if (confirm('Permanently purge all archived sessions, knowledge documents, and active transcripts?')) {
+    if (confirm('Permanently delete all archived sessions, knowledge documents, active session data, and saved API credentials? This removes the encrypted credential vault file from this app profile; it does not guarantee forensic erasure from storage media.')) {
       if (window.desktopBridge?.purgeAllData) {
         await window.desktopBridge.purgeAllData();
       } else if (window.desktopBridge?.purgeAllPastSessions) {
