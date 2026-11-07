@@ -25,5 +25,10 @@
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.67.2"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "overrides": {
+    "@electron/get@5.0.0": {
+      "undici": "^7.30.2"
+    }
+  }
 }
