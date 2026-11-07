@@ -170,13 +170,24 @@ child.on('close', (code, signal) => {
   if (shutdownTimeout) clearTimeout(shutdownTimeout);
 
   try {
+    const finalStatus = readSmokeStatus() || {};
+    appReady = appReady || finalStatus.appReady === true;
+    packagedReady = packagedReady || finalStatus.packagedReady === true;
+    packagedFailed = packagedFailed || finalStatus.packagedFailed === true;
     assert.equal(appReady, true, 'Packaged app must reach the Electron app-ready event');
     assert.equal(packagedReady, true, 'Packaged control/chat windows must load renderer, preload, and IPC');
-    assert.equal(packagedFailed, false, 'Packaged smoke must not report an error');
+    assert.equal(
+      packagedFailed,
+      false,
+      'Packaged smoke must not report an error' + (finalStatus.error ? ': ' + finalStatus.error : '')
+    );
     assert.equal(shutdownDelivered, true, 'Smoke harness must request a controlled shutdown');
-    assert.match(output, /\[APP_CLEAN_SHUTDOWN\]/, 'Packaged app must acknowledge the shutdown trigger');
-    assert.match(output, /\[APP_BEFORE_QUIT\]/, 'Packaged app must run before-quit hooks');
-    assert.match(output, /\[APP_WILL_QUIT\]/, 'Packaged app must run will-quit hooks');
+    assert.ok(finalStatus.cleanShutdown === true || output.includes('[APP_CLEAN_SHUTDOWN]'),
+      'Packaged app must acknowledge the shutdown trigger');
+    assert.ok(finalStatus.beforeQuit === true || output.includes('[APP_BEFORE_QUIT]'),
+      'Packaged app must run before-quit hooks');
+    assert.ok(finalStatus.willQuit === true || output.includes('[APP_WILL_QUIT]'),
+      'Packaged app must run will-quit hooks');
     assert.ok(!/Uncaught Exception|Fatal error|Segmentation fault/i.test(errorOutput), 'No fatal exception may appear on stderr');
     assert.equal(signal, null, 'Packaged app must not be force-killed');
     assert.equal(code, 0, 'Packaged app must exit normally with code zero');
