@@ -84,7 +84,7 @@ jobs:
       - name: Install macOS-only optional DMG tooling omitted from the Windows-generated lockfile
         if: matrix.platform == 'macos-dmg'
         working-directory: app
-        run: npm install --no-save --package-lock=false dmg-license@1.0.11
+        run: npm install --no-save --package-lock=false --workspaces=false dmg-license@1.0.11
       - name: Create unsigned electron-builder CI configuration
         working-directory: app
         run: node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');fs.writeFileSync('.electron-builder-ci.json',JSON.stringify({...pkg.build,forceCodeSigning:false},null,2))"
