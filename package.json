@@ -24,5 +24,6 @@
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.67.2"
-  }
+  },
+  "license": "UNLICENSED"
 }

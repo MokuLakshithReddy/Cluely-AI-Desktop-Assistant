@@ -5,7 +5,7 @@
 [![Tests Passing](https://img.shields.io/badge/Tests-91%2F91%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
 [![REA Verified](https://img.shields.io/badge/REA-Evidence%20Grounded-purple)](docs/reverse-engineering/CLUELY_ANALYSIS.md)
 
 An evidence-driven, clean-room desktop AI assistant reverse-engineered from **Cluely** using **REA (Reverse Engineer Anything)**. Engineered with **TypeScript**, **Electron**, **React**, and **Tailwind CSS**, it operates alongside daily desktop workflows (video meetings, coding sessions, technical interviews, sales calls, and presentations).
@@ -163,7 +163,7 @@ flowchart TD
 │   └── workflows/
 │       └── ci.yml                      # GitHub Actions CI (Windows 2022, Node 20, 62 verified tests)
 ├── .gitignore                          # Build, release, test, and credentials exclusion rules
-├── LICENSE                             # MIT Open Source License
+├── LICENSE                             # Proprietary / All Rights Reserved notice
 ├── README.md                           # Master project documentation and quickstart
 ├── docs/                               # Evidence-driven engineering documentation suite
 │   ├── reverse-engineering/
@@ -437,7 +437,7 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 
 ## 11. License & Clean-Room Governance
 
-* **Codebase License**: This project is licensed under the open-source [MIT License](LICENSE).
+* **Codebase License**: Original Cluely Copilot source and documentation are proprietary and all rights are reserved under the [project license notice](LICENSE). No general reuse, modification, or redistribution permission is granted. Third-party dependencies remain under their respective upstream licenses; review their notices before redistributing a build.
 * **Clean-Room Guarantee**: No proprietary code, decompiled binaries, or vendor assets are stored in or distributed with this repository. Every line of implementation code was created independently from scratch based on functional specifications and behavioral black-box testing.
 
 ---
