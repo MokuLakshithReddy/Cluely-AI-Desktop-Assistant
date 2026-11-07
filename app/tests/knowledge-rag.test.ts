@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { deflateSync } from 'node:zlib';
 import {
   chunkDocument,
   retrieveRelevantPassages,
@@ -8,6 +9,46 @@ import {
 import { KnowledgeDoc } from '../src/lib/types';
 
 
+function buildCompressedPdf(pageTexts: string[]): ArrayBuffer {
+  const nl = String.fromCharCode(10);
+  const pageCount = pageTexts.length;
+  const firstPageId = 3;
+  const fontId = firstPageId + pageCount;
+  const firstContentId = fontId + 1;
+  const bodies: Buffer[] = [
+    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'ascii'),
+    Buffer.from('<< /Type /Pages /Kids [' + pageTexts.map((_, i) => (firstPageId + i) + ' 0 R').join(' ') + '] /Count ' + pageCount + ' >>', 'ascii'),
+    ...pageTexts.map((_, i) => Buffer.from('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ' + fontId + ' 0 R >> >> /Contents ' + (firstContentId + i) + ' 0 R >>', 'ascii')),
+    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'ascii'),
+    ...pageTexts.map(text => {
+      const content = Buffer.from('BT /F1 12 Tf 72 720 Td (' + text + ') Tj ET', 'latin1');
+      const compressed = deflateSync(content);
+      return Buffer.concat([
+        Buffer.from('<< /Length ' + compressed.length + ' /Filter /FlateDecode >>' + nl + 'stream' + nl, 'ascii'),
+        compressed,
+        Buffer.from(nl + 'endstream', 'ascii'),
+      ]);
+    }),
+  ];
+  const header = Buffer.from('%PDF-1.7' + nl, 'ascii');
+  const parts: Buffer[] = [header];
+  const offsets = [0];
+  let cursor = header.length;
+  bodies.forEach((body, index) => {
+    offsets.push(cursor);
+    const objectHeader = Buffer.from((index + 1) + ' 0 obj' + nl, 'ascii');
+    const objectFooter = Buffer.from(nl + 'endobj' + nl, 'ascii');
+    parts.push(objectHeader, body, objectFooter);
+    cursor += objectHeader.length + body.length + objectFooter.length;
+  });
+  const xrefOffset = cursor;
+  const xrefLines = ['xref', '0 ' + (bodies.length + 1), '0000000000 65535 f '];
+  offsets.slice(1).forEach(offset => xrefLines.push(String(offset).padStart(10, '0') + ' 00000 n '));
+  const xref = Buffer.from(xrefLines.join(nl) + nl + 'trailer' + nl + '<< /Size ' + (bodies.length + 1) + ' /Root 1 0 R >>' + nl + 'startxref' + nl + xrefOffset + nl + '%%EOF', 'ascii');
+  parts.push(xref);
+  const pdf = Buffer.concat(parts);
+  return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength);
+}
 describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
   it('chunks documents with overlapping windows respecting paragraph breaks', () => {
     const longText = 'Paragraph one about distributed systems.\n\nParagraph two about consensus protocols like Paxos and Raft.\n\nParagraph three discussing leader election and log replication.';
@@ -66,20 +107,19 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
   });
 
   it('extracts compressed multi-page PDF text and decodes WinAnsi characters', async () => {
-    const bytes = Buffer.from('JVBERi0xLjMKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSCj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nIC9OYW1lIC9GMSAvU3VidHlwZSAvVHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDggMCBSIC9NZWRpYUJveCBbIDAgMCA1OTUuMjc1NiA4NDEuODg5OCBdIC9QYXJlbnQgNyAwIFIgL1Jlc291cmNlcyA8PAovRm9udCAxIDAgUiAvUHJvY1NldCBbIC9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9JbWFnZUkgXQo+PiAvUm90YXRlIDAgL1RyYW5zIDw8Cgo+PiAKICAvVHlwZSAvUGFnZQo+PgplbmRvYmoKNCAwIG9iago8PAovQ29udGVudHMgOSAwIFIgL01lZGlhQm94IFsgMCAwIDU5NS4yNzU2IDg0MS44ODk4IF0gL1BhcmVudCA3IDAgUiAvUmVzb3VyY2VzIDw8Ci9Gb250IDEgMCBSIC9Qcm9jU2V0IFsgL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSSBdCj4+IC9Sb3RhdGUgMCAvVHJhbnMgPDwKCj4+IAogIC9UeXBlIC9QYWdlCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9QYWdlTW9kZSAvVXNlTm9uZSAvUGFnZXMgNyAwIFIgL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0F1dGhvciAoYW5vbnltb3VzKSAvQ3JlYXRpb25EYXRlIChEOjIwMjYxMTA3MTMzMDM1KzAwJzAwJykgL0NyZWF0b3IgKGFub255bW91cykgL0tleXdvcmRzICgpIC9Nb2REYXRlIChEOjIwMjYxMTA3MTMzMDM1KzAwJzAwJykgL1Byb2R1Y2VyIChSZXBvcnRMYWIgUERGIExpYnJhcnkgLSBcKG9wZW5zb3VyY2VcKSkgCiAgL1N1YmplY3QgKHVuc3BlY2lmaWVkKSAvVGl0bGUgKHVudGl0bGVkKSAvVHJhcHBlZCAvRmFsc2UKPj4KZW5kb2JqCjcgMCBvYmoKPDwKL0NvdW50IDIgL0tpZHMgWyAzIDAgUiA0IDAgUiBdIC9UeXBlIC9QYWdlcwo+PgplbmRvYmoKOCAwIG9iago8PAovRmlsdGVyIFsgL0FTQ0lJODVEZWNvZGUgL0ZsYXRlRGVjb2RlIF0gL0xlbmd0aCAxNDYKPj4Kc3RyZWFtCkdhcEBFYjZsKk8mLVZJdE1FN2FCYyVMVWtNI2ZvVDMrJj1SQTsqYGNHPyJLZWYqQy4oVGRYKkM5QjxfSiNUSUAqJGR0W01kT25hR2NXNypgamZiaFZkTWUraE5qJWRia3ElVlVhRFEpbU8na2BuUD9WWGQmbWBTTV9XZ0szaUZoPTZIOiZMQD0vbjQ+UW0zNH4+ZW5kc3RyZWFtCmVuZG9iago5IDAgb2JqCjw8Ci9GaWx0ZXIgWyAvQVNDSUk4NURlY29kZSAvRmxhdGVEZWNvZGUgXSAvTGVuZ3RoIDE1Nwo+PgpzdHJlYW0KR2FwQEU0ViotMCY0Q2tvYEtXdUcvMEQsVWRFOWBkQmVGYD8zVEQtNyI2N19qK0NsZnRdWSJaSDlWSG1SIiNuNl02KGVTP0s6OE04NUI1ajtFQjtUYlEhL2MmOitxa2U9RkFBZFlWKycyVUlMKChdPUs7dUAuaiEqITBcQmFiMlA7JlF1bnBpcmxoOSJLQVlVN10xOToyKnFDVkp+PmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDEwCjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDA2MSAwMDAwMCBuIAowMDAwMDAwMDkyIDAwMDAwIG4gCjAwMDAwMDAxOTkgMDAwMDAwIG4gCjAwMDAwMDA0MDIgMDAwMDAwIG4gCjAwMDAwMDA2MDUgMDAwMDAwIG4gCjAwMDAwMDA2NzMgMDAwMDAwIG4gCjAwMDAwMDA5MzQgMDAwMDAwIG4gCjAwMDAwMDA5OTkgMDAwMDAwIG4gCjAwMDAwMDEyMzUgMDAwMDAwIG4gCjAwMDAwMDE0ODIKJSVFT0Y=', 'base64');
-    const pdf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const pdf = buildCompressedPdf([
+      'System Design Interview Notes for Distributed Systems',
+      'Second page discusses café indexing and document retrieval.',
+    ]);
     const extracted = await extractTextFromPdf(pdf);
     expect(extracted).toContain('System Design Interview Notes for Distributed Systems');
     expect(extracted).toContain('Second page discusses café indexing and document retrieval.');
     expect(extracted.indexOf('System Design')).toBeLessThan(extracted.indexOf('Second page'));
   });
-
   it('returns empty text for a valid PDF page without text operators', async () => {
-    const bytes = Buffer.from('JVBERi0xLjMKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSCj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nIC9OYW1lIC9GMSAvU3VidHlwZSAvVHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDcgMCBSIC9NZWRpYUJveCBbIDAgMCA1OTUuMjc1NiA4NDEuODg5OCBdIC9QYXJlbnQgNiAwIFIgL1Jlc291cmNlcyA8PAovRm9udCAxIDAgUiAvUHJvY1NldCBbIC9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9JbWFnZUkgXQo+PiAvUm90YXRlIDAgL1RyYW5zIDw8Cgo+PiAKICAvVHlwZSAvUGFnZQo+PgplbmRvYmoKNCAwIG9iago8PAovUGFnZU1vZGUgL1VzZU5vbmUgL1BhZ2VzIDYgMCBSIC9UeXBlIC9DYXRhbG9nCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9BdXRob3IgKGFub255bW91cykgL0NyZWF0aW9uRGF0ZSAoRDoyMDI2MTEwNzEzMzAzNSswMCcwMCcpIC9DcmVhdG9yIChhbm9ueW1vdXMpIC9LZXl3b3JkcyAoKSAvTW9kRGF0ZSAoRDoyMDI2MTEwNzEzMzAzNSswMCcwMCcpIC9Qcm9kdWNlciAoUmVwb3J0TGFiIFBERiBMaWJyYXJ5IC0gXChvcGVuc291cmNlXCkpIAogIC9TdWJqZWN0ICh1bnNwZWNpZmllZCkgL1RpdGxlICh1bnRpdGxlZCkgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iago2IDAgb2JqCjw8Ci9Db3VudCAxIC9LaWRzIFsgMyAwIFIgXSAvVHlwZSAvUGFnZXMKPj4KZW5kb2JqCjcgMCBvYmoKPDwKL0ZpbHRlciBbIC9BU0NJSTg1RGVjb2RlIC9GbGF0ZURlY29kZSBdIC9MZW5ndGggNTkKPj4Kc3RyZWFtCkdhcFFoMEU9RiwwVVxIM1RccE5ZVF5RS2s/dGM+SVAsO1cjVTFeMjNpaFBFTV9QUCRPITNeLEM1UX4+ZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgOAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwNjEgMDAwMDAwIG4gCjAwMDAwMDAwOTIgMDAwMDAwIG4gCjAwMDAwMDAxOTkgMDAwMDAwIG4gCjAwMDAwMDA0MDIgMDAwMDAwIG4gCjAwMDAwMDA0NzAgMDAwMDAwIG4gCjAwMDAwMDA3MzEgMDAwMDAwIG4gCjAwMDAwMDA3OTAKdHJhaWxlcgo8PAovSUQgCls8ZDUwNTczOTU0MTk4YzA4ZmQ3MjBlYjQ5MDNjZGNmMzQ+PGQ1MDU3Mzk1NDE5OGMwOGZkNzIwZWI0OTAzY2RjZjM0Pl0KJSBSZXBvcnRMYWIgZ2VuZXJhdGVkIFBERiBkb2N1bWVudCAtLSBkaWdlc3QgKG9wZW5zb3VyY2UpCgovSW5mbyA1IDAgUgovUm9vdCA0IDAgUgovU2l6ZSA4Cj4+CnN0YXJ0eHJlZgo5MzgKJSVFT0Y=', 'base64');
-    const pdf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    expect(await extractTextFromPdf(pdf)).toBe('');
+    const extracted = await extractTextFromPdf(buildCompressedPdf(['']));
+    expect(extracted).toBe('');
   });
-
   it('rejects malformed PDF data rather than scraping incidental printable bytes', async () => {
     const malformed = new TextEncoder().encode('not a pdf: obj stream fake text').buffer;
     await expect(extractTextFromPdf(malformed)).rejects.toThrow();
