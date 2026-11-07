@@ -25,6 +25,7 @@ export const INITIAL_STATE: SharedState = {
   themHasVoiceActivity: false,
   isCapturingScreenshot: false,
   isRecording: false,
+  isPurging: false,
   activeMode: 'copilot',
   activeModel: 'gemini-3.8-flash',
   hasApiKeys: {
@@ -119,6 +120,15 @@ class StateManager {
     this.save();
   }
 
+  /** Persist the current state synchronously and propagate failures to critical callers. */
+  public flushSaveOrThrow(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.save(true);
+  }
+
   private load() {
     try {
       const stateFile = getStateFile();
@@ -137,6 +147,7 @@ class StateManager {
           isChatWindowLoaded: false,
           isDashboardWindowLoaded: false,
           isRecording: false,
+          isPurging: false,
           meHasVoiceActivity: false,
           themHasVoiceActivity: false,
           isCapturingScreenshot: false,
@@ -152,7 +163,7 @@ class StateManager {
     }
   }
 
-  private save() {
+  private save(throwOnError: boolean = false) {
     try {
       const stateFile = getStateFile();
       const dir = path.dirname(stateFile);
@@ -178,6 +189,7 @@ class StateManager {
       fs.writeFileSync(stateFile, JSON.stringify(toSave, null, 2), 'utf8');
     } catch (e) {
       console.error('[StateManager] Failed to save state:', e);
+      if (throwOnError) throw e;
     }
   }
 }

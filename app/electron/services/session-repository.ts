@@ -184,9 +184,19 @@ export class SessionRepository {
     const dir = this.getStorageDir();
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
     for (const file of files) {
+      const filePath = path.join(dir, file);
       try {
-        fs.unlinkSync(path.join(dir, file));
-      } catch {}
+        fs.unlinkSync(filePath);
+      } catch (error: any) {
+        // A concurrent deletion is harmless; permission/disk errors must fail the purge.
+        if (error?.code !== 'ENOENT') {
+          throw new Error(`[SessionRepository] Failed to delete archived session "${file}": ${error?.message || String(error)}`);
+        }
+      }
+    }
+    const remaining = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    if (remaining.length > 0) {
+      throw new Error(`[SessionRepository] Purge incomplete: ${remaining.length} archived session file(s) remain`);
     }
   }
 }

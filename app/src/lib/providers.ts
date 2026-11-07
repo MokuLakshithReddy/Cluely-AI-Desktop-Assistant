@@ -480,7 +480,8 @@ export async function transcribeAudio(
   wavBuffer: ArrayBuffer,
   apiKey: string,
   provider: 'groq' | 'openai' = 'groq',
-  language: string = 'en'
+  language: string = 'en',
+  signal?: AbortSignal
 ): Promise<string> {
   const endpoint =
     provider === 'groq'
@@ -502,6 +503,7 @@ export async function transcribeAudio(
       Authorization: `Bearer ${apiKey.trim()}`,
     },
     body: formData,
+    signal,
   });
 
   if (!response.ok) {

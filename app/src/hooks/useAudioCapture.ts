@@ -10,6 +10,7 @@ export function useAudioCapture(
   isAudioOwner: boolean = true
 ) {
   const isRecording = state.isRecording;
+  const isPurging = state.isPurging;
   const captureSessionIdRef = useRef(0);
 
   // Local Microphone State
@@ -27,24 +28,29 @@ export function useAudioCapture(
   useEffect(() => {
     if (!isAudioOwner) return;
 
+    if (isPurging) {
+      stopDualCapture(false);
+      return;
+    }
+
     if (!isRecording) {
-      stopDualCapture();
+      stopDualCapture(true);
       return;
     }
 
     startDualCapture();
 
     return () => {
-      stopDualCapture();
+      stopDualCapture(!getLatestState().isPurging);
     };
-  }, [isRecording, isAudioOwner]);
+  }, [isRecording, isAudioOwner, isPurging]);
 
   const handleSpeechSegmentReady = async (
     role: Role,
     wavBuffer: ArrayBuffer,
     durationMs: number
   ) => {
-    if (durationMs < 400) return; // Discard short clicks/pops
+    if (durationMs < 400 || getLatestState().isPurging) return; // Discard short clicks/pops and purge-time audio
 
     const transcriptId = `tr_${role}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const placeholderItem: TranscriptItem = {
@@ -58,6 +64,7 @@ export function useAudioCapture(
 
     // Append placeholder segment to active session
     await patchState(prev => {
+      if (prev.isPurging) return {};
       const activeSession = prev.session || {
         id: `sess_${Date.now()}`,
         title: 'Live Conversation Session',
@@ -78,13 +85,14 @@ export function useAudioCapture(
     });
 
     const currentState = getLatestState();
+    if (currentState.isPurging) return;
     const hasSttKey = currentState.hasApiKeys.groq || currentState.hasApiKeys.openai;
 
     if (!hasSttKey) {
       // Diagnostic mode: Do NOT inject fake conversation transcripts!
       // Mark as error with clear actionable reason
       await patchState(prev => {
-        if (!prev.session) return {};
+        if (!prev.session || prev.isPurging) return {};
         return {
           session: {
             ...prev.session,
@@ -170,6 +178,7 @@ export function useAudioCapture(
   };
 
   const startDualCapture = async () => {
+    if (getLatestState().isPurging) return;
     const currentSessionId = ++captureSessionIdRef.current;
 
     // 1. Channel A: Start Local Microphone Capture ('me')
@@ -190,7 +199,7 @@ export function useAudioCapture(
       });
 
       // Abort and stop tracks if recording stopped or session changed while prompt was active
-      if (captureSessionIdRef.current !== currentSessionId || !getLatestState().isRecording) {
+      if (captureSessionIdRef.current !== currentSessionId || !getLatestState().isRecording || getLatestState().isPurging) {
         micStream.getTracks().forEach(t => t.stop());
         return;
       }
@@ -326,7 +335,7 @@ export function useAudioCapture(
     }
   };
 
-  const stopDualCapture = () => {
+  const stopDualCapture = (flushPendingSpeech: boolean = true) => {
     captureSessionIdRef.current++;
 
     // Stop Microphone
@@ -339,7 +348,8 @@ export function useAudioCapture(
       micAudioCtxRef.current = null;
     }
     if (micVadRef.current) {
-      micVadRef.current.flush();
+      if (flushPendingSpeech) micVadRef.current.flush();
+        else micVadRef.current.discard();
       micVadRef.current = null;
     }
 
@@ -353,7 +363,8 @@ export function useAudioCapture(
       systemAudioCtxRef.current = null;
     }
     if (systemVadRef.current) {
-      systemVadRef.current.flush();
+      if (flushPendingSpeech) systemVadRef.current.flush();
+        else systemVadRef.current.discard();
       systemVadRef.current = null;
     }
 

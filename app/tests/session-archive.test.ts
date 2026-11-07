@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SessionRepository, SessionRecord } from '../electron/services/session-repository';
 import fs from 'fs';
 import path from 'path';
@@ -135,6 +135,29 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
     await repo.purgeAll();
     const after = await repo.listSessions();
     expect(after.length).toBe(0);
+  });
+
+  it('fails purge when an archive file cannot be deleted', async () => {
+    await repo.saveSession({
+      id: 'sess_purge_failure',
+      title: 'Delete failure',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      durationSeconds: 1,
+      mode: 'copilot',
+      audioInputLanguage: 'en',
+      transcript: [],
+      messages: [],
+    });
+
+    const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {
+      throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    });
+    try {
+      await expect(repo.purgeAll()).rejects.toThrow(/Failed to delete archived session/);
+    } finally {
+      unlinkSpy.mockRestore();
+    }
   });
 
   it('returns null when requesting a nonexistent session id', async () => {
