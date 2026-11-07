@@ -22,6 +22,7 @@ const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-packaged-smoke-'
 const userData = path.join(smokeRoot, 'user-data');
 fs.mkdirSync(userData, { recursive: true });
 const shutdownTrigger = path.join(smokeRoot, 'packaged-smoke-shutdown.trigger');
+const statusFile = path.join(smokeRoot, 'packaged-smoke-status.json');
 const env = {
   ...process.env,
   CI: 'true',
@@ -29,6 +30,7 @@ const env = {
   SMOKE_TEST_MODE: 'packaged',
   SMOKE_TEST_USER_DATA: userData,
   SMOKE_TEST_SHUTDOWN_TRIGGER: shutdownTrigger,
+  SMOKE_TEST_STATUS_FILE: statusFile,
   ELECTRON_ENABLE_LOGGING: '1',
 };
 
@@ -84,6 +86,29 @@ let output = '';
 let errorOutput = '';
 let finished = false;
 
+function readSmokeStatus() {
+  try {
+    const value = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+    return value && typeof value === 'object' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function applySmokeStatus() {
+  const status = readSmokeStatus();
+  if (!status) return;
+  if (status.appReady === true) appReady = true;
+  if (status.packagedReady === true) {
+    packagedReady = true;
+    requestShutdown();
+  }
+  if (status.packagedFailed === true) {
+    packagedFailed = true;
+    requestShutdown();
+  }
+}
+
 function requestShutdown() {
   if (shutdownDelivered || finished) return;
   shutdownDelivered = true;
@@ -126,6 +151,12 @@ child.stderr.on('data', data => {
   process.stderr.write(text);
 });
 
+// Windows packaged applications are GUI-subsystem executables and may not
+// inherit writable stdout/stderr handles. Poll the app-written status file so
+// readiness and lifecycle checks do not depend on console output.
+const statusPoll = setInterval(applySmokeStatus, 100);
+applySmokeStatus();
+
 const readinessTimeout = setTimeout(() => {
   console.error('Timed out waiting for packaged renderer/preload/IPC readiness after 60 seconds.');
   packagedFailed = true;
@@ -134,6 +165,7 @@ const readinessTimeout = setTimeout(() => {
 
 child.on('close', (code, signal) => {
   finished = true;
+  clearInterval(statusPoll);
   clearTimeout(readinessTimeout);
   if (shutdownTimeout) clearTimeout(shutdownTimeout);
 
