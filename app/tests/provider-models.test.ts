@@ -65,7 +65,7 @@ describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
     expect(capturedBody.contents[2].role).toBe('user');
   });
 
-  it('streamGemini provides diagnostic guidance on 403 / 404 model errors', async () => {
+  it('streamGemini provides diagnostic guidance on 403 / 404 model errors without retrying a different model', async () => {
     global.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: { message: 'models/gemini-2.5-flash is not found' } }), {
         status: 404,
@@ -82,6 +82,27 @@ describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
         recentTranscript: [],
       })
     ).rejects.toThrow(/gemini-2\.5-flash.*Gemini 3\.[68] Flash/i);
+  });
+
+  it('streams with the documented Gemini 3.1 Pro Preview model and does not silently fall back', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'permission denied for requested model' } }), {
+        status: 403,
+        statusText: 'Forbidden',
+      })
+    );
+    global.fetch = fetchMock;
+
+    await expect(streamGemini({
+      model: 'gemini-3.1-pro-preview',
+      apiKey: 'AIzaSyKey',
+      mode: 'copilot',
+      query: 'Test',
+      recentTranscript: [],
+    })).rejects.toThrow(/Gemini API error/);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/models/gemini-3.1-pro-preview:streamGenerateContent');
   });
 
   it('streamOpenAI dynamically forwards gpt-4o-mini and serializes multi-turn turns', async () => {
