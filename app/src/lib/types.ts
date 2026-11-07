@@ -95,6 +95,7 @@ export interface SharedState {
     toggleVisibility: string;
     ask: string;
     clear: string;
+    emergencyStop: string;
     toggleSession: string;
     moveUp: string;
     moveDown: string;
