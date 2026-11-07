@@ -49,14 +49,18 @@ export const INITIAL_STATE: SharedState = {
   knowledgeDocs: [],
 };
 
-class StateManager {
+export class StateManager {
   private state: SharedState = { ...INITIAL_STATE };
   private listeners: ((state: SharedState) => void)[] = [];
   private saveTimeout: NodeJS.Timeout | null = null;
 
-  constructor() {
+  constructor(private readonly stateFileOverride?: string, syncVaultOnStart: boolean = true) {
     this.load();
-    this.syncVaultKeys();
+    if (syncVaultOnStart) this.syncVaultKeys();
+  }
+
+  private getStateFilePath(): string {
+    return this.stateFileOverride || getStateFile();
   }
 
   public async syncVaultKeys() {
@@ -133,13 +137,14 @@ class StateManager {
 
   private load() {
     try {
-      const stateFile = getStateFile();
+      const stateFile = this.getStateFilePath();
       if (fs.existsSync(stateFile)) {
         const raw = fs.readFileSync(stateFile, 'utf8');
         const parsed = JSON.parse(raw);
 
-        // Sanitize: never allow plaintext apiKeys into state even if old file had them
+        // Sanitize persisted state: credentials and transient diagnostics must never be restored.
         delete parsed.apiKeys;
+        delete parsed.persistenceError;
 
         this.state = {
           ...INITIAL_STATE,
@@ -169,13 +174,15 @@ class StateManager {
 
   private save(throwOnError: boolean = false) {
     try {
-      const stateFile = getStateFile();
+      const stateFile = this.getStateFilePath();
       const dir = path.dirname(stateFile);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
       // Clean serialization copy: ensure no secrets or screenshot payloads are saved to disk
       const toSave: any = { ...this.state };
       delete toSave.apiKeys;
+      // Persistence diagnostics are transient UI state and must never be stored in the file.
+      delete toSave.persistenceError;
 
       if (toSave.session && Array.isArray(toSave.session.messages)) {
         toSave.session = {
@@ -191,8 +198,17 @@ class StateManager {
       }
 
       fs.writeFileSync(stateFile, JSON.stringify(toSave, null, 2), 'utf8');
+      if (this.state.persistenceError) {
+        this.state = { ...this.state, persistenceError: null };
+        this.notify();
+      }
     } catch (e) {
       console.error('[StateManager] Failed to save state:', e);
+      this.state = {
+        ...this.state,
+        persistenceError: 'Local state could not be saved. Check available disk space and file permissions.',
+      };
+      this.notify();
       if (throwOnError) throw e;
     }
   }

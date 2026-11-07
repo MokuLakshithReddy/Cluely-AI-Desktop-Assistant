@@ -73,6 +73,8 @@ export interface SharedState {
   isRecording: boolean;
   /** Main-process-owned barrier that rejects new capture/AI writes during data purge. */
   isPurging: boolean;
+  /** Transient renderer-visible warning; never written into the state file. */
+  persistenceError?: string | null;
   activeMode: AssistantMode;
   activeModel:
     | 'gemini-3.8-flash'
