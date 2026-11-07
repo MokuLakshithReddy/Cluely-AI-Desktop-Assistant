@@ -272,7 +272,7 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ### 🕵️ Screen Sharing Display Protection (`setContentProtection`)
 * **Operating Mechanism**: `win.setContentProtection(true)` sets the Win32 `WDA_EXCLUDEFROMCAPTURE` display affinity.
-* **Meeting App Coverage**: Hides the floating assistant from **Zoom**, **Microsoft Teams**, **Google Meet**, **Discord**, **Slack**, and **OBS Studio** (Desktop Duplication source), keeping personal copilot notes private during presentations.
+* **Platform and capture-path limitations**: Behavior varies by OS release and capture stack. Treat display protection as best-effort, test each conferencing application/OS combination in the device-validation matrix, and do not claim universal invisibility.
 
 ---
 

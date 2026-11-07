@@ -153,25 +153,44 @@ const readmePath = path.join(repoRoot, 'README.md');
 if (fs.existsSync(readmePath)) {
   // Windows checkouts may use CRLF; normalize before parsing Markdown anchors.
   let readme = fs.readFileSync(readmePath, 'utf8').replace(/\r\n/g, '\n');
-  const heading = '| Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |';
-  const headingStart = readme.indexOf(heading);
-  const firstBreak = headingStart >= 0 ? readme.indexOf('\n', headingStart) : -1;
-  const alignBreak = firstBreak >= 0 ? readme.indexOf('\n', firstBreak + 1) : -1;
-  const tableEnd = alignBreak >= 0 ? readme.indexOf('\n\n> [!NOTE]', alignBreak) : -1;
+  const headingCandidates = [
+    '| Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |',
+    '| Test Suite | Focus Area | Passed |',
+  ];
+  const heading = headingCandidates.find(candidate => readme.includes(candidate));
+  if (!heading) {
+    throw new Error('README test table heading changed; refusing to skip test-count synchronization.');
+  }
 
-  if (headingStart < 0 || firstBreak < 0 || alignBreak < 0 || tableEnd < 0) {
-    throw new Error('README test table structure changed; refusing to silently skip test-count synchronization.');
+  const headingStart = readme.indexOf(heading);
+  const firstBreak = readme.indexOf('\n', headingStart);
+  const alignBreak = firstBreak >= 0 ? readme.indexOf('\n', firstBreak + 1) : -1;
+  if (headingStart < 0 || firstBreak < 0 || alignBreak < 0) {
+    throw new Error('README test table header is incomplete; refusing to skip synchronization.');
+  }
+
+  // Find the end of the contiguous Markdown table, independent of any note or callout after it.
+  let tableEnd = alignBreak + 1;
+  while (tableEnd < readme.length) {
+    const lineBreak = readme.indexOf('\n', tableEnd);
+    const lineEnd = lineBreak < 0 ? readme.length : lineBreak;
+    const line = readme.slice(tableEnd, lineEnd);
+    if (!line.trimStart().startsWith('|')) break;
+    tableEnd = lineBreak < 0 ? lineEnd : lineBreak + 1;
   }
 
   const existingRows = readme.slice(alignBreak + 1, tableEnd).split('\n');
   const descriptions = new Map();
   for (const row of existingRows) {
     const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
-    const codeMatch = cells[0]?.match(new RegExp('`([^`]+)`'));
+    const codeMatch = cells[0]?.match(/`([^`]+)`/);
     if (codeMatch && cells[1]) descriptions.set(codeMatch[1], cells[1]);
   }
 
-  const generatedRows = [];
+  const generatedRows = [
+    '| Test Suite File | Focus Area | Total Tests | Passed | Status |',
+    '|---|---|---:|---:|---|',
+  ];
   for (const suite of vitestData.testResults) {
     const fileName = path.basename(suite.name);
     const total = suite.assertionResults.length;
@@ -188,19 +207,24 @@ if (fs.existsSync(readmePath)) {
   generatedRows.push(`| [\`electron-smoke.cjs\`](app/tests/electron-smoke.cjs) | Electron Dashboard UI/IPC E2E, purge, persistence & graceful shutdown | 1 | ${smokePassed ? 1 : 0} | **${smokePassed ? 'PASSED' : 'FAILED'}** |`);
   generatedRows.push(`| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`);
 
-  readme = readme.slice(0, alignBreak + 1) + generatedRows.join('\n') + readme.slice(tableEnd);
+  readme = readme.slice(0, alignBreak + 1) + generatedRows.join('\n') + '\n\n' +
+    readme.slice(tableEnd).replace(/^\n+/, '');
   readme = replaceRequired(
     readme,
     /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/,
     `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`,
     'README test heading'
   );
-  readme = replaceRequired(
-    readme,
-    /The repository features \*\*\d+ automated checks\*\* across \d+ test files \([^)]*\), with a verified \*\*\d+% pass rate\*\*:/,
-    `The repository features **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **${passRate}% pass rate**:`,
-    'README test summary'
-  );
+  const generatedSummary = `The latest verified CI run recorded **${grandPassedTests} passing automated checks**: ${passedUnitTests} Vitest tests across ${totalSuites} suites and one Electron UI/preload/IPC smoke test.`;
+  const existingSummaryPattern = /The repository features \*\*\d+ automated checks\*\* across \d+ test files \([^)]*\), with a verified \*\*\d+% pass rate\*\*:/;
+  const latestSummaryPattern = /The latest verified CI run recorded \*\*\d+ passing automated checks\*\*: \d+ Vitest tests across \d+ suites and one Electron UI[^\n]* smoke test\./;
+  if (existingSummaryPattern.test(readme)) {
+    readme = readme.replace(existingSummaryPattern, generatedSummary);
+  } else if (latestSummaryPattern.test(readme)) {
+    readme = readme.replace(latestSummaryPattern, generatedSummary);
+  } else {
+    throw new Error('README test summary changed; refusing to skip test-count synchronization.');
+  }
   readme = replaceRequired(
     readme,
     /# Run the \d+ Vitest unit & integration tests/,
