@@ -37,7 +37,8 @@ export const INITIAL_STATE: SharedState = {
   shortcuts: {
     toggleVisibility: 'CommandOrControl+Shift+Space',
     ask: 'CommandOrControl+Enter',
-    clear: 'Escape',
+    clear: 'CommandOrControl+Shift+Backspace',
+    emergencyStop: 'Escape',
     toggleSession: 'CommandOrControl+Shift+X',
     moveUp: 'CommandOrControl+Up',
     moveDown: 'CommandOrControl+Down',
@@ -141,6 +142,20 @@ class StateManager {
           themHasVoiceActivity: false,
           isCapturingScreenshot: false,
         };
+
+        // Migrate the historical Escape=clear shortcut to a dedicated emergency audio stop.
+        const loadedShortcuts = this.state.shortcuts as any;
+        if (!loadedShortcuts || typeof loadedShortcuts !== 'object') {
+          this.state.shortcuts = { ...INITIAL_STATE.shortcuts };
+        } else {
+          this.state.shortcuts = {
+            ...INITIAL_STATE.shortcuts,
+            ...loadedShortcuts,
+            ...(loadedShortcuts.clear === 'Escape'
+              ? { clear: 'CommandOrControl+Shift+Backspace', emergencyStop: 'Escape' }
+              : {}),
+          };
+        }
 
         // Automatic migration from restricted legacy gemini-2.5-flash to flagship gemini-3.8-flash
         if ((this.state.activeModel as string) === 'gemini-2.5-flash' || !this.state.activeModel) {
