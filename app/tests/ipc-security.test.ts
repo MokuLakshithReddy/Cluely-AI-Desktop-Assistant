@@ -4,9 +4,79 @@ import { pathToFileURL } from 'url';
 import { ActiveRequestRegistry, IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
 
+function buildPcmWav(sampleCount: number): Buffer {
+  const dataBytes = sampleCount * 2;
+  const wav = Buffer.alloc(44 + dataBytes);
+  wav.write('RIFF', 0, 'ascii');
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write('WAVE', 8, 'ascii');
+  wav.write('fmt ', 12, 'ascii');
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36, 'ascii');
+  wav.writeUInt32LE(dataBytes, 40);
+  return wav;
+}
+
 describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
+
+  it('accepts exact aggregate document/chunk and AI query limits', () => {
+    const exactBytes = Array.from({ length: 7 }, (_, index) => ({
+      id: `doc_${index}`,
+      title: `Document ${index}`,
+      content: 'x'.repeat(index < 6 ? 2000000 : (12 * 1024 * 1024) - (6 * 2000000)),
+      chunks: [],
+    }));
+    expect(() => router.sanitizePatchState({ knowledgeDocs: exactBytes })).not.toThrow();
+
+    const exactChunks = Array.from({ length: 5 }, (_, index) => ({
+      id: `chunk_doc_${index}`, title: `Chunk document ${index}`, content: 'content', chunks: Array(2000).fill('x'),
+    }));
+    expect(() => router.sanitizePatchState({ knowledgeDocs: exactChunks })).not.toThrow();
+
+    const exactChunk = [{ id: 'exact_chunk', title: 'Exact chunk', content: 'x', chunks: ['x'.repeat(256 * 1024)] }];
+    expect(() => router.sanitizePatchState({ knowledgeDocs: exactChunk })).not.toThrow();
+
+    expect(() => router.validateAiRequestOptions({
+      model: 'gemini-3.8-flash', mode: 'copilot', query: 'x'.repeat(20000),
+      conversationHistory: Array(50).fill({ role: 'user', content: 'x' }),
+      knowledgePassages: Array(10).fill('passage'),
+    })).not.toThrow();
+  });
+
+  it('rejects one-over aggregate document, chunk, AI query and audio duration limits', () => {
+    const exactBytes = Array.from({ length: 7 }, (_, index) => ({
+      id: `doc_${index}`,
+      title: `Document ${index}`,
+      content: 'x'.repeat(index < 6 ? 2000000 : (12 * 1024 * 1024) - (6 * 2000000) + 1),
+      chunks: [],
+    }));
+    expect(() => router.sanitizePatchState({ knowledgeDocs: exactBytes })).toThrow(/aggregate document content exceeds/);
+
+    const sixChunkDocs = Array.from({ length: 5 }, (_, index) => ({
+      id: `chunk_doc_${index}`, title: `Chunk document ${index}`, content: 'content', chunks: Array(2000).fill('x'),
+    }));
+    sixChunkDocs.push({ id: 'chunk_doc_5', title: 'Chunk document 5', content: 'x', chunks: ['x'] });
+    expect(() => router.sanitizePatchState({ knowledgeDocs: sixChunkDocs })).toThrow(/aggregate chunk count exceeds/);
+
+    expect(() => router.validateAiRequestOptions({
+      model: 'gemini-3.8-flash', mode: 'copilot', query: 'x'.repeat(20001),
+    })).toThrow(/AI query exceeds/);
+
+    const exactlyTwentySeconds = buildPcmWav(16000 * 20).toString('base64');
+    expect(router.validateSttAudioPayload(exactlyTwentySeconds).byteLength).toBe(44 + (16000 * 20 * 2));
+    const overDuration = buildPcmWav((16000 * 20) + 1).toString('base64');
+    expect(() => router.validateSttAudioPayload(overDuration)).toThrow(/20-second duration limit/);
+    expect(() => router.validateSttAudioPayload(Buffer.from('not a WAV').toString('base64')))
+      .toThrow(/canonical mono 16 kHz/);
+  });
 
   it('rejects aggregate knowledge content and chunk overflow', () => {
     const docs = Array.from({ length: 8 }, (_, index) => ({
