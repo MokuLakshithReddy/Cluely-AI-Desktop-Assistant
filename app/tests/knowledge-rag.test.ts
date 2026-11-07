@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { deflateSync } from 'node:zlib';
 import {
   chunkDocument,
   retrieveRelevantPassages,
@@ -8,53 +7,6 @@ import {
 } from '../src/lib/knowledge';
 import { KnowledgeDoc } from '../src/lib/types';
 
-
-// Builds a structurally valid PDF with Flate-compressed content streams and xref offsets.
-function buildTextPdf(pageTexts: string[]): ArrayBuffer {
-  const pageObjectIds = pageTexts.map((_, index) => 3 + index);
-  const fontObjectId = 3 + pageTexts.length;
-  const firstContentObjectId = fontObjectId + 1;
-  const objectBodies: Buffer[] = [
-    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'ascii'),
-    Buffer.from('<< /Type /Pages /Kids [' + pageObjectIds.map(id => id + ' 0 R').join(' ') + '] /Count ' + pageTexts.length + ' >>', 'ascii'),
-    ...pageTexts.map((_, index) => Buffer.from(
-      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ' + fontObjectId + ' 0 R >> >> /Contents ' + (firstContentObjectId + index) + ' 0 R >>',
-      'ascii'
-    )),
-    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'ascii'),
-    ...pageTexts.map(text => {
-      const commands = text
-        ? 'BT /F1 12 Tf 72 720 Td (' + text.replace(/([\\\\()])/g, '\\\\$1') + ') Tj ET'
-        : 'BT ET';
-      const compressed = deflateSync(Buffer.from(commands, 'latin1'));
-      return Buffer.concat([
-        Buffer.from('<< /Length ' + compressed.length + ' /Filter /FlateDecode >>\\nstream\\n', 'ascii'),
-        compressed,
-        Buffer.from('\\nendstream', 'ascii'),
-      ]);
-    }),
-  ];
-  const parts: Buffer[] = [Buffer.from('%PDF-1.7\\n', 'ascii')];
-  const offsets = [0];
-  let byteLength = parts[0].length;
-  objectBodies.forEach((body, index) => {
-    offsets.push(byteLength);
-    const header = Buffer.from((index + 1) + ' 0 obj\\n', 'ascii');
-    const footer = Buffer.from('\\nendobj\\n', 'ascii');
-    parts.push(header, body, footer);
-    byteLength += header.length + body.length + footer.length;
-  });
-  const xrefOffset = byteLength;
-  const xref = [
-    'xref\\n0 ' + (objectBodies.length + 1) + '\\n',
-    '0000000000 65535 f \\n',
-    ...offsets.slice(1).map(offset => String(offset).padStart(10, '0') + ' 00000 n \\n'),
-    'trailer\\n<< /Size ' + (objectBodies.length + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefOffset + '\\n%%EOF',
-  ].join('');
-  parts.push(Buffer.from(xref, 'ascii'));
-  const pdf = Buffer.concat(parts);
-  return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength);
-}
 
 describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
   it('chunks documents with overlapping windows respecting paragraph breaks', () => {
@@ -113,21 +65,19 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
     expect(results).toHaveLength(0);
   });
 
-  it('extracts compressed, multi-page PDF text and decodes WinAnsi characters', async () => {
-    const pdf = buildTextPdf([
-      'System Design Interview Notes for Distributed Systems',
-      'Second page discusses café indexing and document retrieval.',
-    ]);
+  it('extracts compressed multi-page PDF text and decodes WinAnsi characters', async () => {
+    const bytes = Buffer.from('JVBERi0xLjcKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUiA0IDAgUl0gL0NvdW50IDIgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvQ29udGVudHMgNiAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvQ29udGVudHMgNyAwIFIgPj4KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nID4+CmVuZG9iago2IDAgb2JqCjw8IC9MZW5ndGggODYgL0ZpbHRlciAvRmxhdGVEZWNvZGUgPj4Kc3RyZWFtCniccwpR0HczVDA0UghJUzA3AiIDhZAUBY3gyuKS1FwFl9TizPQ8Bc+8ktSisszUcgW//JLUYoW0/CIFl8zikqLMpNKS1BQFiOpiTYWQLAXXEAAgKhsDCmVuZHN0cmVhbQplbmRvYmoKNyAwIG9iago8PCAvTGVuZ3RoIDkzIC9GaWx0ZXIgL0ZsYXRlRGVjb2RlID4+CnN0cmVhbQp4nA3KvQmAMBAG0FW+Uhv/GntBF/AWCLlLiGgiXhRXdgsDr3wToV169APIYRyKDsSoVrEpMk7jBRzU3qqisMZ9CJHlDdHDlMDJ3ofEjEvyFeQxe1ODNsz0A9wFHYIKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgOAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTIxIDAwMDAwIG4gCjAwMDAwMDAyNDcgMDAwMDAgbiAKMDAwMDAwMDM3MyAwMDAwMCBuIAowMDAwMDAwNDcwIDAwMDAwIG4gCjAwMDAwMDA2MjcgMDAwMDAwIG4gCjAwMDAwMDA3OTEKJSVFT0Y=', 'base64');
+    const pdf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     const extracted = await extractTextFromPdf(pdf);
-
     expect(extracted).toContain('System Design Interview Notes for Distributed Systems');
-    expect(extracted).toContain('Second page discusses café indexing');
+    expect(extracted).toContain('Second page discusses café indexing and document retrieval.');
     expect(extracted.indexOf('System Design')).toBeLessThan(extracted.indexOf('Second page'));
   });
 
   it('returns empty text for a valid PDF page without text operators', async () => {
-    const extracted = await extractTextFromPdf(buildTextPdf(['']));
-    expect(extracted).toBe('');
+    const bytes = Buffer.from('JVBERi0xLjcKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA0IDAgUiA+PiA+PiAvQ29udGVudHMgNSAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nID4+CmVuZG9iago1IDAgb2JqCjw8IC9MZW5ndGggMTMgL0ZpbHRlciAvRmxhdGVEZWNvZGUgPj4Kc3RyZWFtCniccwpRcA0BAAPdAVAKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzOCAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQyMgolJUVPRg==', 'base64');
+    const pdf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    expect(await extractTextFromPdf(pdf)).toBe('');
   });
 
   it('rejects malformed PDF data rather than scraping incidental printable bytes', async () => {
