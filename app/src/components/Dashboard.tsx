@@ -614,7 +614,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
             <div>
               <h3 className="text-lg font-bold text-slate-100">Global Keyboard Shortcuts</h3>
               <p className="text-xs text-slate-400 mt-1">
-                These hotkeys function globally across your operating system even when other windows are focused.
+                These hotkeys function globally across your operating system even when other windows are focused. Emergency Stop immediately stops microphone and system-audio capture and cancels active AI/STT work; it does not delete saved history. Emergency Stop immediately stops microphone and system-audio capture and cancels active AI/STT work; it does not delete saved history.
               </p>
             </div>
 
