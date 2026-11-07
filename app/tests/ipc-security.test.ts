@@ -15,7 +15,17 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     (emergencyRouter as any).activeAiControllers.set('test-request', aiController);
     (emergencyRouter as any).activeTranscriptionControllers.add(transcriptionController);
     const previous = stateManager.getState();
-    const session = previous.session || { id: 'emergency-stop-session', createdAt: new Date().toISOString(), messages: [], transcript: [] };
+    const session = previous.session || {
+      id: 'emergency-stop-session',
+      title: 'Emergency stop test',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      durationSeconds: 0,
+      mode: 'copilot' as const,
+      audioInputLanguage: 'en',
+      messages: [],
+      transcript: [],
+    };
     stateManager.patchState({ session, isRecording: true, isGenerating: true, isPurging: false, isEmergencyStopping: false });
     emergencyRouter.emergencyStop();
     expect(aiController.signal.aborted).toBe(true);
