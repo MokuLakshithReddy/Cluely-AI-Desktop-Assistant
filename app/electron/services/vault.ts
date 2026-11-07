@@ -121,7 +121,7 @@ export class CredentialVault {
   }
 
   private async encrypt(plainText: string): Promise<string> {
-    const storage = safeStorage as unknown as AsyncSafeStorageLike;
+    const storage = (safeStorage ?? {}) as unknown as AsyncSafeStorageLike;
     try {
       const encrypted = await encryptWithAsyncSafeStorage(storage, process.platform, plainText);
       return `safe:${encrypted.toString('base64')}`;
