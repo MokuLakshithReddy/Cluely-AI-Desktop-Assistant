@@ -46,7 +46,19 @@ const ALLOWED_SHORTCUT_KEYS = new Set([
 const MAX_TRANSCRIPT_ITEMS = 5000;
 const MAX_MESSAGES_ITEMS = 1000;
 const MAX_KNOWLEDGE_DOCS = 500;
-const MAX_CONTENT_LENGTH = 2000000; // 2MB max for doc content
+const MAX_CONTENT_LENGTH = 2000000; // 2 MiB maximum per document
+const MAX_KNOWLEDGE_TOTAL_BYTES = 12 * 1024 * 1024;
+const MAX_KNOWLEDGE_TOTAL_CHUNKS = 10000;
+const MAX_CHUNK_BYTES = 256 * 1024;
+const MAX_STT_AUDIO_BASE64_CHARS = 8 * 1024 * 1024;
+const MAX_AI_QUERY_CHARS = 20000;
+const MAX_AI_SCREENSHOT_BASE64_CHARS = 8 * 1024 * 1024;
+const MAX_AI_HISTORY_ITEMS = 50;
+const MAX_AI_HISTORY_TOTAL_CHARS = 100000;
+const MAX_AI_TRANSCRIPT_ITEMS = 100;
+const MAX_AI_TRANSCRIPT_TOTAL_CHARS = 50000;
+const MAX_AI_KNOWLEDGE_PASSAGES = 10;
+const MAX_AI_KNOWLEDGE_TOTAL_CHARS = 80000;
 const VALID_TRANSCRIPT_ROLES = new Set(['me', 'them']);
 const VALID_TRANSCRIPT_STATUSES = new Set(['transcribing', 'ready', 'error']);
 const VALID_MESSAGE_ROLES = new Set(['user', 'assistant', 'system']);
@@ -289,6 +301,72 @@ export class IpcRouter {
   }
 
   /**
+   * Reject oversized or malformed generation context before provider work begins.
+   * Limits are aggregate as well as per collection so many small items cannot bypass them.
+   */
+  public validateAiRequestOptions(options: any): void {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+      throw new Error('[IpcRouter] Invalid AI request: expected an options object');
+    }
+    if (typeof options.model !== 'string' || options.model.trim().length === 0 || options.model.length > 100) {
+      throw new Error('[IpcRouter] Invalid AI request model');
+    }
+    if (typeof options.mode !== 'string' || !ALLOWED_OPERATING_MODES.has(options.mode)) {
+      throw new Error('[IpcRouter] Invalid AI request mode');
+    }
+    if (typeof options.query !== 'string' || options.query.length > MAX_AI_QUERY_CHARS) {
+      throw new Error(`[IpcRouter] AI query exceeds the ${MAX_AI_QUERY_CHARS} character limit`);
+    }
+
+    const screenshot = options.screenshotBase64;
+    if (screenshot !== undefined && screenshot !== null &&
+      (typeof screenshot !== 'string' || screenshot.length > MAX_AI_SCREENSHOT_BASE64_CHARS)) {
+      throw new Error('[IpcRouter] Screenshot context exceeds the 8 MiB encoded size limit');
+    }
+
+    const transcript = options.recentTranscript ?? [];
+    if (!Array.isArray(transcript) || transcript.length > MAX_AI_TRANSCRIPT_ITEMS) {
+      throw new Error(`[IpcRouter] AI transcript context exceeds ${MAX_AI_TRANSCRIPT_ITEMS} items`);
+    }
+    let transcriptChars = 0;
+    for (const [index, item] of transcript.entries()) {
+      if (!item || typeof item !== 'object' || typeof item.text !== 'string' || item.text.length > 10000) {
+        throw new Error(`[IpcRouter] Invalid AI transcript context item at index ${index}`);
+      }
+      transcriptChars += item.text.length;
+    }
+    if (transcriptChars > MAX_AI_TRANSCRIPT_TOTAL_CHARS) {
+      throw new Error('[IpcRouter] AI transcript context exceeds the 50000 character aggregate limit');
+    }
+
+    const history = options.conversationHistory ?? [];
+    if (!Array.isArray(history) || history.length > MAX_AI_HISTORY_ITEMS) {
+      throw new Error(`[IpcRouter] AI conversation history exceeds ${MAX_AI_HISTORY_ITEMS} items`);
+    }
+    let historyChars = 0;
+    for (const [index, item] of history.entries()) {
+      if (!item || typeof item !== 'object' ||
+        !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string') {
+        throw new Error(`[IpcRouter] Invalid AI conversation history item at index ${index}`);
+      }
+      historyChars += item.content.length;
+    }
+    if (historyChars > MAX_AI_HISTORY_TOTAL_CHARS) {
+      throw new Error('[IpcRouter] AI conversation history exceeds the 100000 character aggregate limit');
+    }
+
+    const passages = options.knowledgePassages ?? [];
+    if (!Array.isArray(passages) || passages.length > MAX_AI_KNOWLEDGE_PASSAGES ||
+      passages.some(passage => typeof passage !== 'string')) {
+      throw new Error(`[IpcRouter] AI knowledge context exceeds ${MAX_AI_KNOWLEDGE_PASSAGES} passages or contains invalid data`);
+    }
+    const passageChars = passages.reduce((total: number, passage: string) => total + passage.length, 0);
+    if (passageChars > MAX_AI_KNOWLEDGE_TOTAL_CHARS) {
+      throw new Error('[IpcRouter] AI knowledge context exceeds the 80000 character aggregate limit');
+    }
+  }
+
+  /**
    * Validates patch object strictly against permitted whitelist and per-field type schemas.
    * Rejects malformed values, prototype pollutants, or invalid enum variants.
    */
@@ -364,6 +442,8 @@ export class IpcRouter {
         if (val.length > MAX_KNOWLEDGE_DOCS) {
           throw new Error(`[IpcRouter] Invalid knowledgeDocs: Exceeds maximum limit of ${MAX_KNOWLEDGE_DOCS} documents`);
         }
+        let totalKnowledgeBytes = 0;
+        let totalKnowledgeChunks = 0;
         for (let i = 0; i < val.length; i++) {
           const docObj = val[i] as any;
           if (!docObj || typeof docObj !== 'object') {
@@ -378,8 +458,13 @@ export class IpcRouter {
           if (typeof docObj.content !== 'string') {
             throw new Error(`[IpcRouter] Invalid document at index ${i}: Missing id, title, or content`);
           }
-          if (docObj.content.length > MAX_CONTENT_LENGTH) {
-            throw new Error(`[IpcRouter] Invalid document at index ${i}: content exceeds ${MAX_CONTENT_LENGTH} char limit`);
+          const contentBytes = Buffer.byteLength(docObj.content, 'utf8');
+          if (contentBytes > MAX_CONTENT_LENGTH) {
+            throw new Error(`[IpcRouter] Invalid document at index ${i}: content exceeds ${MAX_CONTENT_LENGTH} byte limit`);
+          }
+          totalKnowledgeBytes += contentBytes;
+          if (totalKnowledgeBytes > MAX_KNOWLEDGE_TOTAL_BYTES) {
+            throw new Error(`[IpcRouter] Invalid knowledgeDocs: aggregate document content exceeds ${MAX_KNOWLEDGE_TOTAL_BYTES} bytes`);
           }
           if (docObj.sourceType !== undefined && !VALID_DOC_SOURCE_TYPES.has(docObj.sourceType)) {
             throw new Error(`[IpcRouter] Invalid document at index ${i}: sourceType must be "pasted" or "file"`);
@@ -390,6 +475,19 @@ export class IpcRouter {
           if (docObj.chunks !== undefined) {
             if (!Array.isArray(docObj.chunks) || docObj.chunks.length > 2000) {
               throw new Error(`[IpcRouter] Invalid document at index ${i}: chunks must be array under 2000 items`);
+            }
+            totalKnowledgeChunks += docObj.chunks.length;
+            if (totalKnowledgeChunks > MAX_KNOWLEDGE_TOTAL_CHUNKS) {
+              throw new Error(`[IpcRouter] Invalid knowledgeDocs: aggregate chunk count exceeds ${MAX_KNOWLEDGE_TOTAL_CHUNKS}`);
+            }
+            for (const [chunkIndex, chunk] of docObj.chunks.entries()) {
+              if (typeof chunk !== 'string' || Buffer.byteLength(chunk, 'utf8') > MAX_CHUNK_BYTES) {
+                throw new Error(`[IpcRouter] Invalid document at index ${i}: chunk ${chunkIndex} exceeds the 256 KiB limit or is not text`);
+              }
+              totalKnowledgeBytes += Buffer.byteLength(chunk, 'utf8');
+              if (totalKnowledgeBytes > MAX_KNOWLEDGE_TOTAL_BYTES) {
+                throw new Error(`[IpcRouter] Invalid knowledgeDocs: aggregate content and chunk bytes exceed ${MAX_KNOWLEDGE_TOTAL_BYTES}`);
+              }
             }
           }
         }
@@ -650,6 +748,7 @@ export class IpcRouter {
     ipcMain.handle('ai-stream-request', async (event, options: any) => {
       this.validateOrigin(event);
       if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; AI requests are temporarily blocked.');
+      this.validateAiRequestOptions(options);
       const {
         model,
         mode,
@@ -820,6 +919,12 @@ export class IpcRouter {
       this.validateOrigin(event);
       if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
       if (!wavBase64 || typeof wavBase64 !== 'string') throw new Error('Missing wavBase64 audio payload');
+      if (wavBase64.length > MAX_STT_AUDIO_BASE64_CHARS) {
+        throw new Error('Audio payload exceeds the 8 MiB encoded size limit');
+      }
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(wavBase64) || wavBase64.length % 4 !== 0) {
+        throw new Error('Audio payload is not valid base64');
+      }
 
       const groqKey = await credentialVault.getKey('groq');
       const openaiKey = await credentialVault.getKey('openai');
@@ -829,6 +934,9 @@ export class IpcRouter {
       if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
 
       const buf = Buffer.from(wavBase64, 'base64');
+      if (buf.byteLength > 6 * 1024 * 1024) {
+        throw new Error('Decoded audio payload exceeds the 6 MiB size limit');
+      }
       const audioBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
       const controller = new AbortController();
       this.activeTranscriptionControllers.add(controller);
