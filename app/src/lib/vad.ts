@@ -187,6 +187,15 @@ export class VADProcessor {
     }
   }
 
+  /** Drop buffered audio without emitting a segment (used for privacy purge). */
+  public discard(): void {
+    this.isSpeaking = false;
+    this.speechStartTimestamp = null;
+    this.silenceStartTimestamp = null;
+    this.speechBuffer = [];
+    this.preSpeechBuffer = [];
+  }
+
   public isVoiceActive(): boolean {
     return this.isSpeaking;
   }

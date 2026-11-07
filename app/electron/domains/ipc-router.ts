@@ -62,6 +62,9 @@ export class IpcRouter {
   private customTrustedHtmlPath?: string;
   private forceProductionMode: boolean = false;
   private activeAiControllers: Map<string, AbortController> = new Map();
+  private activeAiTasks: Set<Promise<void>> = new Set();
+  private activeTranscriptionControllers: Set<AbortController> = new Set();
+  private activeTranscriptionTasks: Set<Promise<string>> = new Set();
 
   constructor(customTrustedHtmlPath?: string, forceProductionMode: boolean = false) {
     if (customTrustedHtmlPath) {
@@ -466,6 +469,19 @@ export class IpcRouter {
     // 2. Patch Shared State (with strict schema sanitization)
     ipcMain.handle('patch-shared-state', (event, rawPatch: any) => {
       this.validateOrigin(event);
+      const currentState = stateManager.getState();
+      if (currentState.isPurging) {
+        // Prevent renderer updates from restarting capture or recreating private data.
+        if (
+          rawPatch?.isRecording === true ||
+          rawPatch?.meHasVoiceActivity === true ||
+          rawPatch?.themHasVoiceActivity === true ||
+          (rawPatch?.session !== undefined && rawPatch.session !== null) ||
+          (Array.isArray(rawPatch?.knowledgeDocs) && rawPatch.knowledgeDocs.length > 0)
+        ) {
+          return currentState;
+        }
+      }
       const cleanPatch = this.sanitizePatchState(rawPatch);
       return stateManager.patchState(cleanPatch);
     });
@@ -552,6 +568,7 @@ export class IpcRouter {
     // 9. AI Execution Bridge (Executes with keys fetched directly from vault)
     ipcMain.handle('ai-stream-request', async (event, options: any) => {
       this.validateOrigin(event);
+      if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; AI requests are temporarily blocked.');
       const {
         model,
         mode,
@@ -566,6 +583,9 @@ export class IpcRouter {
       const reqId = requestId || `req_${Date.now()}`;
       const controller = new AbortController();
       this.activeAiControllers.set(reqId, controller);
+      let resolveAiTask!: () => void;
+      const aiTaskSettled = new Promise<void>(resolve => { resolveAiTask = resolve; });
+      this.activeAiTasks.add(aiTaskSettled);
       stateManager.patchState({ isGenerating: true });
 
       try {
@@ -581,7 +601,7 @@ export class IpcRouter {
         }
 
         const onToken = (token: string) => {
-          if (!senderWebContents.isDestroyed()) {
+          if (!stateManager.getState().isPurging && !senderWebContents.isDestroyed()) {
             senderWebContents.send('ai-token-stream', token);
           }
         };
@@ -643,6 +663,8 @@ export class IpcRouter {
         return { content: resultText, sources: knowledgePassages };
       } finally {
         this.activeAiControllers.delete(reqId);
+        this.activeAiTasks.delete(aiTaskSettled);
+        resolveAiTask();
         stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
       }
     });
@@ -669,57 +691,91 @@ export class IpcRouter {
 
     ipcMain.handle('purge-all-data', async event => {
       this.validateOrigin(event);
+      if (stateManager.getState().isPurging) throw new Error('A data purge is already in progress.');
 
-      // Stop active provider requests before removing credentials from the vault.
-      for (const controller of this.activeAiControllers.values()) {
-        controller.abort();
-      }
-      this.activeAiControllers.clear();
-
-      // Remove both persistent data stores. A failed deletion rejects the IPC call
-      // instead of reporting a successful purge with credentials still present.
-      await credentialVault.deleteAllKeys();
-      await sessionRepository.purgeAll();
+      // Close the write gate before notifying renderers or deleting persistent files.
       stateManager.patchState({
-        hasApiKeys: {
-          gemini: false,
-          openai: false,
-          anthropic: false,
-          groq: false,
-          ollama: false,
-        },
-        session: null,
-        knowledgeDocs: [],
+        isPurging: true,
         isRecording: false,
+        meHasVoiceActivity: false,
+        themHasVoiceActivity: false,
         isGenerating: false,
       });
-      return true;
+
+      for (const controller of this.activeAiControllers.values()) controller.abort();
+      this.activeAiControllers.clear();
+      for (const controller of this.activeTranscriptionControllers) controller.abort();
+
+      try {
+        // Wait for aborted AI and STT handlers to leave their finally blocks before
+        // deleting credentials and local data. Their providers receive the AbortSignal.
+        await Promise.allSettled([
+          ...Array.from(this.activeAiTasks),
+          ...Array.from(this.activeTranscriptionTasks),
+        ]);
+        await credentialVault.deleteAllKeys();
+        await sessionRepository.purgeAll();
+
+        stateManager.patchState({
+          hasApiKeys: {
+            gemini: false,
+            openai: false,
+            anthropic: false,
+            groq: false,
+            ollama: false,
+          },
+          session: null,
+          knowledgeDocs: [],
+          isRecording: false,
+          isGenerating: false,
+          isPurging: false,
+        });
+        stateManager.flushSaveOrThrow();
+        return true;
+      } catch (error) {
+        stateManager.patchState({ isPurging: false, isRecording: false });
+        try {
+          stateManager.flushSaveOrThrow();
+        } catch (saveError) {
+          console.error('[IpcRouter] Failed to persist purge failure state:', saveError);
+        }
+        throw error;
+      }
     });
 
     // 10. STT Transcription Bridge
     ipcMain.handle('stt-transcribe-payload', async (event, { wavBase64, language }: any) => {
       this.validateOrigin(event);
-      if (!wavBase64 || typeof wavBase64 !== 'string') {
-        throw new Error('Missing wavBase64 audio payload');
-      }
+      if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
+      if (!wavBase64 || typeof wavBase64 !== 'string') throw new Error('Missing wavBase64 audio payload');
 
       const groqKey = await credentialVault.getKey('groq');
       const openaiKey = await credentialVault.getKey('openai');
       const activeKey = groqKey || openaiKey;
       const provider = groqKey ? 'groq' : 'openai';
-
-      if (!activeKey) {
-        throw new Error('No Speech-to-Text key configured. Set Groq or OpenAI key in Settings.');
-      }
+      if (!activeKey) throw new Error('No Speech-to-Text key configured. Set Groq or OpenAI key in Settings.');
+      if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
 
       const buf = Buffer.from(wavBase64, 'base64');
-      const text = await transcribeAudio(buf.buffer, activeKey, provider, language || 'en');
-      return { text };
+      const audioBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+      const controller = new AbortController();
+      this.activeTranscriptionControllers.add(controller);
+      const task = transcribeAudio(audioBuffer, activeKey, provider, language || 'en', controller.signal);
+      this.activeTranscriptionTasks.add(task);
+      try {
+        const text = await task;
+        if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
+        return { text };
+      } finally {
+        this.activeTranscriptionControllers.delete(controller);
+        this.activeTranscriptionTasks.delete(task);
+      }
     });
 
     // 11. Multi-Session Repository Handlers
     ipcMain.handle('session-save', async (event, session: any) => {
       this.validateOrigin(event);
+      if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; session writes are blocked.');
       const cleanSession = this.sanitizeSessionRecord(session);
       await sessionRepository.saveSession(cleanSession);
     });

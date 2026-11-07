@@ -71,6 +71,8 @@ export interface SharedState {
   themHasVoiceActivity: boolean;
   isCapturingScreenshot: boolean;
   isRecording: boolean;
+  /** Main-process-owned barrier that rejects new capture/AI writes during data purge. */
+  isPurging: boolean;
   activeMode: AssistantMode;
   activeModel:
     | 'gemini-3.8-flash'

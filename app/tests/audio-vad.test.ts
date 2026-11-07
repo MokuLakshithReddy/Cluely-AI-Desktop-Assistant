@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { AudioResampler, VADProcessor, encodeWAV } from '../src/lib/vad';
 
 describe('Audio Processing, VAD & Crosstalk Subsystem', () => {
@@ -89,6 +89,22 @@ describe('Audio Processing, VAD & Crosstalk Subsystem', () => {
     // When isEchoSuppressed is true, frame is treated as silence
     const isSpeaking = vad.processFrame(activeFrame, true);
     expect(isSpeaking).toBe(false);
+  });
+
+  it('discards buffered speech without emitting a segment during privacy teardown', () => {
+    const vad = new VADProcessor({ energyThreshold: 0.02 });
+    const onSpeechEnd = vi.fn();
+    vad.onSpeechEnd = onSpeechEnd;
+    const speechFrame = new Float32Array(512);
+    for (let i = 0; i < speechFrame.length; i++) speechFrame[i] = Math.sin((2 * Math.PI * 300 * i) / 16000) * 0.3;
+
+    vad.processFrame(speechFrame);
+    expect(vad.isVoiceActive()).toBe(true);
+    vad.discard();
+    vad.flush();
+
+    expect(vad.isVoiceActive()).toBe(false);
+    expect(onSpeechEnd).not.toHaveBeenCalled();
   });
 
   it('correctly encodes Float32Array into valid 16-bit PCM WAV with RIFF header', () => {
