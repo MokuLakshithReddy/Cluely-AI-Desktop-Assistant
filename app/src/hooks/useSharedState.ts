@@ -27,6 +27,7 @@ export const FALLBACK_STATE: SharedState = {
     toggleVisibility: 'CommandOrControl+Shift+Space',
     ask: 'CommandOrControl+Enter',
     clear: 'Escape',
+    emergencyStop: 'CommandOrControl+Shift+Escape',
     toggleSession: 'CommandOrControl+Shift+X',
     moveUp: 'CommandOrControl+Up',
     moveDown: 'CommandOrControl+Down',
