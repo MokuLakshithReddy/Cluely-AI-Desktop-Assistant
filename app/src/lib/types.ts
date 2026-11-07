@@ -73,6 +73,8 @@ export interface SharedState {
   isRecording: boolean;
   /** Main-process-owned barrier that rejects new capture/AI writes during data purge. */
   isPurging: boolean;
+  /** One-shot signal asking the audio owner to stop both streams without flushing buffered speech. */
+  isEmergencyStopping: boolean;
   /** Transient renderer-visible warning; never written into the state file. */
   persistenceError?: string | null;
   activeMode: AssistantMode;
@@ -99,6 +101,7 @@ export interface SharedState {
     toggleVisibility: string;
     ask: string;
     clear: string;
+    emergencyStop: string;
     toggleSession: string;
     moveUp: string;
     moveDown: string;
