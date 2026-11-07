@@ -4,23 +4,75 @@ import { pathToFileURL } from 'url';
 import { ActiveRequestRegistry, IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
 
+function buildPcmWav(sampleCount: number): Buffer {
+  const dataBytes = sampleCount * 2;
+  const wav = Buffer.alloc(44 + dataBytes);
+  wav.write('RIFF', 0, 'ascii');
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write('WAVE', 8, 'ascii');
+  wav.write('fmt ', 12, 'ascii');
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36, 'ascii');
+  wav.writeUInt32LE(dataBytes, 40);
+  return wav;
+}
+
 describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
 
-  it('rejects aggregate knowledge content and chunk overflow', () => {
-    const docs = Array.from({ length: 8 }, (_, index) => ({
-      id: `doc_${index}`, title: `Document ${index}`, content: 'x'.repeat(1700000), chunks: [],
+  it('accepts exact aggregate knowledge byte/chunk limits and rejects one-over payloads', () => {
+    const exactBytes = Array.from({ length: 7 }, (_, index) => ({
+      id: `doc_${index}`,
+      title: `Document ${index}`,
+      content: 'x'.repeat(index < 6 ? 2000000 : (12 * 1024 * 1024) - (6 * 2000000)),
+      chunks: [],
     }));
-    expect(() => router.sanitizePatchState({ knowledgeDocs: docs })).toThrow(/aggregate document content exceeds/);
+    expect(() => router.sanitizePatchState({ knowledgeDocs: exactBytes })).not.toThrow();
 
-    const tooManyChunks = Array.from({ length: 6 }, (_, index) => ({
+    const overBytes = exactBytes.map((doc, index) =>
+      index === 6 ? { ...doc, content: doc.content + 'x' } : doc
+    );
+    expect(() => router.sanitizePatchState({ knowledgeDocs: overBytes })).toThrow(/aggregate document content exceeds/);
+
+    const exactChunks = Array.from({ length: 5 }, (_, index) => ({
       id: `chunk_doc_${index}`, title: `Chunk document ${index}`, content: 'content', chunks: Array(2000).fill('chunk'),
     }));
+    expect(() => router.sanitizePatchState({ knowledgeDocs: exactChunks })).not.toThrow();
+
+    const tooManyChunks = [...exactChunks, {
+      id: 'chunk_doc_5', title: 'Chunk document 5', content: 'content', chunks: ['chunk'],
+    }];
     expect(() => router.sanitizePatchState({ knowledgeDocs: tooManyChunks })).toThrow(/aggregate chunk count exceeds/);
+
+    const exactChunkBytes = [{ id: 'exact_chunk', title: 'Exact chunk', content: 'x', chunks: ['x'.repeat(256 * 1024)] }];
+    expect(() => router.sanitizePatchState({ knowledgeDocs: exactChunkBytes })).not.toThrow();
+    const oversizedChunk = [{ ...exactChunkBytes[0], chunks: ['x'.repeat((256 * 1024) + 1)] }];
+    expect(() => router.sanitizePatchState({ knowledgeDocs: oversizedChunk })).toThrow(/256 KiB limit/);
   });
 
-  it('rejects oversized AI generation context before provider execution', () => {
+  it('validates STT WAV format, exact 20-second duration, and over-limit payloads', () => {
+    const exactlyTwentySeconds = buildPcmWav(16000 * 20).toString('base64');
+    expect(router.validateSttAudioPayload(exactlyTwentySeconds).byteLength).toBe(44 + (16000 * 20 * 2));
+
+    const overDuration = buildPcmWav((16000 * 20) + 1).toString('base64');
+    expect(() => router.validateSttAudioPayload(overDuration)).toThrow(/20-second duration limit/);
+
+    const malformed = Buffer.from('not a wav').toString('base64');
+    expect(() => router.validateSttAudioPayload(malformed)).toThrow(/canonical mono 16 kHz/);
+
+    const overEncodedLimit = Buffer.alloc((6 * 1024 * 1024) + 3).toString('base64');
+    expect(() => router.validateSttAudioPayload(overEncodedLimit)).toThrow(/8 MiB encoded size limit/);
+  });
+
+  it('accepts exact AI query limits and rejects oversized generation context', () => {
+    expect(() => router.validateAiRequestOptions({ model: 'gemini-3.8-flash', mode: 'copilot', query: 'x'.repeat(20000) })).not.toThrow();
     expect(() => router.validateAiRequestOptions({ model: 'gemini-3.8-flash', mode: 'copilot', query: 'x'.repeat(20001) })).toThrow(/AI query exceeds/);
     expect(() => router.validateAiRequestOptions({ model: 'gemini-3.8-flash', mode: 'copilot', query: 'ok', conversationHistory: Array(51).fill({ role: 'user', content: 'x' }) })).toThrow(/conversation history exceeds/);
     expect(() => router.validateAiRequestOptions({ model: 'gemini-3.8-flash', mode: 'copilot', query: 'ok', knowledgePassages: Array(11).fill('x') })).toThrow(/knowledge context exceeds/);
