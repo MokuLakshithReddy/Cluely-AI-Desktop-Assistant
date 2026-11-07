@@ -8,7 +8,6 @@ import {
 } from '../src/lib/knowledge';
 import { KnowledgeDoc } from '../src/lib/types';
 
-
 function buildCompressedPdf(pageTexts: string[]): ArrayBuffer {
   const nl = String.fromCharCode(10);
   const pageCount = pageTexts.length;
@@ -49,6 +48,7 @@ function buildCompressedPdf(pageTexts: string[]): ArrayBuffer {
   const pdf = Buffer.concat(parts);
   return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength);
 }
+
 describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
   it('chunks documents with overlapping windows respecting paragraph breaks', () => {
     const longText = 'Paragraph one about distributed systems.\n\nParagraph two about consensus protocols like Paxos and Raft.\n\nParagraph three discussing leader election and log replication.';
@@ -112,13 +112,24 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
       'Second page discusses café indexing and document retrieval.',
     ]);
     const extracted = await extractTextFromPdf(pdf);
-    expect(extracted).toContain('System Design Interview Notes for Distributed Systems');
-    expect(extracted).toContain('Second page discusses café indexing and document retrieval.');
-    expect(extracted.indexOf('System Design')).toBeLessThan(extracted.indexOf('Second page'));
+    expect(extracted).toBe('System Design Interview Notes for Distributed Systems\n\nSecond page discusses café indexing and document retrieval.');
   });
+
+  it('normalizes repeated whitespace and preserves real page separators', async () => {
+    const pdf = buildCompressedPdf([
+      'System    Design   Interview Notes',
+      'Second     page   contains   repeated   spaces.',
+    ]);
+    const extracted = await extractTextFromPdf(pdf);
+
+    expect(extracted).toBe('System Design Interview Notes\n\nSecond page contains repeated spaces.');
+    expect(extracted).not.toContain('\\n');
+  });
+
   it('returns empty text for a valid PDF page without text operators', async () => {
     expect(await extractTextFromPdf(buildCompressedPdf(['']))).toBe('');
   });
+
   it('rejects malformed PDF data rather than scraping incidental printable bytes', async () => {
     const malformed = new TextEncoder().encode('not a pdf: obj stream fake text').buffer;
     await expect(extractTextFromPdf(malformed)).rejects.toThrow();
@@ -148,4 +159,3 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
     expect(results[0]).toContain('Deep Dive Redis');
   });
 });
-
