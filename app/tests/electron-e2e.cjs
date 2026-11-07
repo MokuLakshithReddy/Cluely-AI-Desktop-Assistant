@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
-const { safeStorage } = require('electron');
+const { app, safeStorage } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -38,6 +40,40 @@ async function runDesktopE2E({ windowCoordinator }) {
   const evidence = [];
 
   try {
+    // Create a legacy synchronous safeStorage blob in the disposable Electron
+    // profile, then prove the async vault can still decrypt it after upgrade.
+    try {
+      const legacyAvailable =
+        safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' &&
+        safeStorage.isEncryptionAvailable();
+      const legacyBackend = process.platform === 'linux' && safeStorage &&
+        typeof safeStorage.getSelectedStorageBackend === 'function'
+        ? safeStorage.getSelectedStorageBackend()
+        : null;
+      const secureLegacyBackend = legacyAvailable &&
+        !(process.platform === 'linux' &&
+          (!legacyBackend || !['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6'].includes(legacyBackend)));
+      if (secureLegacyBackend) {
+        const legacyVaultPath = path.join(app.getPath('userData'), 'legacy-safe-storage-fixture.vault');
+        const legacyCiphertext = safeStorage.encryptString('legacy-safe-storage-compatibility-fixture');
+        fs.writeFileSync(legacyVaultPath, JSON.stringify({
+          gemini: 'safe:' + legacyCiphertext.toString('base64')
+        }), { encoding: 'utf8', mode: 0o600 });
+        const { CredentialVault } = require(path.join(
+          app.getAppPath(), 'dist-electron', 'electron', 'services', 'vault.js'
+        ));
+        const legacyVault = new CredentialVault(legacyVaultPath);
+        const migratedValue = await legacyVault.getKey('gemini');
+        assert.equal(migratedValue, 'legacy-safe-storage-compatibility-fixture');
+        try { fs.unlinkSync(legacyVaultPath); } catch {}
+        evidence.push('Async vault decrypted an existing credential blob produced by legacy synchronous safeStorage');
+      } else {
+        evidence.push('Legacy safeStorage compatibility fixture skipped because the runner has no allowlisted secure backend');
+      }
+    } catch (error) {
+      throw new Error('Legacy safeStorage compatibility check failed: ' + (error?.stack || error?.message || error));
+    }
+
     const ready = function () {
       return Boolean(
         document.readyState === 'complete' &&
