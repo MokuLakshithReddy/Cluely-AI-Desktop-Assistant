@@ -100,6 +100,22 @@ const grandPassedTests = passedUnitTests + (smokePassed ? 1 : 0);
 const grandFailedTests = failedUnitTests + (smokePassed ? 0 : 1);
 const passRate = grandTotalTests > 0 ? Math.round((grandPassedTests / grandTotalTests) * 100) : 0;
 
+// Identify the exact source revision and workflow run that produced this report.
+// These fields make downloaded CI evidence independently traceable to its source.
+const sourceRevision = process.env.GITHUB_SHA || (() => {
+  try { return execSync('git rev-parse HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); }
+  catch { return 'unknown'; }
+})();
+const workflowRunId = process.env.GITHUB_RUN_ID || '';
+const workflowName = process.env.GITHUB_WORKFLOW || 'GitHub Actions';
+const githubServerUrl = (process.env.GITHUB_SERVER_URL || 'https://github.com').replace(/\/$/, '');
+const repositoryName = process.env.GITHUB_REPOSITORY || '';
+const sourceUrl = repositoryName && sourceRevision !== "unknown"
+  ? `${githubServerUrl}/${repositoryName}/commit/${sourceRevision}`
+  : null;
+const workflowUrl = repositoryName && workflowRunId
+  ? `${githubServerUrl}/${repositoryName}/actions/runs/${workflowRunId}`
+  : null;
 // Build Markdown Output
 let md = `# Test Execution Log & Results\n\n`;
 md += `**Target Environment**: ${os.type()} ${os.release()} (${os.arch()})  \n`;
@@ -107,6 +123,8 @@ md += `**Node Version**: ${process.version}  \n`;
 md += `**Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  \n`;
 md += `**Test Status**: ${grandPassedTests}/${grandTotalTests} Passing (${passRate}% Pass Rate)  \n`;
 md += `**Evidence Source**: Generated directly from automated runner JSON output and process exit verification  \n`;
+md += `**Source revision**: ${sourceUrl ? `[${sourceRevision}](${sourceUrl})` : `\`${sourceRevision}\``}  \n`;
+md += `**Workflow run**: ${workflowUrl ? `[${workflowName} — run ${workflowRunId}](${workflowUrl})` : 'Local execution'}  \n`;
 md += `**Verification Date**: ${new Date().toISOString().split('T')[0]}  \n\n`;
 md += `---\n\n`;
 md += `## Execution Summary\n\n`;
