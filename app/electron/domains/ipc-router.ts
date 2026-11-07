@@ -583,6 +583,9 @@ export class IpcRouter {
       const reqId = requestId || `req_${Date.now()}`;
       const controller = new AbortController();
       this.activeAiControllers.set(reqId, controller);
+      let resolveAiTask!: () => void;
+      const aiTaskSettled = new Promise<void>(resolve => { resolveAiTask = resolve; });
+      this.activeAiTasks.add(aiTaskSettled);
       stateManager.patchState({ isGenerating: true });
 
       try {
