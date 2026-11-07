@@ -13,6 +13,19 @@ describe('State persistence error reporting', () => {
     directory = null;
   });
 
+  it('does not restore stale transient persistence warnings from older state files', () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-persistence-'));
+    const stateFile = path.join(directory, 'state.json');
+    fs.writeFileSync(stateFile, JSON.stringify({
+      showChat: false,
+      persistenceError: 'stale warning from a previous run',
+    }), 'utf8');
+
+    const manager = new StateManager(stateFile, false);
+    expect(manager.getState().showChat).toBe(false);
+    expect(manager.getState().persistenceError).toBeUndefined();
+  });
+
   it('surfaces write failures, propagates critical flush errors, and clears the warning after recovery', () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-persistence-'));
     const stateFile = path.join(directory, 'state.json');
