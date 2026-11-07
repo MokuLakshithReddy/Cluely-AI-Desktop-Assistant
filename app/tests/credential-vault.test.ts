@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CredentialVault } from '../electron/services/vault';
+import { CredentialVault, isSecureSafeStorageBackend } from '../electron/services/vault';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -16,6 +16,17 @@ describe('Credential Vault & Secret Protection Subsystem', () => {
 
   afterEach(() => {
     if (fs.existsSync(testVaultFile)) fs.unlinkSync(testVaultFile);
+  });
+
+
+  it('rejects Linux basic_text and unknown backends while accepting OS secret stores', () => {
+    expect(isSecureSafeStorageBackend('linux', 'basic_text')).toBe(false);
+    expect(isSecureSafeStorageBackend('linux', 'unknown')).toBe(false);
+    expect(isSecureSafeStorageBackend('linux', undefined)).toBe(false);
+    expect(isSecureSafeStorageBackend('linux', 'gnome_libsecret')).toBe(true);
+    expect(isSecureSafeStorageBackend('linux', 'kwallet6')).toBe(true);
+    expect(isSecureSafeStorageBackend('win32', undefined)).toBe(true);
+    expect(isSecureSafeStorageBackend('darwin', undefined)).toBe(true);
   });
 
   it('encrypts and successfully decrypts an API key', async () => {

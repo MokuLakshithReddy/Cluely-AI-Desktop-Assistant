@@ -3,6 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
+/**
+ * Linux safeStorage is only considered secure when backed by an OS secret store.
+ * Electron's basic_text and unknown backends must fail closed.
+ */
+export function isSecureSafeStorageBackend(platform: string, backend?: string): boolean {
+  if (platform !== 'linux') return true;
+  return Boolean(backend && backend !== 'basic_text' && backend !== 'unknown');
+}
+
 export class CredentialVault {
   private vaultPath: string;
   private testKey?: Buffer;
@@ -33,7 +42,11 @@ export class CredentialVault {
    */
   private encrypt(plainText: string): string {
     // 1. Prefer OS-backed encryption (Windows DPAPI, macOS Keychain, Linux Secret Service)
-    if (safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()) {
+    const linuxBackend = process.platform === 'linux' && typeof safeStorage?.getSelectedStorageBackend === 'function'
+      ? safeStorage.getSelectedStorageBackend()
+      : undefined;
+    const secureBackend = process.platform !== 'linux' || isSecureSafeStorageBackend(process.platform, linuxBackend);
+    if (secureBackend && safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()) {
       const encrypted = safeStorage.encryptString(plainText);
       return `safe:${encrypted.toString('base64')}`;
     }
@@ -50,13 +63,21 @@ export class CredentialVault {
 
     // 3. Fail safely: Never silently fall back to predictable keys
     throw new Error(
-      '[CredentialVault] OS-backed secure storage (safeStorage) is unavailable on this system. Refusing to persist credentials with insecure fallback.'
+      process.platform === 'linux' && !secureBackend
+        ? `[CredentialVault] Linux secure credential storage is unavailable (selected backend: ${linuxBackend || 'unknown'}). Configure GNOME Keyring, KWallet, or another supported OS secret store, then restart the app. Refusing to persist credentials insecurely.`
+        : '[CredentialVault] OS-backed secure storage (safeStorage) is unavailable on this system. Refusing to persist credentials with insecure fallback.'
     );
   }
 
   private decrypt(encoded: string): string | null {
     try {
       if (encoded.startsWith('safe:')) {
+        const linuxBackend = process.platform === 'linux' && typeof safeStorage?.getSelectedStorageBackend === 'function'
+          ? safeStorage.getSelectedStorageBackend()
+          : undefined;
+        if (process.platform === 'linux' && !isSecureSafeStorageBackend(process.platform, linuxBackend)) {
+          throw new Error(`[CredentialVault] Refusing to decrypt credentials with insecure Linux safeStorage backend: ${linuxBackend || 'unknown'}. Configure an OS secret store and restart the app.`);
+        }
         if (!safeStorage || typeof safeStorage.decryptString !== 'function') {
           console.warn('[CredentialVault] safeStorage unavailable to decrypt string');
           return null;
