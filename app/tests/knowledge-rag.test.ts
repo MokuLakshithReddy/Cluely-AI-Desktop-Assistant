@@ -14,48 +14,44 @@ function buildTextPdf(pageTexts: string[]): ArrayBuffer {
   const pageObjectIds = pageTexts.map((_, index) => 3 + index);
   const fontObjectId = 3 + pageTexts.length;
   const firstContentObjectId = fontObjectId + 1;
-
   const objectBodies: Buffer[] = [
     Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'ascii'),
-    Buffer.from(\`<< /Type /Pages /Kids [\${pageObjectIds.map(id => \`\${id} 0 R\`).join(' ')}] /Count \${pageTexts.length} >>\`, 'ascii'),
+    Buffer.from('<< /Type /Pages /Kids [' + pageObjectIds.map(id => id + ' 0 R').join(' ') + '] /Count ' + pageTexts.length + ' >>', 'ascii'),
     ...pageTexts.map((_, index) => Buffer.from(
-      \`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 \${fontObjectId} 0 R >> >> /Contents \${firstContentObjectId + index} 0 R >>\`,
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ' + fontObjectId + ' 0 R >> >> /Contents ' + (firstContentObjectId + index) + ' 0 R >>',
       'ascii'
     )),
     Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'ascii'),
     ...pageTexts.map(text => {
       const commands = text
-        ? \`BT /F1 12 Tf 72 720 Td (\${text.replace(/([\\()])/g, '\\$1')}) Tj ET\`
+        ? 'BT /F1 12 Tf 72 720 Td (' + text.replace(/([\\\\()])/g, '\\\\$1') + ') Tj ET'
         : 'BT ET';
       const compressed = deflateSync(Buffer.from(commands, 'latin1'));
       return Buffer.concat([
-        Buffer.from(\`<< /Length \${compressed.length} /Filter /FlateDecode >>\nstream\n\`, 'ascii'),
+        Buffer.from('<< /Length ' + compressed.length + ' /Filter /FlateDecode >>\\nstream\\n', 'ascii'),
         compressed,
-        Buffer.from('\nendstream', 'ascii'),
+        Buffer.from('\\nendstream', 'ascii'),
       ]);
     }),
   ];
-
-  const parts: Buffer[] = [Buffer.from('%PDF-1.7\n', 'ascii')];
+  const parts: Buffer[] = [Buffer.from('%PDF-1.7\\n', 'ascii')];
   const offsets = [0];
   let byteLength = parts[0].length;
   objectBodies.forEach((body, index) => {
     offsets.push(byteLength);
-    const header = Buffer.from(\`\${index + 1} 0 obj\n\`, 'ascii');
-    const footer = Buffer.from('\nendobj\n', 'ascii');
+    const header = Buffer.from((index + 1) + ' 0 obj\\n', 'ascii');
+    const footer = Buffer.from('\\nendobj\\n', 'ascii');
     parts.push(header, body, footer);
     byteLength += header.length + body.length + footer.length;
   });
-
   const xrefOffset = byteLength;
   const xref = [
-    \`xref\n0 \${objectBodies.length + 1}\n\`,
-    '0000000000 65535 f \n',
-    ...offsets.slice(1).map(offset => \`\${String(offset).padStart(10, '0')} 00000 n \n\`),
-    \`trailer\n<< /Size \${objectBodies.length + 1} /Root 1 0 R >>\nstartxref\n\${xrefOffset}\n%%EOF\`,
+    'xref\\n0 ' + (objectBodies.length + 1) + '\\n',
+    '0000000000 65535 f \\n',
+    ...offsets.slice(1).map(offset => String(offset).padStart(10, '0') + ' 00000 n \\n'),
+    'trailer\\n<< /Size ' + (objectBodies.length + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefOffset + '\\n%%EOF',
   ].join('');
   parts.push(Buffer.from(xref, 'ascii'));
-
   const pdf = Buffer.concat(parts);
   return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength);
 }
