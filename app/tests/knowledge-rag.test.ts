@@ -5,6 +5,7 @@ import {
   retrieveRelevantPassages,
   createKnowledgeDoc,
   extractTextFromPdf,
+  parseDocumentFile,
 } from '../src/lib/knowledge';
 import { KnowledgeDoc } from '../src/lib/types';
 
@@ -127,6 +128,15 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
 
     const results = retrieveRelevantPassages('quantum entanglement physics', docs, 1);
     expect(results).toHaveLength(0);
+  });
+
+  it('rejects oversized documents before reading their content', async () => {
+    const file = {
+      name: 'large.txt',
+      size: 2 * 1024 * 1024 + 1,
+      text: () => { throw new Error('file should not be read'); },
+    } as unknown as File;
+    await expect(parseDocumentFile(file)).rejects.toThrow(/exceeds the 2 MiB ingestion limit/);
   });
 
   it('extracts compressed multi-page PDF text and decodes WinAnsi characters', async () => {
