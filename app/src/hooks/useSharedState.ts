@@ -14,6 +14,8 @@ export const FALLBACK_STATE: SharedState = {
   themHasVoiceActivity: false,
   isCapturingScreenshot: false,
   isRecording: false,
+  isPurging: false,
+  isEmergencyStopping: false,
   activeMode: 'copilot',
   activeModel: 'gemini-3.8-flash',
   hasApiKeys: {
