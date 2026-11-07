@@ -1,7 +1,7 @@
 # Test Results and Verification Scope
 
-**Evidence revision:** `fcb352ee774749974402c8298cebb8c50570732f`  
-**Workflow:** [CI Verification Suite — run 42400942182](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42400942182)  
+**Evidence revision:** [`a9e2ceced6783ebb083bb003a565881c9a38e417`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/a9e2ceced6783ebb083bb003a565881c9a38e417)  
+**Workflow:** [CI Verification Suite — run 42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459)  
 **Recorded summary:** 125 automated checks passed — 124 Vitest unit/integration tests across 16 test files and one Electron UI/IPC smoke check.
 
 ## What this CI run proves
