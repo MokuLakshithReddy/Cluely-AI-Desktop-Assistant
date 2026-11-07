@@ -257,6 +257,19 @@ async function runDesktopE2E({ windowCoordinator }) {
     // synthetic coverage and does not replace the real-device validation matrix.
     const unexpectedTrackEndWorkflow = async function () {
       const bridge = window.desktopBridge;
+      if (!bridge || typeof bridge.patchSharedState !== 'function') {
+        throw new Error('Control-window shared-state bridge is unavailable');
+      }
+
+      // Start from an explicit idle state so an earlier UI/session state cannot
+      // be mistaken for a second capture startup in this isolated regression.
+      await bridge.patchSharedState({ isRecording: false });
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const idleState = await bridge.getSharedState();
+      if (idleState.isRecording) {
+        throw new Error('Could not establish an idle capture state before track-ended scenarios');
+      }
+
       const captures = [];
       const contexts = [];
       const processors = [];
