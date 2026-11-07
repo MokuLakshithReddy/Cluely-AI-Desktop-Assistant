@@ -407,7 +407,10 @@ async function runDesktopE2E({ windowCoordinator }) {
       const makeTrack = kind => ({
         kind,
         enabled: true,
+        readyState: 'live',
+        addEventListener() {},
         stop() {
+          this.readyState = 'ended';
           if (kind === 'video') stopped.video = true;
           else if (kind === 'microphone') stopped.mic = true;
           else if (kind === 'loopback') stopped.loopback = true;
