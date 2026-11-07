@@ -2,10 +2,30 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { IpcRouter } from '../electron/domains/ipc-router';
+import { stateManager } from '../electron/domains/state';
 
 describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
+
+  it('emergency stop aborts active AI and transcription work without deleting session history', () => {
+    const emergencyRouter = new IpcRouter(trustedHtml);
+    const aiController = new AbortController();
+    const transcriptionController = new AbortController();
+    (emergencyRouter as any).activeAiControllers.set('test-request', aiController);
+    (emergencyRouter as any).activeTranscriptionControllers.add(transcriptionController);
+
+    stateManager.patchState({ isRecording: true, isGenerating: true, isPurging: false, isEmergencyStopping: false });
+    emergencyRouter.emergencyStop();
+
+    expect(aiController.signal.aborted).toBe(true);
+    expect(transcriptionController.signal.aborted).toBe(true);
+    expect(stateManager.getState().isRecording).toBe(false);
+    expect(stateManager.getState().isGenerating).toBe(false);
+    expect(stateManager.getState().isEmergencyStopping).toBe(true);
+
+    stateManager.patchState({ isRecording: false, isGenerating: false, isEmergencyStopping: false });
+  });
 
   it('rejects IPC invocation when senderFrame is null or undefined', () => {
     const fakeEvent: any = { senderFrame: null };

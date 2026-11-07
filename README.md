@@ -316,7 +316,7 @@ Documented in detail in [`docs/production/PRODUCTION_READINESS.md`](docs/product
 
 1. **Dual Audio Capture & Loopback**: Verified with YouTube/call audio output playing while speaking into a microphone. Remote speech is captured under `[Speaker]`, and real-time crosstalk suppression zeroes local mic input to eliminate laptop speaker feedback.
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
-3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon `Escape` or UI stop, preserving all received tokens. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
+3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
 4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. The vault safely rejects unencrypted disk writes if secure storage is unavailable (`safeFail`).
 5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Cluely Copilot.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
 6. **Screen-Sharing Stealth Mode**: Verified invisible across Zoom, Microsoft Teams, Google Meet, Discord, and OBS (Desktop Duplication source).
@@ -397,7 +397,8 @@ npm start
 | `Ctrl + Enter` | **Ask AI / Screen Context** | Captures active display, packages recent conversation, and generates answer |
 | `Ctrl + Shift + Space` | **Toggle Visibility** | Shows or hides the floating chat card |
 | `Ctrl + Shift + X` | **Toggle Session** | Starts or stops the live conversation listening session |
-| `Escape` | **Clear / Collapse** | Clears the active query and collapses the chat card |
+| `Escape` | **Clear / Collapse** | Collapses the chat card; it does not stop recording |
+| `Ctrl/Cmd + Shift + Esc` | **Emergency Stop** | Immediately stops microphone and system-audio capture and aborts active AI/STT work |
 | `Ctrl + Up / Down` | **Nudge Y** | Shifts the floating pill vertically by 80px without mouse interaction |
 | `Ctrl + Left / Right`| **Nudge X** | Shifts the floating pill horizontally by 80px |
 

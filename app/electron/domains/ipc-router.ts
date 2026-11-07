@@ -16,6 +16,7 @@ const BOOLEAN_STATE_KEYS = new Set([
   'chatWindowIsExpanded',
   'isStealthMode',
   'isRecording',
+  'isEmergencyStopping',
   'meHasVoiceActivity',
   'themHasVoiceActivity',
   'isCapturingScreenshot',
@@ -33,6 +34,7 @@ const ALLOWED_SHORTCUT_KEYS = new Set([
   'toggleVisibility',
   'ask',
   'clear',
+  'emergencyStop',
   'toggleSession',
   'moveUp',
   'moveDown',
@@ -70,6 +72,21 @@ export class IpcRouter {
       this.customTrustedHtmlPath = path.normalize(customTrustedHtmlPath).toLowerCase();
     }
     this.forceProductionMode = forceProductionMode;
+  }
+
+  /** Immediately stops capture and aborts active AI/STT work without deleting session history. */
+  public emergencyStop(): void {
+    const currentState = stateManager.getState();
+    for (const controller of this.activeAiControllers.values()) controller.abort();
+    this.activeAiControllers.clear();
+    for (const controller of this.activeTranscriptionControllers) controller.abort();
+    stateManager.patchState({
+      isRecording: false,
+      isEmergencyStopping: !currentState.isPurging,
+      isGenerating: false,
+      meHasVoiceActivity: false,
+      themHasVoiceActivity: false,
+    });
   }
 
   public init() {

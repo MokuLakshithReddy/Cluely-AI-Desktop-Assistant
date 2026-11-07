@@ -11,6 +11,7 @@ export function useAudioCapture(
 ) {
   const isRecording = state.isRecording;
   const isPurging = state.isPurging;
+  const isEmergencyStopping = state.isEmergencyStopping;
   const captureSessionIdRef = useRef(0);
 
   // Local Microphone State
@@ -28,8 +29,9 @@ export function useAudioCapture(
   useEffect(() => {
     if (!isAudioOwner) return;
 
-    if (isPurging) {
+    if (isPurging || isEmergencyStopping) {
       stopDualCapture(false);
+      if (isEmergencyStopping && !isPurging) void patchState({ isEmergencyStopping: false });
       return;
     }
 
@@ -41,9 +43,9 @@ export function useAudioCapture(
     startDualCapture();
 
     return () => {
-      stopDualCapture(!getLatestState().isPurging);
+      stopDualCapture(!getLatestState().isPurging && !getLatestState().isEmergencyStopping);
     };
-  }, [isRecording, isAudioOwner, isPurging]);
+  }, [isRecording, isAudioOwner, isPurging, isEmergencyStopping]);
 
   const handleSpeechSegmentReady = async (
     role: Role,
