@@ -86,7 +86,6 @@ jobs:
         working-directory: app
         run: npm install --no-save --package-lock=false --workspaces=false dmg-license@1.0.11
       - name: Remove unused PDF.js optional Node canvas stub before packaging
-        if: matrix.platform == 'macos-dmg'
         working-directory: app
         run: node -e "const fs=require('node:fs');const p='node_modules/pdfjs-dist/node_modules/@napi-rs/canvas';if(fs.existsSync(p)||fs.lstatSync(p,{throwIfNoEntry:false})){fs.rmSync(p,{recursive:true,force:true});console.log('Removed PDF.js optional Node canvas stub; renderer uses the browser build.')}else{console.log('No optional Node canvas stub present.')}"
       - name: Create unsigned electron-builder CI configuration
