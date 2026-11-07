@@ -1,11 +1,39 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { IpcRouter } from '../electron/domains/ipc-router';
+import { ActiveRequestRegistry, IpcRouter } from '../electron/domains/ipc-router';
 
 describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
+
+  it('uses unique main-process operation IDs and protects concurrent correlation IDs', () => {
+    const registry = new ActiveRequestRegistry();
+    const first = registry.start('same-renderer-id');
+
+    expect(first.operationId).not.toBe('same-renderer-id');
+    expect(() => registry.start('same-renderer-id')).toThrow(/already active/);
+
+    expect(registry.abort('same-renderer-id')).toBe(true);
+    expect(first.controller.signal.aborted).toBe(true);
+    const second = registry.start('same-renderer-id');
+    expect(second.operationId).not.toBe(first.operationId);
+
+    // A delayed completion from the first operation must not erase the new alias.
+    registry.complete(first.operationId, first.correlationId);
+    expect(registry.size).toBe(1);
+    expect(registry.abort('same-renderer-id')).toBe(true);
+    expect(second.controller.signal.aborted).toBe(true);
+    expect(registry.size).toBe(0);
+  });
+
+  it('rejects invalid renderer correlation IDs', () => {
+    const registry = new ActiveRequestRegistry();
+    expect(() => registry.start('')).toThrow(/Invalid AI request correlation ID/);
+    expect(() => registry.start('x'.repeat(129))).toThrow(/Invalid AI request correlation ID/);
+    expect(() => registry.start({})).toThrow(/Invalid AI request correlation ID/);
+    expect(registry.size).toBe(0);
+  });
 
   it('rejects IPC invocation when senderFrame is null or undefined', () => {
     const fakeEvent: any = { senderFrame: null };
