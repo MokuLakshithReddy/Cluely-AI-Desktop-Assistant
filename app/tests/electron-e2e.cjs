@@ -366,6 +366,8 @@ async function runDesktopE2E({ windowCoordinator }) {
             source,
             recordingStopped: state.isRecording === false,
             bothTracksStopped: capture.micTrack.stopped && capture.loopbackTrack.stopped,
+            contextCount: contexts.slice(contextStart).length,
+            contextClosedStates: contexts.slice(contextStart).map(context => context.closed),
             bothContextsClosed: contexts.slice(contextStart).length === 2 &&
               contexts.slice(contextStart).every(context => context.closed),
             activityFlagsCleared: !state.meHasVoiceActivity && !state.themHasVoiceActivity,
@@ -522,7 +524,11 @@ async function runDesktopE2E({ windowCoordinator }) {
     for (const scenario of unexpectedTrackEndResult.scenarios) {
       assert.equal(scenario.recordingStopped, true, `${scenario.source} track termination must stop recording`);
       assert.equal(scenario.bothTracksStopped, true, `${scenario.source} track termination must stop both audio tracks`);
-      assert.equal(scenario.bothContextsClosed, true, `${scenario.source} track termination must close both audio contexts`);
+      assert.equal(
+        scenario.bothContextsClosed,
+        true,
+        `${scenario.source} track termination must close both audio contexts: ${JSON.stringify(scenario)}`
+      );
       assert.equal(scenario.activityFlagsCleared, true, `${scenario.source} track termination must clear VAD activity`);
       assert.equal(scenario.userVisibleErrorRecorded, true, `${scenario.source} track termination must leave a user-visible error`);
     }
