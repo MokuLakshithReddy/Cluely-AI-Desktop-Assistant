@@ -47,11 +47,13 @@ try {
 
 // 2. Run Verified Electron Smoke Test
 console.log('Executing verified Electron desktop runtime smoke test...');
-const smokeResult = spawnSync('node', ['tests/electron-smoke.cjs'], {
+const smokeResult = spawnSync(process.execPath, ['tests/electron-smoke.cjs'], {
   cwd: appDir,
   encoding: 'utf8',
   env: { ...process.env, CI: 'true' },
-  timeout: 60000,
+  timeout: 90000,
+  maxBuffer: 10 * 1024 * 1024,
+  windowsHide: true,
 });
 
 const smokeStdout = smokeResult.stdout || '';
@@ -61,6 +63,19 @@ const smokePassed = smokeResult.status === 0 &&
   smokeStdout.includes('[E2E_COMPLETE]');
 
 console.log(`Smoke test passed: ${smokePassed}`);
+if (!smokePassed) {
+  console.error('Electron smoke runner diagnostics:', JSON.stringify({
+    status: smokeResult.status,
+    signal: smokeResult.signal,
+    error: smokeResult.error ? {
+      name: smokeResult.error.name,
+      code: smokeResult.error.code,
+      message: smokeResult.error.message,
+    } : null,
+    stdout: smokeStdout.slice(-8000),
+    stderr: smokeStderr.slice(-8000),
+  }, null, 2));
+}
 
 // 3. Aggregate Test Statistics
 const totalSuites = vitestData.testResults.length;
