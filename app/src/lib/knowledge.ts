@@ -1,5 +1,7 @@
 import { KnowledgeDoc } from './types';
 
+const MAX_DOCUMENT_FILE_BYTES = 2 * 1024 * 1024;
+
 /**
  * Extracts plain text from binary PDF file data without external native dependencies.
  * Parses PDF text operators (BT...ET, Tj, TJ) and text streams.
@@ -56,6 +58,7 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
  * Parses and ingests a local File object (.txt, .md, .pdf, .json, code files)
  */
 export async function parseDocumentFile(file: File): Promise<{ title: string; content: string }> {
+  if (file.size > MAX_DOCUMENT_FILE_BYTES) throw new Error(`File exceeds the 2 MiB ingestion limit: ${file.name}`);
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
   if (ext === 'pdf') {
