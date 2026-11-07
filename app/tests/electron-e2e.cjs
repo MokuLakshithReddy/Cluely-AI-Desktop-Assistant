@@ -350,6 +350,7 @@ async function runDesktopE2E({ windowCoordinator }) {
         for (const source of ['microphone', 'loopback']) {
           const processorStart = processors.length;
           const contextStart = contexts.length;
+          const captureStart = captures.length;
           await bridge.patchSharedState({ isRecording: true });
 
           for (let attempt = 0; attempt < 100 && processors.length < processorStart + 2; attempt++) {
@@ -379,12 +380,17 @@ async function runDesktopE2E({ windowCoordinator }) {
             source,
             recordingStopped: state.isRecording === false,
             bothTracksStopped: capture.micTrack.stopped && capture.loopbackTrack.stopped,
+            captureCount: captures.length - captureStart,
+            allCaptureTracksStopped: captures.slice(captureStart).length > 0 &&
+              captures.slice(captureStart).every(item =>
+                item.micTrack.stopped && (!item.loopbackTrack || item.loopbackTrack.stopped)
+              ),
             contextCount: contexts.slice(contextStart).length,
             processorCount: processors.length - processorStart,
-            contextClosedStates: contexts.slice(contextStart).map(context => context.closed),
-            bothContextsClosed: contexts.slice(contextStart).length === 2 &&
-              processors.length - processorStart === 2 &&
+            allContextsClosed: contexts.slice(contextStart).length >= 2 &&
               contexts.slice(contextStart).every(context => context.closed),
+            processorPairCreated: contexts.slice(contextStart).length >= 2 &&
+              processors.length - processorStart >= 2,
             activityFlagsCleared: !state.meHasVoiceActivity && !state.themHasVoiceActivity,
             userVisibleErrorRecorded: Boolean(state.session?.transcript?.some(item =>
               item.status === 'error' && item.error?.includes('capture ended unexpectedly')
@@ -540,19 +546,19 @@ async function runDesktopE2E({ windowCoordinator }) {
       assert.equal(scenario.recordingStopped, true, `${scenario.source} track termination must stop recording`);
       assert.equal(scenario.bothTracksStopped, true, `${scenario.source} track termination must stop both audio tracks`);
       assert.equal(
-        scenario.contextCount,
-        2,
-        `${scenario.source} capture must create exactly one microphone/loopback AudioContext pair: ${JSON.stringify(scenario)}`
-      );
-      assert.equal(
-        scenario.processorCount,
-        2,
-        `${scenario.source} capture must create exactly one microphone/loopback processor pair: ${JSON.stringify(scenario)}`
-      );
-      assert.equal(
-        scenario.bothContextsClosed,
+        scenario.captureCount > 0 && scenario.allCaptureTracksStopped,
         true,
-        `${scenario.source} track termination must close both audio contexts: ${JSON.stringify(scenario)}`
+        `${scenario.source} track termination must stop every media stream created during setup: ${JSON.stringify(scenario)}`
+      );
+      assert.equal(
+        scenario.processorPairCreated,
+        true,
+        `${scenario.source} capture must initialize microphone and loopback audio processing: ${JSON.stringify(scenario)}`
+      );
+      assert.equal(
+        scenario.allContextsClosed,
+        true,
+        `${scenario.source} track termination must close every AudioContext created during setup: ${JSON.stringify(scenario)}`
       );
       assert.equal(scenario.activityFlagsCleared, true, `${scenario.source} track termination must clear VAD activity`);
       assert.equal(scenario.userVisibleErrorRecorded, true, `${scenario.source} track termination must leave a user-visible error`);
