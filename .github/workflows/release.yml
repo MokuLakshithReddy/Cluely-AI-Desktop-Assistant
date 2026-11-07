@@ -148,7 +148,7 @@ jobs:
         if: matrix.platform == 'windows-portable'
         shell: pwsh
         run: |
-          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) {
+          if (-not $env:WIN_CSC_LINK -or -not $env:WIN_CSC_KEY_PASSWORD) {
             throw "Set WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD before publishing a Windows release."
           }
       - name: Require Apple Developer ID and notarization credentials
