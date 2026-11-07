@@ -37,7 +37,7 @@ export function App() {
 
   // Dual-channel audio capture (mic + loopback) is gated to the primary audio owner
   const isAudioOwner = routeInfo.route === 'control' || routeInfo.route === 'all';
-  useAudioCapture(state, patchState, getLatestState, isAudioOwner);
+  const { emergencyStop } = useAudioCapture(state, patchState, getLatestState, isAudioOwner);
 
   // Initialize AI assistant handler with latest state updater
   const { askAssistant, stopGeneration, isGenerating } = useAiAssistant(
@@ -54,11 +54,14 @@ export function App() {
           askAssistant('', true);
         } else if (action === 'clear') {
           patchState({ showChat: false });
+        } else if (action === 'emergency-stop') {
+          void emergencyStop();
+          void stopGeneration();
         }
       });
       return unsub;
     }
-  }, [askAssistant, patchState]);
+  }, [askAssistant, emergencyStop, patchState, stopGeneration]);
 
   if (routeInfo.route === 'control') {
     return (
