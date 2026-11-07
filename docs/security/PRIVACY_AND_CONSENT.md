@@ -43,9 +43,10 @@ Cluely Copilot is designed from the ground up as a **transparent, consent-first 
 2. **No Stealth or Covert Background Recording**:
    * Audio capture is **never** started silently on application launch or background startup.
    * Audio capture requires explicit user activation via the microphone toggle or the user-defined global hotkey (`Alt+S` / `Ctrl+Shift+X`).
-3. **Instant Stop & Emergency Mute**:
-   * An immediate "Stop Listening" button is accessible at all times on the floating bar.
-   * Pressing `Escape` or the mute hotkey instantaneously tears down media capture tracks within **<20 milliseconds**.
+3. **Instant Stop & Emergency Stop**:
+   * An immediate "Stop Listening" control is accessible from the floating bar.
+   * The default global Emergency Stop shortcut is `CommandOrControl+Shift+Escape`. It stops microphone and system-audio tracks, discards buffered-but-unsubmitted audio, and aborts active AI/STT requests.
+   * `Escape` remains a chat-collapse shortcut and is not a microphone mute. Actual device shutdown timing depends on the operating system and media stack; no fixed millisecond guarantee is claimed.
 4. **Meeting Participant Notification & Consent Guidance**:
    * Users operating in two-party or multi-party consent jurisdictions (e.g. California, Illinois, Germany) must obtain agreement from all call participants before enabling audio processing.
    * Cluely Copilot provides a standard recommended notice:
