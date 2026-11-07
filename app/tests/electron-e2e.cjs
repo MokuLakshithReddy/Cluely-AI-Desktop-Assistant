@@ -252,6 +252,169 @@ async function runDesktopE2E({ windowCoordinator }) {
       ? 'Native purge-all-data removed archived sessions, reset active state, and deleted the encrypted credential vault'
       : 'Native purge-all-data removed archived sessions and reset active state; credential storage was unavailable on this runner');
 
+    // Unexpected device/OS track termination must stop both capture channels.
+    // This exercises the production hook with event-capable fake tracks; it remains
+    // synthetic coverage and does not replace the real-device validation matrix.
+    const unexpectedTrackEndWorkflow = async function () {
+      const bridge = window.desktopBridge;
+      if (!bridge || typeof bridge.patchSharedState !== 'function') {
+        throw new Error('Control-window shared-state bridge is unavailable');
+      }
+
+      // Start from an explicit idle state so an earlier UI/session state cannot
+      // be mistaken for a second capture startup in this isolated regression.
+      await bridge.patchSharedState({ isRecording: false });
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const idleState = await bridge.getSharedState();
+      if (idleState.isRecording) {
+        throw new Error('Could not establish an idle capture state before track-ended scenarios');
+      }
+
+      const captures = [];
+      const contexts = [];
+      const processors = [];
+      const scenarios = [];
+
+      const makeTrack = kind => {
+        let endedListener = null;
+        return {
+          kind,
+          enabled: true,
+          readyState: 'live',
+          stopped: false,
+          addEventListener(eventName, listener) {
+            if (eventName === 'ended') endedListener = listener;
+          },
+          stop() {
+            this.stopped = true;
+            this.readyState = 'ended';
+          },
+          end() {
+            this.readyState = 'ended';
+            if (endedListener) endedListener();
+          },
+        };
+      };
+
+      class FakeMediaStream {
+        constructor(tracks) { this.tracks = tracks || []; }
+        getTracks() { return this.tracks; }
+        getAudioTracks() { return this.tracks.filter(track => track.kind !== 'video'); }
+        getVideoTracks() { return this.tracks.filter(track => track.kind === 'video'); }
+      }
+
+      class FakeAudioContext {
+        constructor() {
+          this.destination = {};
+          this.state = 'running';
+          this.closed = false;
+          contexts.push(this);
+        }
+        createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+        createScriptProcessor() {
+          const processor = { onaudioprocess: null, connect() {}, disconnect() {} };
+          processors.push(processor);
+          return processor;
+        }
+        close() {
+          this.closed = true;
+          this.state = 'closed';
+          return Promise.resolve();
+        }
+      }
+
+      const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const originalAudioContext = Object.getOwnPropertyDescriptor(window, 'AudioContext');
+      const originalMediaStream = Object.getOwnPropertyDescriptor(window, 'MediaStream');
+
+      try {
+        Object.defineProperty(navigator, 'mediaDevices', {
+          configurable: true,
+          value: {
+            getUserMedia: async () => {
+              const capture = { micTrack: makeTrack('microphone'), loopbackTrack: null, videoTrack: null };
+              captures.push(capture);
+              return new FakeMediaStream([capture.micTrack]);
+            },
+            getDisplayMedia: async () => {
+              const capture = captures[captures.length - 1];
+              capture.loopbackTrack = makeTrack('loopback');
+              capture.videoTrack = makeTrack('video');
+              return new FakeMediaStream([capture.videoTrack, capture.loopbackTrack]);
+            },
+          },
+        });
+        Object.defineProperty(window, 'AudioContext', { configurable: true, value: FakeAudioContext });
+        Object.defineProperty(window, 'MediaStream', { configurable: true, value: FakeMediaStream });
+
+        for (const source of ['microphone', 'loopback']) {
+          const processorStart = processors.length;
+          const contextStart = contexts.length;
+          const captureStart = captures.length;
+          await bridge.patchSharedState({ isRecording: true });
+
+          for (let attempt = 0; attempt < 100 && processors.length < processorStart + 2; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          if (processors.length !== processorStart + 2) {
+            throw new Error(`Capture did not initialize both channels before testing ${source} track termination`);
+          }
+
+          const capture = captures[captures.length - 1];
+          if (!capture || !capture.loopbackTrack) {
+            throw new Error('Fake microphone and loopback tracks were not created');
+          }
+
+          if (source === 'microphone') capture.micTrack.end();
+          else capture.loopbackTrack.end();
+
+          let state = await bridge.getSharedState();
+          for (let attempt = 0; attempt < 80 && state.isRecording; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+            state = await bridge.getSharedState();
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+          state = await bridge.getSharedState();
+
+          scenarios.push({
+            source,
+            recordingStopped: state.isRecording === false,
+            bothTracksStopped: capture.micTrack.stopped && capture.loopbackTrack.stopped,
+            captureCount: captures.length - captureStart,
+            allCaptureTracksStopped: captures.slice(captureStart).length > 0 &&
+              captures.slice(captureStart).every(item =>
+                item.micTrack.stopped && (!item.loopbackTrack || item.loopbackTrack.stopped)
+              ),
+            contextCount: contexts.slice(contextStart).length,
+            processorCount: processors.length - processorStart,
+            allContextsClosed: contexts.slice(contextStart).length >= 2 &&
+              contexts.slice(contextStart).every(context => context.closed),
+            processorPairCreated: contexts.slice(contextStart).length >= 2 &&
+              processors.length - processorStart >= 2,
+            activityFlagsCleared: !state.meHasVoiceActivity && !state.themHasVoiceActivity,
+            userVisibleErrorRecorded: Boolean(state.session?.transcript?.some(item =>
+              item.status === 'error' && item.error?.includes('capture ended unexpectedly')
+            )),
+          });
+
+          if (state.isRecording) {
+            await bridge.patchSharedState({ isRecording: false });
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        return { scenarios };
+      } finally {
+        await bridge.patchSharedState({ isRecording: false }).catch(() => {});
+        if (originalMediaDevices) Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
+        else delete navigator.mediaDevices;
+        if (originalAudioContext) Object.defineProperty(window, 'AudioContext', originalAudioContext);
+        else delete window.AudioContext;
+        if (originalMediaStream) Object.defineProperty(window, 'MediaStream', originalMediaStream);
+        else delete window.MediaStream;
+      }
+    };
+
     // Exercise the real App/useAudioCapture hook with deterministic fake media devices.
     // Capture is injected into the actual control window, which is the sole audio owner.
     // This tests renderer + hook + preload IPC; it does not claim physical microphone coverage.
@@ -267,7 +430,10 @@ async function runDesktopE2E({ windowCoordinator }) {
       const makeTrack = kind => ({
         kind,
         enabled: true,
+        readyState: 'live',
+        addEventListener() {},
         stop() {
+          this.readyState = 'ended';
           if (kind === 'video') stopped.video = true;
           else if (kind === 'microphone') stopped.mic = true;
           else if (kind === 'loopback') stopped.loopback = true;
@@ -373,6 +539,31 @@ async function runDesktopE2E({ windowCoordinator }) {
         else delete window.MediaStream;
       }
     };
+
+    const unexpectedTrackEndResult = await execute(control, unexpectedTrackEndWorkflow);
+    assert.equal(unexpectedTrackEndResult.scenarios.length, 2, 'Both capture sources should be tested for unexpected track termination');
+    for (const scenario of unexpectedTrackEndResult.scenarios) {
+      assert.equal(scenario.recordingStopped, true, `${scenario.source} track termination must stop recording`);
+      assert.equal(scenario.bothTracksStopped, true, `${scenario.source} track termination must stop both audio tracks`);
+      assert.equal(
+        scenario.captureCount > 0 && scenario.allCaptureTracksStopped,
+        true,
+        `${scenario.source} track termination must stop every media stream created during setup: ${JSON.stringify(scenario)}`
+      );
+      assert.equal(
+        scenario.processorPairCreated,
+        true,
+        `${scenario.source} capture must initialize microphone and loopback audio processing: ${JSON.stringify(scenario)}`
+      );
+      assert.equal(
+        scenario.allContextsClosed,
+        true,
+        `${scenario.source} track termination must close every AudioContext created during setup: ${JSON.stringify(scenario)}`
+      );
+      assert.equal(scenario.activityFlagsCleared, true, `${scenario.source} track termination must clear VAD activity`);
+      assert.equal(scenario.userVisibleErrorRecorded, true, `${scenario.source} track termination must leave a user-visible error`);
+    }
+    evidence.push('Unexpected microphone and loopback track-ended events both stopped the full capture session, closed audio contexts, cleared VAD state, and recorded an error');
 
     const activeCaptureResult = await execute(control, activeCapturePurgeWorkflow);
     assert.equal(activeCaptureResult.activeMicrophone, true, 'Microphone VAD should detect overlapping speech');

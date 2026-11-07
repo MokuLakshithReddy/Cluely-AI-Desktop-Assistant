@@ -13,6 +13,11 @@ export function useAudioCapture(
   const isPurging = state.isPurging;
   const isEmergencyStopping = state.isEmergencyStopping;
   const captureSessionIdRef = useRef(0);
+  // The effect can re-run while recording remains enabled (for example, when
+  // emergency-stop/purge flags change). Keep startup idempotent for one capture
+  // generation and block automatic restart after a fail-closed stop.
+  const captureStartSessionRef = useRef<number | null>(null);
+  const captureStopRequestedRef = useRef(false);
 
   // Local Microphone State
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -30,12 +35,15 @@ export function useAudioCapture(
     if (!isAudioOwner) return;
 
     if (isPurging || isEmergencyStopping) {
+      captureStopRequestedRef.current = true;
       stopDualCapture(false);
       if (isEmergencyStopping && !isPurging) void patchState({ isEmergencyStopping: false });
       return;
     }
 
     if (!isRecording) {
+      captureStopRequestedRef.current = false;
+      captureStartSessionRef.current = null;
       stopDualCapture(true);
       return;
     }
@@ -180,8 +188,71 @@ export function useAudioCapture(
   };
 
   const startDualCapture = async () => {
-    if (getLatestState().isPurging) return;
+    if (getLatestState().isPurging || captureStopRequestedRef.current) return;
+    if (captureStartSessionRef.current === captureSessionIdRef.current) return;
     const currentSessionId = ++captureSessionIdRef.current;
+    captureStartSessionRef.current = currentSessionId;
+
+    // A live capture must not silently continue after an OS/device track ends.
+    // The generation check prevents stale "ended" events from a previous session
+    // from stopping a newer recording or racing with an explicit stop/purge.
+    const stopForUnexpectedTrackEnd = (role: Role, source: string) => {
+      if (captureSessionIdRef.current !== currentSessionId) return;
+      const latest = getLatestState();
+      if (!latest.isRecording || latest.isPurging || latest.isEmergencyStopping) return;
+
+      const message = `${source} capture ended unexpectedly. Recording was stopped.`;
+      console.warn(`[useAudioCapture] ${message}`);
+      captureStopRequestedRef.current = true;
+      stopDualCapture(false);
+
+      void patchState(prev => {
+        if (!prev.isRecording || prev.isPurging || prev.isEmergencyStopping) return {};
+        const now = new Date().toISOString();
+        const activeSession = prev.session || {
+          id: `sess_${Date.now()}`,
+          title: 'Live Conversation Session',
+          createdAt: now,
+          updatedAt: now,
+          durationSeconds: 0,
+          mode: prev.activeMode,
+          audioInputLanguage: 'en',
+          transcript: [],
+          messages: [],
+        };
+        const errorItem: TranscriptItem = {
+          id: `tr_capture_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          createdAt: now,
+          relativeMs: 0,
+          role,
+          status: 'error',
+          error: message,
+          text: `[Capture stopped: ${message}]`,
+        };
+
+        return {
+          isRecording: false,
+          meHasVoiceActivity: false,
+          themHasVoiceActivity: false,
+          session: {
+            ...activeSession,
+            updatedAt: now,
+            transcript: [...activeSession.transcript, errorItem],
+          },
+        };
+      }).catch(error => {
+        console.error('[useAudioCapture] Failed to persist unexpected track-end state:', error);
+      });
+    };
+
+    const watchAudioTracks = (stream: MediaStream, role: Role, source: string) => {
+      stream.getAudioTracks().forEach(track => {
+        const handleEnded = () => stopForUnexpectedTrackEnd(role, source);
+        track.addEventListener('ended', handleEnded, { once: true });
+        // Handle a device that disappears between stream resolution and listener setup.
+        if (track.readyState === 'ended') handleEnded();
+      });
+    };
 
     // 1. Channel A: Start Local Microphone Capture ('me')
     if (!navigator?.mediaDevices?.getUserMedia) {
@@ -207,6 +278,8 @@ export function useAudioCapture(
       }
 
       micStreamRef.current = micStream;
+      watchAudioTracks(micStream, 'me', 'Microphone');
+      if (captureSessionIdRef.current !== currentSessionId) return;
 
       const micAudioCtx = new AudioContext({ sampleRate: 48000 });
       micAudioCtxRef.current = micAudioCtx;
@@ -240,8 +313,13 @@ export function useAudioCapture(
     } catch (err: any) {
       if (captureSessionIdRef.current !== currentSessionId) return;
       console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
+      // Release any stream/context created before the failure (for example, if
+      // AudioContext construction fails after getUserMedia succeeds).
+      captureStopRequestedRef.current = true;
+      stopDualCapture(false);
       // Gracefully reset recording state
       await patchState(prev => {
+        if (prev.isPurging) return {};
         const activeSession = prev.session || {
           id: `sess_${Date.now()}`,
           title: 'Live Conversation Session',
@@ -288,7 +366,11 @@ export function useAudioCapture(
         });
 
         // Abort and stop tracks if recording stopped or session changed while prompt was active
-        if (captureSessionIdRef.current !== currentSessionId || !getLatestState().isRecording) {
+        if (
+          captureSessionIdRef.current !== currentSessionId ||
+          !getLatestState().isRecording ||
+          getLatestState().isPurging
+        ) {
           displayStream.getTracks().forEach(t => t.stop());
           return;
         }
@@ -302,6 +384,8 @@ export function useAudioCapture(
         const audioTracks = displayStream.getAudioTracks();
         if (audioTracks.length > 0) {
           systemStreamRef.current = new MediaStream(audioTracks);
+          watchAudioTracks(systemStreamRef.current, 'them', 'System-audio loopback');
+          if (captureSessionIdRef.current !== currentSessionId) return;
 
           const systemAudioCtx = new AudioContext({ sampleRate: 48000 });
           systemAudioCtxRef.current = systemAudioCtx;
