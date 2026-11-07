@@ -127,6 +127,7 @@ export class IpcRouter {
   private customTrustedHtmlPath?: string;
   private forceProductionMode: boolean = false;
   private activeAiControllers = new ActiveRequestRegistry();
+  private activeAiTasks: Set<Promise<void>> = new Set();
   private activeTranscriptionControllers: Set<AbortController> = new Set();
   private activeTranscriptionTasks: Set<Promise<string>> = new Set();
 
@@ -646,6 +647,9 @@ export class IpcRouter {
       const senderWebContents = event.sender;
       const activeRequest = this.activeAiControllers.start(requestId);
       const { operationId, correlationId, controller } = activeRequest;
+      let resolveAiTask!: () => void;
+      const aiTaskSettled = new Promise<void>(resolve => { resolveAiTask = resolve; });
+      this.activeAiTasks.add(aiTaskSettled);
       stateManager.patchState({ isGenerating: true });
 
       try {
@@ -723,6 +727,8 @@ export class IpcRouter {
         return { content: resultText, sources: knowledgePassages };
       } finally {
         this.activeAiControllers.complete(operationId, correlationId);
+        this.activeAiTasks.delete(aiTaskSettled);
+        resolveAiTask();
         stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
       }
     });
@@ -757,8 +763,12 @@ export class IpcRouter {
       for (const controller of this.activeTranscriptionControllers) controller.abort();
 
       try {
-        // Wait for in-flight STT to settle before deleting local data and credentials.
-        await Promise.allSettled(Array.from(this.activeTranscriptionTasks));
+        // Wait for every provider handler to unwind after cancellation before deleting
+        // the vault or archived data. This also protects concurrent main-process requests.
+        await Promise.allSettled([
+          ...Array.from(this.activeAiTasks),
+          ...Array.from(this.activeTranscriptionTasks),
+        ]);
         await credentialVault.deleteAllKeys();
         await sessionRepository.purgeAll();
 
