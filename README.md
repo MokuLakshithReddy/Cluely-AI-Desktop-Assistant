@@ -37,7 +37,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 * **Speaker Separation (`me` vs `them`)**: Ingests local microphone speech (`role: "me"`) and remote participants via Windows system audio loopback (`role: "them"`) as distinct audio streams.
 * **Driver-Free Windows Loopback Capture**: Implements `session.defaultSession.setDisplayMediaRequestHandler` with `audio: "loopback"` in the privileged Electron main process, eliminating the need for virtual audio cables or third-party audio drivers.
 * **Voice Activity Detection (VAD)**: Audio buffers are resampled from 48kHz to 16kHz with dynamic RMS energy tracking, Zero-Crossing Rate (ZCR) human voice discrimination, a 300ms silence redemption window, and a 20-second segment cap.
-* **Acoustic Crosstalk & Echo Suppression**: Automatically zeroes out local microphone input when remote participant audio is active (`themHasVoiceActivity`), preventing laptop speaker sound from polluting the user's transcript.
+* **Independent Dual-Source Capture**: Microphone and system loopback are processed independently, preserving genuine local speech even when participants speak simultaneously. Browser/device echo cancellation remains enabled on the microphone input; overlapping local speech is never intentionally zeroed based on remote VAD activity.
 * **Sub-Second Speech-to-Text (STT)**: Encodes speech segments into standard 16-bit PCM RIFF WAV chunks dispatched to ultra-fast cloud STT (**Groq Whisper Large v3 Turbo** at <300ms latency or OpenAI Whisper), populating a live chronological transcript timeline with speaker labels.
 
 ### 🖥️ Real-Time Display Perception & Vision Grounding

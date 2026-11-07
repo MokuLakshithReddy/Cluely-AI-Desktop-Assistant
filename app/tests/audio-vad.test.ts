@@ -79,16 +79,28 @@ describe('Audio Processing, VAD & Crosstalk Subsystem', () => {
     expect(endedBuffer).not.toBeNull();
   });
 
-  it('suppresses local microphone frames when remote speaker is active (crosstalk prevention)', () => {
-    const vad = new VADProcessor();
-    const activeFrame = new Float32Array(512);
-    for (let i = 0; i < 512; i++) {
-      activeFrame[i] = Math.sin(i) * 0.4;
+  it('preserves simultaneous local and remote speech in independent source pipelines', () => {
+    const micVad = new VADProcessor({ energyThreshold: 0.02 });
+    const systemVad = new VADProcessor({ energyThreshold: 0.02 });
+    const micSegment = vi.fn();
+    const systemSegment = vi.fn();
+    micVad.onSpeechEnd = micSegment;
+    systemVad.onSpeechEnd = systemSegment;
+
+    const overlappingSpeech = new Float32Array(512);
+    for (let i = 0; i < overlappingSpeech.length; i++) {
+      overlappingSpeech[i] = Math.sin((2 * Math.PI * 300 * i) / 16000) * 0.3;
     }
 
-    // When isEchoSuppressed is true, frame is treated as silence
-    const isSpeaking = vad.processFrame(activeFrame, true);
-    expect(isSpeaking).toBe(false);
+    expect(micVad.processFrame(overlappingSpeech)).toBe(true);
+    expect(systemVad.processFrame(overlappingSpeech)).toBe(true);
+    micVad.flush();
+    systemVad.flush();
+
+    expect(micSegment).toHaveBeenCalledTimes(1);
+    expect(systemSegment).toHaveBeenCalledTimes(1);
+    expect(micSegment.mock.calls[0][0]).toBeInstanceOf(ArrayBuffer);
+    expect(systemSegment.mock.calls[0][0]).toBeInstanceOf(ArrayBuffer);
   });
 
   it('discards buffered speech without emitting a segment during privacy teardown', () => {

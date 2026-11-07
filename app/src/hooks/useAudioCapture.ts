@@ -230,9 +230,9 @@ export function useAudioCapture(
         const inputData = event.inputBuffer.getChannelData(0);
         const resampled = micResampler.resample(inputData);
 
-        // Crosstalk Suppression: Zero mic frame if remote system audio is actively speaking!
-        const isEchoSuppressed = getLatestState().themHasVoiceActivity;
-        micVad.processFrame(resampled, isEchoSuppressed);
+        // Keep microphone and loopback as independent sources. Remote activity must not
+        // erase genuine local speech when both speakers talk at the same time.
+        micVad.processFrame(resampled);
       };
 
       micSource.connect(micScriptNode);
