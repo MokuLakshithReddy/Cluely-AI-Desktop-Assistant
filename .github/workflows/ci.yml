@@ -26,6 +26,11 @@ jobs:
           cache-dependency-path: 'package-lock.json'
       - name: Install dependencies
         run: npm ci
+      - name: Capture npm dependency audit report
+        shell: bash
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const fs=require('node:fs');const p='npm-audit.json';if(!fs.existsSync(p))throw new Error('npm audit JSON report was not created');const r=JSON.parse(fs.readFileSync(p,'utf8'));const v=r.metadata?.vulnerabilities||{};console.log('Dependency audit:',JSON.stringify(v));"
       - name: Run Type Check & Lint
         run: npm run lint
       - name: Run Vitest Suite
@@ -49,6 +54,14 @@ jobs:
         with:
           name: test-results
           path: docs/testing/TEST_RESULTS.md
+          retention-days: 14
+      - name: Upload Dependency Audit Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: npm-audit.json
+          if-no-files-found: warn
           retention-days: 14
 
   package:
