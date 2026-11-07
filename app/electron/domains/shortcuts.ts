@@ -63,7 +63,18 @@ export class ShortcutManager {
       this.registeredShortcuts.set('clear', shortcuts.clear);
     }
 
-    // 4. Toggle Session
+    // 4. Emergency stop — always targets the audio-owning control renderer.
+    if (shortcuts.emergencyStop) {
+      globalShortcut.register(shortcuts.emergencyStop, () => {
+        const controlWin = windowCoordinator.getControlWindow();
+        if (controlWin && !controlWin.isDestroyed()) {
+          controlWin.webContents.send('shortcut-action', 'emergency-stop');
+        }
+      });
+      this.registeredShortcuts.set('emergencyStop', shortcuts.emergencyStop);
+    }
+
+    // 5. Toggle Session
     if (shortcuts.toggleSession) {
       globalShortcut.register(shortcuts.toggleSession, () => {
         const state = stateManager.getState();
