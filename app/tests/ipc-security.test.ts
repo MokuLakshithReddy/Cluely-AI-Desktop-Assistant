@@ -70,6 +70,12 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     stateManager.patchState({ isPurging: false, isEmergencyStopping: false });
   });
 
+  it('keeps Escape as collapse and exposes a separate emergency stop shortcut', () => {
+    const shortcuts = stateManager.getState().shortcuts;
+    expect(shortcuts.clear).toBe('Escape');
+    expect(shortcuts.emergencyStop).toBe('CommandOrControl+Shift+Escape');
+  });
+
   it('rejects IPC invocation when senderFrame is null or undefined', () => {
     const fakeEvent: any = { senderFrame: null };
     expect(() => router.validateOrigin(fakeEvent)).toThrow(
