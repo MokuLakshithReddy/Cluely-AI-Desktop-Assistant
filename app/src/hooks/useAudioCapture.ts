@@ -13,6 +13,11 @@ export function useAudioCapture(
   const isPurging = state.isPurging;
   const isEmergencyStopping = state.isEmergencyStopping;
   const captureSessionIdRef = useRef(0);
+  // The effect can re-run while recording remains enabled (for example, when
+  // emergency-stop/purge flags change). Keep startup idempotent for one capture
+  // generation and block automatic restart after a fail-closed stop.
+  const captureStartSessionRef = useRef<number | null>(null);
+  const captureStopRequestedRef = useRef(false);
 
   // Local Microphone State
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -30,12 +35,15 @@ export function useAudioCapture(
     if (!isAudioOwner) return;
 
     if (isPurging || isEmergencyStopping) {
+      captureStopRequestedRef.current = true;
       stopDualCapture(false);
       if (isEmergencyStopping && !isPurging) void patchState({ isEmergencyStopping: false });
       return;
     }
 
     if (!isRecording) {
+      captureStopRequestedRef.current = false;
+      captureStartSessionRef.current = null;
       stopDualCapture(true);
       return;
     }
@@ -180,8 +188,10 @@ export function useAudioCapture(
   };
 
   const startDualCapture = async () => {
-    if (getLatestState().isPurging) return;
+    if (getLatestState().isPurging || captureStopRequestedRef.current) return;
+    if (captureStartSessionRef.current === captureSessionIdRef.current) return;
     const currentSessionId = ++captureSessionIdRef.current;
+    captureStartSessionRef.current = currentSessionId;
 
     // A live capture must not silently continue after an OS/device track ends.
     // The generation check prevents stale "ended" events from a previous session
@@ -193,6 +203,7 @@ export function useAudioCapture(
 
       const message = `${source} capture ended unexpectedly. Recording was stopped.`;
       console.warn(`[useAudioCapture] ${message}`);
+      captureStopRequestedRef.current = true;
       stopDualCapture(false);
 
       void patchState(prev => {
@@ -304,6 +315,7 @@ export function useAudioCapture(
       console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
       // Release any stream/context created before the failure (for example, if
       // AudioContext construction fails after getUserMedia succeeds).
+      captureStopRequestedRef.current = true;
       stopDualCapture(false);
       // Gracefully reset recording state
       await patchState(prev => {
