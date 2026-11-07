@@ -1,20 +1,28 @@
 # Test Results and Verification Scope
 
-**Evidence revision:** `911c61bb62585e256b251aa022b6ecea3ed3d9a5`  
-**Workflow:** [CI Verification Suite — run 42384194110](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42384194110)  
-**Recorded summary:** 91 checks passed — 90 Vitest unit/integration tests and one Electron UI/IPC smoke check.
+**Evidence revision:** `fcb352ee774749974402c8298cebb8c50570732f`  
+**Workflow:** [CI Verification Suite — run 42400942182](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42400942182)  
+**Recorded summary:** 125 automated checks passed — 124 Vitest unit/integration tests across 16 test files and one Electron UI/IPC smoke check.
 
-## What the CI run proves
+## What this CI run proves
 
-The current-main run passed:
-- npm dependency installation with the committed lockfile;
+The merged-main CI run passed:
+- clean dependency installation from the committed lockfile with `npm ci`;
+- the blocking `npm audit --audit-level=high` check and retention of the machine-readable npm audit report;
 - TypeScript/lint checks;
-- the Vitest suite;
-- Vite and Electron TypeScript builds;
-- Electron Dashboard/preload/IPC session persistence and purge smoke;
-- Windows portable, macOS DMG, and Linux AppImage package generation.
+- 124 Vitest unit/integration tests across 16 test files;
+- the Vite renderer and Electron TypeScript builds;
+- Electron Dashboard/preload/IPC persistence and purge smoke, including controlled process shutdown;
+- Windows portable, macOS DMG, and Linux AppImage generation;
+- launch smoke for the actual packaged Windows executable, macOS app extracted from its DMG, and Linux AppImage.
 
-The packaging jobs verify that expected artifact files are created. They do not launch or install-test those artifacts. See [issue #48](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/48).
+The package launch checks verify packaged renderer/preload/IPC readiness and controlled shutdown on native CI runners. They do not establish physical device compatibility or production signing.
+
+## Dependency-audit interpretation
+
+The audit gate passed because the committed dependency tree had no high or critical findings. The retained report records six moderate paths for one distinct `minimatch` advisory in the Electron packaging/build-tooling tree. The repository owner accepted a time-limited exception through **2026-12-07** with mitigations documented in [DEPENDENCY_ADVISORY_REVIEW.md](../security/DEPENDENCY_ADVISORY_REVIEW.md).
+
+This is not a clean `npm audit` result. The exception must be re-reviewed by its expiry date and removed when a compatible patched packaging-toolchain dependency is available.
 
 ## Test scope distinctions
 
@@ -24,25 +32,21 @@ The packaging jobs verify that expected artifact files are created. They do not 
 | Synthetic pipeline integration | Deterministic audio arrays, document fixtures, mocked provider responses, and helper-level flows | A live end-to-end meeting workflow |
 | Electron UI/IPC smoke | Real Electron launch, Dashboard credential UI, preload bridge, IPC session persistence, purge, and clean shutdown | Physical microphone, display capture, or cloud-provider correctness |
 | Active-capture purge E2E | Production capture hook wired to fake microphone/loopback streams and fake audio contexts; asserts teardown and state reset | Actual microphone hardware, real OS loopback, or external meeting application behavior |
-| Package CI | Produces the configured Windows/macOS/Linux artifacts | Clean-machine installation and launch of those artifacts |
-
-## Audio behavior represented by the tests
-
-Microphone and system-loopback processing use independent VAD pipelines. The implementation preserves overlapping speech; cross-source mic suppression is not part of the current behavior. Tests verify independent source activity and teardown with synthetic frames.
+| Packaged-app launch smoke | Actual Windows/macOS/Linux package launch, renderer/preload/IPC readiness, and controlled shutdown on native CI runners | Physical device permissions, real loopback/display capture, production signing, or clean-machine long-duration stability |
 
 ## Not yet verified by automated CI
 
-The following require device/OS/provider-backed testing:
+The following still require device/OS/provider-backed testing:
 - physical microphone permission grant, denial, revocation, and device removal;
-- system-audio loopback on each claimed OS;
-- real display permission flow, multi-monitor capture, and cancellation;
+- system-audio loopback on each claimed OS/session type;
+- real display permission grant/denial/revocation, multi-monitor behavior, and cancellation;
 - emergency stop and purge while actual capture/transcription is active;
 - live STT/LLM provider requests, account/model availability, rate limits, network loss, and recovery;
 - real meeting-app and screen-recording compatibility;
-- clean-machine launch of packaged Windows, macOS, and Linux artifacts.
+- long-duration packaged-app stability on representative end-user devices.
 
-Track these release gates in [issue #49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) and [issue #48](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/48).
+Track the physical-device and release gates in [issue #49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) and [issue #50](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/50).
 
 ## Interpreting the pass rate
 
-The 91/91 result is a pass count for the automated checks in the cited workflow. It is not a 100% correctness, device-compatibility, security-certification, or production-readiness claim. Use the exact workflow run and this scope statement when reporting test status.
+The 125/125 result is a pass count for the automated checks in the cited workflow. It is not a 100% correctness, device-compatibility, security-certification, or production-readiness claim. Use the exact workflow run and this scope statement when reporting verification status.
