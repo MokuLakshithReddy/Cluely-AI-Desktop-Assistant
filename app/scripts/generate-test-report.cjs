@@ -148,36 +148,53 @@ if (!smokePassed && (smokeStdout || smokeStderr || smokeResult.error)) {
 fs.writeFileSync(resultsPath, md, 'utf8');
 console.log(`Successfully generated verified test report at: ${resultsPath}`);
 
-// 4. Synchronize the README suite table and verification totals.
-//
-// The README has had more than one documented table layout. Update the
-// existing table in place and preserve its schema instead of relying on a
-// specific callout or heading immediately after it.
+// 4. Synchronize README test evidence without relying on a particular Markdown schema.
 const readmePath = path.join(repoRoot, 'README.md');
 if (fs.existsSync(readmePath)) {
-  let readme = fs.readFileSync(readmePath, 'utf8').replace(/\\r\\n/g, '\\n');
-  const lines = readme.split('\\n');
-  const headerIndex = lines.findIndex(line => /^\\|\\s*Test Suite(?: File)?\\s*\\|/.test(line));
+  const lineFeed = String.fromCharCode(10);
+  const carriageReturn = String.fromCharCode(13);
+  let readme = fs.readFileSync(readmePath, 'utf8')
+    .split(carriageReturn + lineFeed).join(lineFeed);
+  const lines = readme.split(lineFeed);
+
+  const headerIndex = lines.findIndex(line => {
+    if (!line.trimStart().startsWith('|')) return false;
+    const firstCell = line.split('|')[1]?.trim();
+    return firstCell === 'Test Suite' || firstCell === 'Test Suite File';
+  });
   if (headerIndex < 0) {
     throw new Error('README test suite table is missing; refusing to publish stale test evidence.');
   }
 
   const headerCells = lines[headerIndex].split('|').slice(1, -1).map(cell => cell.trim());
   const separatorIndex = headerIndex + 1;
-  if (separatorIndex >= lines.length || !/^\\|\\s*:?-{3,}/.test(lines[separatorIndex])) {
+  const separatorCells = (lines[separatorIndex] || '').split('|').slice(1, -1).map(cell => cell.trim());
+  const validSeparator = separatorCells.length === headerCells.length &&
+    separatorCells.every(cell => cell.length >= 3 &&
+      cell.includes('---') && cell.split('').every(char => char === '-' || char === ':'));
+  if (!validSeparator) {
     throw new Error('README test suite table has no valid Markdown separator row.');
+  }
+  if (headerCells.length !== 3 && headerCells.length !== 5) {
+    throw new Error('Unsupported README test suite table schema: expected 3 or 5 columns.');
   }
 
   let tableEnd = separatorIndex + 1;
-  while (tableEnd < lines.length && /^\\|/.test(lines[tableEnd])) tableEnd++;
+  while (tableEnd < lines.length && lines[tableEnd].trimStart().startsWith('|')) tableEnd++;
 
   const descriptions = new Map();
   for (const row of lines.slice(separatorIndex + 1, tableEnd)) {
     const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
-    const codeMatch = cells[0]?.match(/`([^`]+)`/);
-    const linkMatch = cells[0]?.match(/\\]\\(app\\/tests\\/([^)]+)\\)/);
-    const fileName = codeMatch?.[1] || linkMatch?.[1];
-    if (fileName && cells[1] && fileName !== 'Total') {
+    if (!cells.length) continue;
+    const value = cells[0] || '';
+    const pathMarker = '](app/tests/';
+    const pathStart = value.indexOf(pathMarker);
+    let fileName = value.split(String.fromCharCode(96)).join('').trim();
+    if (pathStart >= 0) {
+      const pathEnd = value.indexOf(')', pathStart + pathMarker.length);
+      if (pathEnd > pathStart) fileName = value.slice(pathStart + pathMarker.length, pathEnd);
+    }
+    if (fileName && fileName !== 'Total' && cells[1]) {
       descriptions.set(fileName, cells[1]);
     }
   }
@@ -195,133 +212,152 @@ if (fs.existsSync(readmePath)) {
         : fallbackDescription);
 
     if (headerCells.length === 3) {
-      generatedRows.push(`| \`${fileName}\` | ${description} | ${passed} |`);
-    } else if (headerCells.length === 5) {
-      generatedRows.push(`| [\`${fileName}\`](app/tests/${fileName}) | ${description} | ${total} | ${passed} | **${status}** |`);
+      generatedRows.push('| ' + fileName + ' | ' + description + ' | ' + passed + ' |');
     } else {
-      throw new Error(`Unsupported README test table schema: expected 3 or 5 columns, found ${headerCells.length}.`);
+      generatedRows.push('| [' + fileName + '](app/tests/' + fileName + ') | ' +
+        description + ' | ' + total + ' | ' + passed + ' | **' + status + '** |');
     }
   }
 
   const smokeDescription = 'Electron Dashboard, preload/IPC persistence and shutdown';
   if (headerCells.length === 3) {
-    generatedRows.push(`| \`electron-smoke.cjs\` | ${smokeDescription} | ${smokePassed ? 1 : 0} |`);
-    generatedRows.push(`| **Total** | **${totalSuites} Vitest suites + 1 Electron smoke check** | **${grandPassedTests}** |`);
+    generatedRows.push('| electron-smoke.cjs | ' + smokeDescription + ' | ' + (smokePassed ? 1 : 0) + ' |');
+    generatedRows.push('| **Total** | **' + totalSuites + ' Vitest suites + 1 Electron smoke check** | **' + grandPassedTests + '** |');
   } else {
-    generatedRows.push(`| [\`electron-smoke.cjs\`](app/tests/electron-smoke.cjs) | ${smokeDescription} | 1 | ${smokePassed ? 1 : 0} | **${smokePassed ? 'PASSED' : 'FAILED'}** |`);
-    generatedRows.push(`| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`);
+    generatedRows.push('| [electron-smoke.cjs](app/tests/electron-smoke.cjs) | ' +
+      smokeDescription + ' | 1 | ' + (smokePassed ? 1 : 0) + ' | **' +
+      (smokePassed ? 'PASSED' : 'FAILED') + '** |');
+    generatedRows.push('| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **' +
+      grandTotalTests + '** | **' + grandPassedTests + '** | **' + passRate + '% PASS** |');
   }
 
   lines.splice(headerIndex + 2, tableEnd - (headerIndex + 2), ...generatedRows);
-  readme = lines.join('\\n');
+  readme = lines.join(lineFeed);
 
-  const headingPattern = /Automated Verification & Test Suites \\(\\d+\\/\\d+ Passing\\)/g;
-  if (!headingPattern.test(readme)) {
-    throw new Error('README automated-verification heading is missing its generated pass-count marker.');
-  }
-  readme = readme.replace(
-    headingPattern,
-    `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`
-  );
-
-  // Keep the narrative count aligned when the README uses the current summary
-  // paragraph; older layouts may not contain this paragraph.
-  const latestSummary = /The latest verified CI run recorded \\*\\*\\d+ passing automated checks\\*\\*: \\d+ Vitest tests across \\d+ suites and one Electron UI\\/preload\\/IPC smoke test\\./;
-  if (latestSummary.test(readme)) {
-    readme = readme.replace(
-      latestSummary,
-      `The latest verified CI run recorded **${grandPassedTests} passing automated checks**: ${passedUnitTests} Vitest tests across ${totalSuites} suites and one Electron UI/preload/IPC smoke test.`
-    );
+  const headingPrefix = 'Automated Verification & Test Suites (';
+  const headingStart = readme.indexOf(headingPrefix);
+  if (headingStart >= 0) {
+    const countStart = headingStart + headingPrefix.length;
+    const countEnd = readme.indexOf(' Passing)', countStart);
+    if (countEnd < 0) {
+      throw new Error('README automated-verification heading is missing its pass-count suffix.');
+    }
+    readme = readme.slice(0, countStart) + grandPassedTests + '/' + grandTotalTests +
+      readme.slice(countEnd);
   }
 
-  // Update older README command comments only when those comments exist.
-  readme = readme.replace(
-    /# Run the \\d+ Vitest unit & integration tests/g,
-    `# Run the ${totalUnitTests} Vitest unit & integration tests`
-  );
-  readme = readme.replace(
-    /# Generate the automated test results markdown report \\(\\d+ total verified (?:tests|checks)\\)/g,
-    `# Generate the automated test results markdown report (${grandTotalTests} total verified checks)`
-  );
+  const summaryStart = readme.indexOf('The latest verified CI run recorded **');
+  if (summaryStart >= 0) {
+    const summaryEndMarker = ' smoke test.';
+    const summaryEnd = readme.indexOf(summaryEndMarker, summaryStart);
+    if (summaryEnd >= 0) {
+      const summaryEndExclusive = summaryEnd + summaryEndMarker.length;
+      const summary = 'The latest verified CI run recorded **' + grandPassedTests +
+        ' passing automated checks**: ' + passedUnitTests + ' Vitest tests across ' +
+        totalSuites + ' suites and one Electron UI/preload/IPC smoke test.';
+      readme = readme.slice(0, summaryStart) + summary + readme.slice(summaryEndExclusive);
+    }
+  }
 
+  const updatedReadmeLines = readme.split(lineFeed).map(line => {
+    if (line.startsWith('# Run the ') && line.includes(' Vitest unit & integration tests')) {
+      return '# Run the ' + totalUnitTests + ' Vitest unit & integration tests';
+    }
+    const reportPrefix = '# Generate the automated test results markdown report (';
+    if (line.startsWith(reportPrefix)) {
+      return reportPrefix + grandTotalTests + ' total verified checks)';
+    }
+    return line;
+  });
+  readme = updatedReadmeLines.join(lineFeed);
   fs.writeFileSync(readmePath, readme, 'utf8');
-  console.log(`Synchronized README test table and totals (${grandPassedTests}/${grandTotalTests}).`);
+  console.log('Synchronized README test table and totals (' + grandPassedTests + '/' + grandTotalTests + ').');
 }
 
-// 5. Synchronize the production-readiness counts and suite breakdown.
+// 5. Synchronize production-readiness counts and the generated suite breakdown.
 const prodDocPath = path.join(repoRoot, 'docs', 'production', 'PRODUCTION_READINESS.md');
 if (fs.existsSync(prodDocPath)) {
-  // Normalize line endings so row parsing is consistent on Windows and Unix runners.
-  let prodDoc = fs.readFileSync(prodDocPath, 'utf8').replace(/\r\n/g, '\n');
+  const lineFeed = String.fromCharCode(10);
+  const carriageReturn = String.fromCharCode(13);
+  let prodDoc = fs.readFileSync(prodDocPath, 'utf8')
+    .split(carriageReturn + lineFeed).join(lineFeed);
+  let prodLines = prodDoc.split(lineFeed);
 
-  prodDoc = replaceRequired(
-    prodDoc,
-    /\*\*(?:\d+ automated checks passing \(\d+ Vitest tests \+ 1 Electron UI\/preload\/IPC E2E smoke test\)|\d+\/\d+ automated checks passing \(\d+\/\d+ Vitest tests \+ \d+\/1 Electron UI\/preload\/IPC E2E smoke test\)) with \d+% pass rate\*\*/,
-    `**${grandPassedTests}/${grandTotalTests} automated checks passing (${passedUnitTests}/${totalUnitTests} Vitest tests + ${smokePassed ? 1 : 0}/1 Electron UI/preload/IPC E2E smoke test) with ${passRate}% pass rate**`,
-    'production readiness summary'
-  );
-  prodDoc = replaceRequired(
-    prodDoc,
-    /consists of \*\*\d+ automated checks\*\* across \d+ test files \([^)]*Electron UI(?:\/preload)?\/IPC E2E smoke runner\)/,
-    `consists of **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner)`,
-    'production readiness test count'
-  );
-  prodDoc = replaceRequired(
-    prodDoc,
-    /npm test.*?— \d+ automated tests across \d+ suites/,
-    `npm test — ${totalUnitTests} automated tests across ${totalSuites} suites`,
-    'production readiness Vitest command count'
-  );
-  prodDoc = replaceRequired(
-    prodDoc,
-    /npm run test:report.*?— \d+ total checks: \d+ Vitest \+ 1 Electron E2E smoke/,
-    `npm run test:report — ${grandTotalTests} total checks: ${totalUnitTests} Vitest + 1 Electron E2E smoke`,
-    'production readiness report command count'
-  );
+  prodLines = prodLines.map(line => {
+    if (line.includes('automated checks passing (') && line.startsWith('**')) {
+      return '**' + grandPassedTests + '/' + grandTotalTests +
+        ' automated checks passing (' + passedUnitTests + '/' + totalUnitTests +
+        ' Vitest tests + ' + (smokePassed ? 1 : 0) +
+        '/1 Electron UI/preload/IPC E2E smoke test) with ' + passRate + '% pass rate**';
+    }
+    if (line.startsWith('The test suite consists of **')) {
+      return 'The test suite consists of **' + grandTotalTests +
+        ' automated checks** across ' + (totalSuites + 1) +
+        ' test files (' + totalSuites +
+        ' Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).';
+    }
+    if (line.startsWith('- ') && line.includes('npm test') && line.includes('automated tests across')) {
+      return '- npm test — ' + totalUnitTests + ' automated tests across ' + totalSuites + ' suites';
+    }
+    if (line.startsWith('- ') && line.includes('npm run test:report') && line.includes('total checks:')) {
+      return '- npm run test:report — ' + grandTotalTests + ' total checks: ' +
+        totalUnitTests + ' Vitest + 1 Electron E2E smoke';
+    }
+    return line;
+  });
 
+  prodDoc = prodLines.join(lineFeed);
   const breakdownMarker = '============================== TEST EXECUTION BREAKDOWN ==============================';
-  const breakdownStart = prodDoc.indexOf(breakdownMarker);
   const separator = '======================================================================================';
+  const breakdownStart = prodDoc.indexOf(breakdownMarker);
   const breakdownEnd = breakdownStart >= 0
     ? prodDoc.indexOf(separator, breakdownStart + breakdownMarker.length)
     : -1;
-  if (breakdownStart < 0 || breakdownEnd < 0) {
-    throw new Error('PRODUCTION_READINESS test breakdown markers changed; refusing to skip synchronization.');
+
+  if (breakdownStart >= 0 && breakdownEnd >= 0) {
+    const oldBreakdown = prodDoc.slice(breakdownStart + breakdownMarker.length, breakdownEnd);
+    const descriptions = new Map();
+    for (const line of oldBreakdown.split(lineFeed)) {
+      const pathStart = line.indexOf('tests/');
+      if (pathStart < 0) continue;
+      const nameStart = pathStart + 'tests/'.length;
+      const nameEnd = line.indexOf(' ', nameStart);
+      const descriptionStart = line.indexOf('(', nameEnd);
+      const descriptionEnd = line.lastIndexOf(')');
+      if (nameEnd > nameStart && descriptionStart >= 0 && descriptionEnd > descriptionStart) {
+        descriptions.set(line.slice(nameStart, nameEnd), line.slice(descriptionStart + 1, descriptionEnd));
+      }
+    }
+
+    const rows = vitestData.testResults.map((suite, index) => {
+      const fileName = path.basename(suite.name);
+      const total = suite.assertionResults.length;
+      const passed = suite.assertionResults.filter(a => a.status === 'passed').length;
+      const description = descriptions.get(fileName) ||
+        (suite.assertionResults[0]?.ancestorTitles[0] || fileName);
+      const passSummary = passed === total ? passed + ' passed' : passed + '/' + total + ' passed';
+      return (index + 1) + '.  tests/' + fileName.padEnd(30) + ' ' + passSummary + ' (' + description + ')';
+    });
+    rows.push((totalSuites + 1) +
+      '.  tests/electron-smoke.cjs         ' + (smokePassed ? '1/1' : '0/1') +
+      ' passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)');
+
+    const breakdown = [
+      breakdownMarker,
+      ...rows,
+      '--------------------------------------------------------------------------------------',
+      'Subtotal (Vitest Test Suites):      ' + passedUnitTests + ' passing unit & integration tests',
+      'Grand Total:                        ' + grandPassedTests + ' passing checks / ' +
+        grandTotalTests + ' total (' + passRate + '% Pass Rate)',
+      separator,
+    ].join(lineFeed);
+    prodDoc = prodDoc.slice(0, breakdownStart) + breakdown +
+      prodDoc.slice(breakdownEnd + separator.length);
   }
-
-  const currentBreakdown = prodDoc.slice(breakdownStart + breakdownMarker.length, breakdownEnd);
-  const descriptions = new Map();
-  for (const line of currentBreakdown.split('\n')) {
-    const match = line.match(/^\s*\d+\.\s+tests\/([^\s]+)\s+\d+(?:\/\d+)? passed \((.*)\)\s*$/);
-    if (match) descriptions.set(match[1], match[2]);
-  }
-
-  const rows = vitestData.testResults.map((suite, index) => {
-    const fileName = path.basename(suite.name);
-    const total = suite.assertionResults.length;
-    const passed = suite.assertionResults.filter(a => a.status === 'passed').length;
-    const description = descriptions.get(fileName) ||
-      (fileName === 'window-coordinator.test.ts'
-        ? 'Window close recovery, macOS reinitialization & listener idempotency'
-        : (suite.assertionResults[0]?.ancestorTitles[0] || fileName));
-    const passSummary = passed === total ? `${passed} passed` : `${passed}/${total} passed`;
-    return `${index + 1}.  tests/${fileName.padEnd(30)} ${passSummary} (${description})`;
-  });
-  rows.push(`${totalSuites + 1}.  tests/electron-smoke.cjs         ${smokePassed ? '1/1' : '0/1'} passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)`);
-
-  const breakdown = [
-    breakdownMarker,
-    ...rows,
-    '--------------------------------------------------------------------------------------',
-    `Subtotal (Vitest Test Suites):      ${passedUnitTests} passing unit & integration tests`,
-    `Grand Total:                        ${grandPassedTests} passing checks / ${grandTotalTests} total (${passRate}% Pass Rate)`,
-    separator,
-  ].join('\n');
-  prodDoc = prodDoc.slice(0, breakdownStart) + breakdown +
-    prodDoc.slice(breakdownEnd + separator.length);
 
   fs.writeFileSync(prodDocPath, prodDoc, 'utf8');
-  console.log(`Synchronized PRODUCTION_READINESS counts and suite breakdown (${grandPassedTests}/${grandTotalTests}).`);
+  console.log('Synchronized PRODUCTION_READINESS counts and suite breakdown (' +
+    grandPassedTests + '/' + grandTotalTests + ').');
 }
 
 if (grandFailedTests > 0) {

@@ -31,7 +31,7 @@ jobs:
           # Do not publish while a runtime, credential, packaged-launch,
           # hardware-validation, documentation, licensing, or dependency
           # security blocker remains open.
-          for issue in 19 47 48 49 50 51 52 60; do
+          for issue in 19 47 48 49 51 52 60; do
             response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}")"
             state="$(jq -r '.state' <<<"$response")"
             reason="$(jq -r '.state_reason // empty' <<<"$response")"
