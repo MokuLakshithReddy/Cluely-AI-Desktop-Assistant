@@ -45,7 +45,8 @@ Cluely Copilot is designed from the ground up as a **transparent, consent-first 
    * Audio capture requires explicit user activation via the microphone toggle or the user-defined global hotkey (`Alt+S` / `Ctrl+Shift+X`).
 3. **Instant Stop & Emergency Mute**:
    * An immediate "Stop Listening" button is accessible at all times on the floating bar.
-   * Pressing `Escape` or the mute hotkey instantaneously tears down media capture tracks within **<20 milliseconds**.
+   * Pressing `Escape` invokes the dedicated emergency-stop path: microphone and system-audio tracks are stopped, audio contexts are closed, buffered VAD audio is discarded, and active assistant generation is aborted. This is an immediate application action, not a hard real-time latency guarantee.
+   * `CommandOrControl+Shift+Backspace` collapses the chat; it does not stop capture.
 4. **Meeting Participant Notification & Consent Guidance**:
    * Users operating in two-party or multi-party consent jurisdictions (e.g. California, Illinois, Germany) must obtain agreement from all call participants before enabling audio processing.
    * Cluely Copilot provides a standard recommended notice:
