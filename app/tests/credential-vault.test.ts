@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CredentialVault, isSecureStorageBackendAvailable } from '../electron/services/vault';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { CredentialVault, isSecureStorageBackendAvailable, encryptWithAsyncSafeStorage, decryptWithAsyncSafeStorage } from '../electron/services/vault';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -30,6 +30,44 @@ describe('Credential Vault & Secret Protection Subsystem', () => {
     expect(isSecureStorageBackendAvailable('linux', true, 'basic_text')).toBe(false);
     expect(isSecureStorageBackendAvailable('win32', true, undefined)).toBe(true);
     expect(isSecureStorageBackendAvailable('darwin', true, undefined)).toBe(true);
+  });
+
+  it('prefers asynchronous safeStorage without invoking blocking methods', async () => {
+    const storage = {
+      isAsyncEncryptionAvailable: vi.fn().mockResolvedValue(true),
+      getSelectedStorageBackend: vi.fn().mockReturnValue('gnome_libsecret'),
+      encryptStringAsync: vi.fn().mockResolvedValue(Buffer.from('async-ciphertext')),
+      encryptString: vi.fn(() => { throw new Error('sync encryption must not run'); }),
+    };
+    const encrypted = await encryptWithAsyncSafeStorage(storage, 'linux', 'secret');
+    expect(encrypted.toString()).toBe('async-ciphertext');
+    expect(storage.encryptStringAsync).toHaveBeenCalledWith('secret');
+    expect(storage.encryptString).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to synchronous storage when async storage is temporarily unavailable', async () => {
+    const storage = {
+      isAsyncEncryptionAvailable: vi.fn().mockResolvedValue(false),
+      getSelectedStorageBackend: vi.fn().mockReturnValue('gnome_libsecret'),
+      encryptStringAsync: vi.fn().mockResolvedValue(Buffer.from('ciphertext')),
+      encryptString: vi.fn(),
+    };
+    await expect(encryptWithAsyncSafeStorage(storage, 'linux', 'secret'))
+      .rejects.toThrow(/asynchronous OS-backed credential storage is unavailable/i);
+    expect(storage.encryptString).not.toHaveBeenCalled();
+  });
+
+  it('retries async decryption when Electron reports a key rotation', async () => {
+    const storage = {
+      isAsyncEncryptionAvailable: vi.fn().mockResolvedValue(true),
+      getSelectedStorageBackend: vi.fn().mockReturnValue('gnome_libsecret'),
+      decryptStringAsync: vi.fn()
+        .mockResolvedValueOnce({ shouldReEncrypt: true, result: 'old-decrypted-value' })
+        .mockResolvedValueOnce({ shouldReEncrypt: false, result: 'rotated-decrypted-value' }),
+    };
+    const value = await decryptWithAsyncSafeStorage(storage, 'linux', Buffer.from('legacy-ciphertext'));
+    expect(value).toBe('rotated-decrypted-value');
+    expect(storage.decryptStringAsync).toHaveBeenCalledTimes(2);
   });
 
   it('encrypts and successfully decrypts an API key', async () => {

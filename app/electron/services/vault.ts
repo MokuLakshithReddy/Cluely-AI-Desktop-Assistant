@@ -19,6 +19,74 @@ export function isSecureStorageBackendAvailable(
   return true;
 }
 
+export interface AsyncSafeStorageLike {
+  isAsyncEncryptionAvailable?: () => Promise<boolean>;
+  encryptStringAsync?: (plainText: string) => Promise<Buffer>;
+  decryptStringAsync?: (encrypted: Buffer) => Promise<{ shouldReEncrypt: boolean; result: string }>;
+  getSelectedStorageBackend?: () => string;
+}
+
+/**
+ * Encrypts with Electron's non-blocking safeStorage API when available.
+ * The Linux backend check deliberately reuses the fail-closed backend policy.
+ */
+export async function encryptWithAsyncSafeStorage(
+  storage: AsyncSafeStorageLike,
+  platform: string,
+  plainText: string
+): Promise<Buffer> {
+  if (
+    typeof storage.isAsyncEncryptionAvailable !== 'function' ||
+    typeof storage.encryptStringAsync !== 'function'
+  ) {
+    throw new Error('[CredentialVault] Async safeStorage is not available in this Electron runtime.');
+  }
+
+  const available = await storage.isAsyncEncryptionAvailable();
+  const backend = platform === 'linux' && typeof storage.getSelectedStorageBackend === 'function'
+    ? storage.getSelectedStorageBackend()
+    : undefined;
+  if (!isSecureStorageBackendAvailable(platform, available, backend)) {
+    throw new Error('[CredentialVault] Secure asynchronous OS-backed credential storage is unavailable.');
+  }
+
+  return storage.encryptStringAsync(plainText);
+}
+
+/**
+ * Electron's async decryptor can open existing synchronous safeStorage blobs.
+ * When it reports a key rotation, a second call returns the refreshed result.
+ */
+export async function decryptWithAsyncSafeStorage(
+  storage: AsyncSafeStorageLike,
+  platform: string,
+  encrypted: Buffer
+): Promise<string> {
+  if (
+    typeof storage.isAsyncEncryptionAvailable !== 'function' ||
+    typeof storage.decryptStringAsync !== 'function'
+  ) {
+    throw new Error('[CredentialVault] Async safeStorage is not available in this Electron runtime.');
+  }
+
+  const available = await storage.isAsyncEncryptionAvailable();
+  const backend = platform === 'linux' && typeof storage.getSelectedStorageBackend === 'function'
+    ? storage.getSelectedStorageBackend()
+    : undefined;
+  if (!isSecureStorageBackendAvailable(platform, available, backend)) {
+    throw new Error('[CredentialVault] Secure asynchronous OS-backed credential storage is unavailable.');
+  }
+
+  const first = await storage.decryptStringAsync(encrypted);
+  if (!first.shouldReEncrypt) return first.result;
+
+  const refreshed = await storage.decryptStringAsync(encrypted);
+  if (refreshed.shouldReEncrypt) {
+    throw new Error('[CredentialVault] Credential key rotation did not settle after retry.');
+  }
+  return refreshed.result;
+}
+
 export class CredentialVault {
   private vaultPath: string;
   private testKey?: Buffer;
@@ -61,8 +129,16 @@ export class CredentialVault {
    * Encrypts plaintext using OS-backed safeStorage.
    * Fails safely without insecure fallbacks if OS keyring is unavailable and no explicit test key was provided.
    */
-  private encrypt(plainText: string): string {
-    // 1. Prefer OS-backed encryption (Windows DPAPI, macOS Keychain, Linux Secret Service)
+  private async encrypt(plainText: string): Promise<string> {
+    const asyncStorage = safeStorage as unknown as AsyncSafeStorageLike;
+    if (typeof asyncStorage.isAsyncEncryptionAvailable === 'function' && typeof asyncStorage.encryptStringAsync === 'function') {
+      const encrypted = await encryptWithAsyncSafeStorage(asyncStorage, process.platform, plainText);
+      return `safe:${encrypted.toString('base64')}`;
+    }
+
+    // Electron 34 does not expose the async safeStorage methods. Keep this
+    // guarded legacy path until the minimum Electron runtime is upgraded to 42+.
+    // Newer runtimes always take the asynchronous branch above.
     if (this.hasSecureOsStorage()) {
       const encrypted = safeStorage.encryptString(plainText);
       return `safe:${encrypted.toString('base64')}`;
@@ -84,9 +160,15 @@ export class CredentialVault {
     );
   }
 
-  private decrypt(encoded: string): string | null {
+  private async decrypt(encoded: string): Promise<string | null> {
     try {
       if (encoded.startsWith('safe:')) {
+        const asyncStorage = safeStorage as unknown as AsyncSafeStorageLike;
+        if (typeof asyncStorage.isAsyncEncryptionAvailable === 'function' && typeof asyncStorage.decryptStringAsync === 'function') {
+          const b64 = encoded.slice(5);
+          const buf = Buffer.from(b64, 'base64');
+          return await decryptWithAsyncSafeStorage(asyncStorage, process.platform, buf);
+        }
         if (!this.hasSecureOsStorage() || typeof safeStorage.decryptString !== 'function') {
           console.warn('[CredentialVault] safeStorage unavailable to decrypt string');
           return null;
@@ -146,7 +228,7 @@ export class CredentialVault {
     }
 
     const vault = this.readVault();
-    vault[provider.toLowerCase().trim()] = this.encrypt(apiKey.trim());
+    vault[provider.toLowerCase().trim()] = await this.encrypt(apiKey.trim());
     this.writeVault(vault);
   }
 
@@ -155,7 +237,7 @@ export class CredentialVault {
     const vault = this.readVault();
     const encrypted = vault[provider.toLowerCase().trim()];
     if (!encrypted) return null;
-    return this.decrypt(encrypted);
+    return await this.decrypt(encrypted);
   }
 
   public async deleteKey(provider: string): Promise<void> {
