@@ -57,29 +57,23 @@ describe('Dual-Channel Audio Ownership and Capture Lifecycle', () => {
     expect(mockTrackStop).toHaveBeenCalled();
   });
 
-  it('crosstalk suppression zeroes frames when remote speaker has voice activity', () => {
-    const vad = new VADProcessor();
-    let speechStartCalled = false;
-    vad.onSpeechStart = () => {
-      speechStartCalled = true;
-    };
+  it('preserves overlapping microphone and system speech in separate VAD instances', () => {
+    const micVad = new VADProcessor({ energyThreshold: 0.02 });
+    const systemVad = new VADProcessor({ energyThreshold: 0.02 });
+    const micStarted = vi.fn();
+    const systemStarted = vi.fn();
+    micVad.onSpeechStart = micStarted;
+    systemVad.onSpeechStart = systemStarted;
 
-    // Resampler creates 16kHz frames
-    const resampler = new AudioResampler(48000, 16000);
-    const mockAudioFrame = new Float32Array(4096);
-    // Fill with simulated loud speech signal
-    for (let i = 0; i < mockAudioFrame.length; i++) {
-      mockAudioFrame[i] = Math.sin(i * 0.1) * 0.8;
+    const speechFrame = new Float32Array(512);
+    for (let i = 0; i < speechFrame.length; i++) {
+      speechFrame[i] = Math.sin((2 * Math.PI * 300 * i) / 16000) * 0.3;
     }
 
-    const resampled = resampler.resample(mockAudioFrame);
-
-    // If themHasVoiceActivity is true, echo is suppressed
-    const isEchoSuppressed = true;
-    vad.processFrame(resampled, isEchoSuppressed);
-
-    // With echo suppressed, loud mic speech should not trigger local speech detection
-    expect(speechStartCalled).toBe(false);
+    expect(micVad.processFrame(speechFrame)).toBe(true);
+    expect(systemVad.processFrame(speechFrame)).toBe(true);
+    expect(micStarted).toHaveBeenCalledTimes(1);
+    expect(systemStarted).toHaveBeenCalledTimes(1);
   });
 
   it('audio owner check prevents multiple windows from creating duplicate hardware streams', () => {
