@@ -2,7 +2,7 @@
 
 ## Next release target
 
-The next release candidate is **v1.0.2**. The published v1.0.1 release is historical and must not be reused as evidence for the current source revision.
+The next release candidate is **v1.0.2**. The previous published v1.0.1 release is historical and must not be reused as evidence for the current source revision.
 
 The release workflow is `.github/workflows/release.yml`. It runs only when a version tag is pushed and refuses publication unless:
 - the tag version matches both root and app package versions;
@@ -17,6 +17,13 @@ The release workflow is `.github/workflows/release.yml`. It runs only when a ver
 - SHA-256 checksums are generated, checked, and GPG-signed.
 
 A CI package artifact is not a release until this workflow completes and attaches all platform assets and the signed checksum manifest.
+
+## Current readiness state
+
+- Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/60) is closed as completed after merged PR #62 added the committed-lockfile audit artifact and blocking high/critical gate. The audit still reports six moderate paths for one `minimatch` build-tooling advisory; the repository owner accepted the documented mitigation and expiry/re-review date of **2026-12-07**. This is a time-limited exception, not a clean audit result.
+- Issue [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) remains open until the Windows, macOS, and supported Linux physical-device validation matrix is executed and signed off.
+- Issue [#50](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/50) remains open until the signed v1.0.2 workflow publishes the verified release and manifest.
+- The merged-main CI run [42400942182](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42400942182) passed source checks and packaged-launch smoke on Windows, macOS, and Linux. Those artifacts are unsigned CI validation outputs, not a public production release.
 
 ## Required repository Actions secrets
 
@@ -66,4 +73,4 @@ For Windows, confirm the executable's Authenticode signature is valid and the pu
 
 ## Current limitation
 
-This PR prepares the release automation and bumps the package version to v1.0.2. It cannot create the production certificates, Apple account credentials, or GPG signing key on behalf of the repository owner. The workflow also blocks the release while any required readiness issue remains open, including real-device validation (#49) and dependency security remediation (#60). Until all issues are completed, signing secrets are configured, and the v1.0.2 tag workflow publishes successfully, issue #50 remains open and no new production release should be claimed.
+The release automation and v1.0.2 version bump are merged, but no v1.0.2 production release is claimed here. The workflow cannot create production certificates, Apple account credentials, or GPG signing keys for the repository owner. It also blocks publication while issue #49 remains open. Keep issue #50 open until the required device evidence is accepted, signing secrets are configured, and the v1.0.2 tag workflow publishes all verified signed assets and the manifest.
