@@ -136,7 +136,7 @@ flowchart TD
         Gemini["Google Gemini 2.0 Flash / Pro (Vision + Fast Reasoning)"]
         OpenAI["OpenAI GPT-4o (Vision + Multi-turn Reasoning)"]
         Groq["Groq Whisper Turbo (<300ms Cloud Speech-to-Text)"]
-        RAG["Knowledge Retriever (TF-IDF Chunker + Scorer)"]
+        RAG["Knowledge Retriever (Character Chunker + TF-IDF Lexical Ranker)"]
     end
 
     Shortcuts -->|Triggers| Coord
@@ -417,7 +417,7 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 |---|---|---|:---:|
 | **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`), Ollama (Local) | **Gemini 3.6 Flash** | ~320ms |
 | **Speech Recognition (STT)** | Groq Whisper, OpenAI Whisper, Deepgram, Web Speech API | **Groq Whisper Large v3 Turbo** | <300ms |
-| **Document RAG** | Built-in in-memory TF-IDF keyword & semantic chunk scorer | Embedded | <5ms |
+| **Document RAG** | Built-in in-memory TF-IDF lexical retrieval with character-based overlapping chunks | Embedded | <5ms |
 
 > [!NOTE]
 > **Active 2026 AI Model Lineup & Provider Guidance**:

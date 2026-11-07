@@ -138,56 +138,56 @@ export function createKnowledgeDoc(
 }
 
 /**
- * BM25 / TF-IDF ranker for local semantic retrieval
+ * TF-IDF lexical ranker for local keyword retrieval.
+ * This is not embedding-based semantic search; token overlap determines relevance.
  */
 export function retrieveRelevantPassages(
   query: string,
   docs: KnowledgeDoc[],
   topK: number = 3
 ): string[] {
-  if (!query || docs.length === 0) return [];
+  if (!query.trim() || docs.length === 0 || topK <= 0) return [];
 
-  // Extract query keywords (ignoring short stopwords)
-  const queryTerms = query
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .split(/\s+/)
-    .filter(t => t.length > 2);
-
+  const tokenize = (value: string): string[] =>
+    value.toLowerCase().match(/[a-z0-9]+/g)?.filter(term => term.length > 2) || [];
+  const queryTerms = tokenize(query);
   if (queryTerms.length === 0) return [];
 
-  interface ScoredChunk {
-    chunk: string;
-    score: number;
-    title: string;
-  }
+  const chunks = docs.flatMap(doc =>
+    (doc.chunks || [])
+      .filter(chunk => typeof chunk === 'string' && chunk.trim().length > 0)
+      .map(chunk => ({ chunk, title: doc.title, terms: tokenize(chunk) }))
+  );
+  if (chunks.length === 0) return [];
 
-  const scored: ScoredChunk[] = [];
-
-  for (const doc of docs) {
-    for (const chunk of doc.chunks) {
-      const lowerChunk = chunk.toLowerCase();
-      let matchCount = 0;
-
-      for (const term of queryTerms) {
-        let pos = 0;
-        while ((pos = lowerChunk.indexOf(term, pos)) !== -1) {
-          matchCount++;
-          pos += term.length;
-        }
-      }
-
-      if (matchCount > 0) {
-        scored.push({
-          chunk,
-          score: matchCount / Math.sqrt(chunk.length),
-          title: doc.title,
-        });
-      }
+  // Document frequency is measured across chunks. Add-one smoothing keeps IDF
+  // positive for terms present in every chunk and finite for rare terms.
+  const documentFrequency = new Map<string, number>();
+  for (const item of chunks) {
+    for (const term of new Set(item.terms)) {
+      documentFrequency.set(term, (documentFrequency.get(term) || 0) + 1);
     }
   }
 
-  scored.sort((a, b) => b.score - a.score);
+  const queryFrequency = new Map<string, number>();
+  for (const term of queryTerms) queryFrequency.set(term, (queryFrequency.get(term) || 0) + 1);
 
-  return scored.slice(0, topK).map(s => `[${s.title}]: ${s.chunk}`);
+  const scored = chunks.map(item => {
+    const termFrequency = new Map<string, number>();
+    for (const term of item.terms) termFrequency.set(term, (termFrequency.get(term) || 0) + 1);
+
+    let score = 0;
+    for (const [term, queryCount] of queryFrequency) {
+      const count = termFrequency.get(term) || 0;
+      if (count === 0) continue;
+      const tf = count / Math.max(1, item.terms.length);
+      const df = documentFrequency.get(term) || 0;
+      const idf = Math.log(1 + (chunks.length + 1) / (df + 1));
+      score += tf * idf * queryCount;
+    }
+    return { chunk: item.chunk, title: item.title, score };
+  }).filter(item => item.score > 0);
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, Math.floor(topK)).map(item => `[${item.title}]: ${item.chunk}`);
 }

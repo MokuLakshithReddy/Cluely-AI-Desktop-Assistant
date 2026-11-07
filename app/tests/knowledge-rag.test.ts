@@ -25,7 +25,7 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
     expect(doc.chunks.length).toBe(1);
   });
 
-  it('retrieves relevant knowledge passages using keyword / TF-IDF scoring', () => {
+  it('retrieves relevant knowledge passages using smoothed TF-IDF lexical scoring', () => {
     const docs: KnowledgeDoc[] = [
       {
         id: 'doc1',
@@ -47,6 +47,29 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
     expect(results.length).toBe(1);
     expect(results[0]).toContain('Binary Search Trees');
     expect(results[0]).toContain('O(log N)');
+  });
+
+  it('weights rare query terms more strongly than terms repeated across every chunk', () => {
+    const docs: KnowledgeDoc[] = [
+      {
+        id: 'common',
+        title: 'Common terms',
+        content: 'Architecture systems design',
+        chunks: ['Architecture systems design'],
+        addedAt: new Date().toISOString(),
+      },
+      {
+        id: 'rare',
+        title: 'Specialized topic',
+        content: 'Architecture systems entanglement',
+        chunks: ['Architecture systems entanglement'],
+        addedAt: new Date().toISOString(),
+      },
+    ];
+
+    const results = retrieveRelevantPassages('architecture systems entanglement', docs, 2);
+    expect(results).toHaveLength(2);
+    expect(results[0]).toContain('Specialized topic');
   });
 
   it('returns empty array when query does not match any document terms', () => {
@@ -85,7 +108,7 @@ endobj
     expect(extracted).toContain('System Design Interview Notes for Distributed Systems');
   });
 
-  it('ranks higher frequency keyword occurrences with greater relevance', () => {
+  it('ranks chunks using term frequency and inverse document frequency', () => {
     const docs: KnowledgeDoc[] = [
       {
         id: 'd1',
@@ -105,7 +128,7 @@ endobj
 
     const results = retrieveRelevantPassages('Redis cluster hash slots', docs, 2);
     expect(results.length).toBe(2);
-    // Highest match should be Deep Dive
+    // The chunk with the strongest normalized term frequency and rare-term IDF ranks first.
     expect(results[0]).toContain('Deep Dive Redis');
   });
 });
