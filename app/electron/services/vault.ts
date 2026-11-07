@@ -3,6 +3,19 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
+/** Returns whether Electron has selected a genuinely OS-backed credential store. */
+export function isSecureStorageBackendAvailable(
+  platform: string,
+  encryptionAvailable: boolean,
+  selectedBackend?: string | null
+): boolean {
+  if (!encryptionAvailable) return false;
+  // Electron's Linux basic_text backend uses a hard-coded password and is not a
+  // secure secret store. Unknown Linux backends fail closed as well.
+  if (platform === 'linux') return Boolean(selectedBackend && selectedBackend !== 'basic_text');
+  return true;
+}
+
 export class CredentialVault {
   private vaultPath: string;
   private testKey?: Buffer;
@@ -27,13 +40,27 @@ export class CredentialVault {
     return path.join(process.cwd(), 'credentials.vault');
   }
 
+  private hasSecureOsStorage(): boolean {
+    try {
+      if (!safeStorage || typeof safeStorage.isEncryptionAvailable !== 'function') return false;
+      const available = safeStorage.isEncryptionAvailable();
+      const backend =
+        process.platform === 'linux' && typeof safeStorage.getSelectedStorageBackend === 'function'
+          ? safeStorage.getSelectedStorageBackend()
+          : undefined;
+      return isSecureStorageBackendAvailable(process.platform, available, backend);
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Encrypts plaintext using OS-backed safeStorage.
    * Fails safely without insecure fallbacks if OS keyring is unavailable and no explicit test key was provided.
    */
   private encrypt(plainText: string): string {
     // 1. Prefer OS-backed encryption (Windows DPAPI, macOS Keychain, Linux Secret Service)
-    if (safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()) {
+    if (this.hasSecureOsStorage()) {
       const encrypted = safeStorage.encryptString(plainText);
       return `safe:${encrypted.toString('base64')}`;
     }
@@ -50,14 +77,14 @@ export class CredentialVault {
 
     // 3. Fail safely: Never silently fall back to predictable keys
     throw new Error(
-      '[CredentialVault] OS-backed secure storage (safeStorage) is unavailable on this system. Refusing to persist credentials with insecure fallback.'
+      '[CredentialVault] Secure OS-backed credential storage is unavailable. On Linux, configure Secret Service/libsecret or KWallet; the basic_text backend is intentionally rejected. Refusing to persist credentials with an insecure fallback.'
     );
   }
 
   private decrypt(encoded: string): string | null {
     try {
       if (encoded.startsWith('safe:')) {
-        if (!safeStorage || typeof safeStorage.decryptString !== 'function') {
+        if (!this.hasSecureOsStorage() || typeof safeStorage.decryptString !== 'function') {
           console.warn('[CredentialVault] safeStorage unavailable to decrypt string');
           return null;
         }

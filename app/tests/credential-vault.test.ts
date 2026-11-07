@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CredentialVault } from '../electron/services/vault';
+import { CredentialVault, isSecureStorageBackendAvailable } from '../electron/services/vault';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -16,6 +16,16 @@ describe('Credential Vault & Secret Protection Subsystem', () => {
 
   afterEach(() => {
     if (fs.existsSync(testVaultFile)) fs.unlinkSync(testVaultFile);
+  });
+
+  it('rejects Linux basic_text and unknown backends while accepting OS secret stores', () => {
+    expect(isSecureStorageBackendAvailable('linux', true, 'basic_text')).toBe(false);
+    expect(isSecureStorageBackendAvailable('linux', true, undefined)).toBe(false);
+    expect(isSecureStorageBackendAvailable('linux', false, 'gnome_libsecret')).toBe(false);
+    expect(isSecureStorageBackendAvailable('linux', true, 'gnome_libsecret')).toBe(true);
+    expect(isSecureStorageBackendAvailable('linux', true, 'kwallet')).toBe(true);
+    expect(isSecureStorageBackendAvailable('win32', true, undefined)).toBe(true);
+    expect(isSecureStorageBackendAvailable('darwin', true, undefined)).toBe(true);
   });
 
   it('encrypts and successfully decrypts an API key', async () => {
@@ -35,7 +45,7 @@ describe('Credential Vault & Secret Protection Subsystem', () => {
     // Vault initialized without testKey under headless node test runner where safeStorage is unavailable
     const unkeyedVault = new CredentialVault(testVaultFile);
     await expect(unkeyedVault.setKey('openai', 'sk-proj-secret')).rejects.toThrow(
-      /OS-backed secure storage \(safeStorage\) is unavailable/
+      /Secure OS-backed credential storage is unavailable/
     );
     expect(fs.existsSync(testVaultFile)).toBe(false);
   });
