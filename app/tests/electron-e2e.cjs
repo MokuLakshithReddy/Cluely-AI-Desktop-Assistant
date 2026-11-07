@@ -29,6 +29,9 @@ async function execute(win, fn, args) {
 
 async function runDesktopE2E({ windowCoordinator }) {
   const dashboard = windowCoordinator.openDashboardWindow('models');
+  // The control window owns capture. Keep the E2E on that real renderer instead
+  // of changing the dashboard route and accidentally creating a second audio owner.
+  const control = windowCoordinator.createControlWindow();
   const sessionId = 'electron-e2e-' + Date.now();
   let keySaveAttempted = false;
   let sessionSaveAttempted = false;
@@ -47,6 +50,13 @@ async function runDesktopE2E({ windowCoordinator }) {
     };
     await waitFor(() => execute(dashboard, ready), 'Dashboard renderer and credential form');
     evidence.push('Real Dashboard renderer mounted with the credential form');
+
+    const controlReady = function () {
+      return Boolean(document.readyState === 'complete' && window.desktopBridge &&
+        window.location.hash.replace(/^#\/?/, '') === 'control');
+    };
+    await waitFor(() => execute(control, controlReady), 'Control renderer and audio-owner hook');
+    evidence.push('Real control renderer mounted as the single audio owner');
 
     let vaultAvailable = false;
     try {
@@ -207,10 +217,13 @@ async function runDesktopE2E({ windowCoordinator }) {
       : 'Native purge-all-data removed archived sessions and reset active state; credential storage was unavailable on this runner');
 
     // Exercise the real App/useAudioCapture hook with deterministic fake media devices.
-    // This is renderer + hook + preload IPC coverage, not a physical microphone test.
+    // Capture is injected into the actual control window, which is the sole audio owner.
+    // This tests renderer + hook + preload IPC; it does not claim physical microphone coverage.
     const activeCapturePurgeWorkflow = async function () {
       const bridge = window.desktopBridge;
-      if (!bridge || typeof bridge.patchSharedState !== 'function') throw new Error('Shared-state bridge is unavailable');
+      if (!bridge || typeof bridge.patchSharedState !== 'function') {
+        throw new Error('Control-window shared-state bridge is unavailable');
+      }
 
       const stopped = { mic: false, loopback: false, video: false };
       const contexts = [];
@@ -234,6 +247,7 @@ async function runDesktopE2E({ windowCoordinator }) {
         getAudioTracks() { return this.tracks.filter(track => track.kind !== 'video'); }
         getVideoTracks() { return this.tracks.filter(track => track.kind === 'video'); }
       }
+
       class FakeAudioContext {
         constructor() {
           this.destination = {};
@@ -247,13 +261,16 @@ async function runDesktopE2E({ windowCoordinator }) {
           processors.push(node);
           return node;
         }
-        close() { this.closed = true; this.state = 'closed'; return Promise.resolve(); }
+        close() {
+          this.closed = true;
+          this.state = 'closed';
+          return Promise.resolve();
+        }
       }
 
       const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
       const originalAudioContext = Object.getOwnPropertyDescriptor(window, 'AudioContext');
       const originalMediaStream = Object.getOwnPropertyDescriptor(window, 'MediaStream');
-      const originalHash = window.location.hash;
 
       try {
         Object.defineProperty(navigator, 'mediaDevices', {
@@ -267,13 +284,11 @@ async function runDesktopE2E({ windowCoordinator }) {
         Object.defineProperty(window, 'MediaStream', { configurable: true, value: FakeMediaStream });
 
         await bridge.patchSharedState({ isRecording: true });
-        window.location.hash = '#control';
-
         for (let attempt = 0; attempt < 100 && processors.length < 2; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 25));
         }
-        if (processors.length < 2) {
-          throw new Error('Real useAudioCapture hook did not start both fake microphone and loopback processors');
+        if (processors.length !== 2) {
+          throw new Error('Control audio owner did not create exactly one microphone and one loopback processor');
         }
 
         const speechFrame = new Float32Array(4096);
@@ -281,16 +296,21 @@ async function runDesktopE2E({ windowCoordinator }) {
           speechFrame[i] = Math.sin((2 * Math.PI * 300 * i) / 48000) * 0.35;
         }
         for (const processor of processors) {
-          if (typeof processor.onaudioprocess !== 'function') throw new Error('Audio processor callback was not attached');
+          if (typeof processor.onaudioprocess !== 'function') {
+            throw new Error('Audio processor callback was not attached');
+          }
           processor.onaudioprocess({ inputBuffer: { getChannelData: () => speechFrame } });
         }
 
         let activeState = await bridge.getSharedState();
-        for (let attempt = 0; attempt < 40 && !activeState.meHasVoiceActivity; attempt++) {
+        for (let attempt = 0; attempt < 40 &&
+          !(activeState.meHasVoiceActivity && activeState.themHasVoiceActivity); attempt++) {
           await new Promise(resolve => setTimeout(resolve, 25));
           activeState = await bridge.getSharedState();
         }
-        if (!activeState.meHasVoiceActivity) throw new Error('Synthetic speech did not activate the microphone VAD through the real hook');
+        if (!activeState.meHasVoiceActivity || !activeState.themHasVoiceActivity) {
+          throw new Error('Synthetic overlapping speech did not activate both independent VAD sources');
+        }
 
         const purgeResult = await bridge.purgeAllData();
         await new Promise(resolve => setTimeout(resolve, 150));
@@ -298,6 +318,8 @@ async function runDesktopE2E({ windowCoordinator }) {
 
         return {
           purgeResult,
+          activeMicrophone: activeState.meHasVoiceActivity,
+          activeLoopback: activeState.themHasVoiceActivity,
           stopped,
           contextsClosed: contexts.length === 2 && contexts.every(context => context.closed),
           recordingAfterPurge: stateAfterPurge.isRecording,
@@ -307,7 +329,6 @@ async function runDesktopE2E({ windowCoordinator }) {
           knowledgeDocsAfterPurge: stateAfterPurge.knowledgeDocs.length,
         };
       } finally {
-        window.location.hash = originalHash;
         if (originalMediaDevices) Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
         else delete navigator.mediaDevices;
         if (originalAudioContext) Object.defineProperty(window, 'AudioContext', originalAudioContext);
@@ -316,18 +337,21 @@ async function runDesktopE2E({ windowCoordinator }) {
         else delete window.MediaStream;
       }
     };
-    const activeCaptureResult = await execute(dashboard, activeCapturePurgeWorkflow);
-    assert.equal(activeCaptureResult.purgeResult, true, 'Purge should complete while production capture hook is active');
+
+    const activeCaptureResult = await execute(control, activeCapturePurgeWorkflow);
+    assert.equal(activeCaptureResult.activeMicrophone, true, 'Microphone VAD should detect overlapping speech');
+    assert.equal(activeCaptureResult.activeLoopback, true, 'Loopback VAD should detect overlapping speech');
+    assert.equal(activeCaptureResult.purgeResult, true, 'Purge should complete while the real capture hook is active');
     assert.equal(activeCaptureResult.stopped.mic, true, 'Purge should stop microphone media track');
     assert.equal(activeCaptureResult.stopped.loopback, true, 'Purge should stop loopback media track');
-    assert.equal(activeCaptureResult.stopped.video, true, 'Display video track should remain stopped');
+    assert.equal(activeCaptureResult.stopped.video, true, 'Display video track should be stopped');
     assert.equal(activeCaptureResult.contextsClosed, true, 'Purge should close both audio contexts');
     assert.equal(activeCaptureResult.recordingAfterPurge, false, 'Recording must be off after purge');
     assert.equal(activeCaptureResult.micActivityAfterPurge, false, 'Microphone VAD activity must be cleared');
     assert.equal(activeCaptureResult.systemActivityAfterPurge, false, 'System VAD activity must be cleared');
     assert.equal(activeCaptureResult.sessionAfterPurge, null, 'Buffered speech must not recreate a session during purge');
     assert.equal(activeCaptureResult.knowledgeDocsAfterPurge, 0, 'Purge must leave no knowledge docs');
-    evidence.push('Real renderer useAudioCapture hook started fake mic + loopback streams, processed speech frames, and stopped/discarded both streams during purge');
+    evidence.push('Actual control-window useAudioCapture hook opened fake mic + loopback streams, detected overlapping speech in both VAD sources, and stopped/discarded both streams during purge');
 
     console.log('[E2E_EVIDENCE]', JSON.stringify(evidence));
   } finally {
