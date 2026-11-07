@@ -1,5 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent, IpcMainEvent, session, desktopCapturer, app } from 'electron';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { stateManager } from './state';
 import { screenshotService } from './screenshot';
@@ -58,10 +59,74 @@ const ALLOWED_STATE_KEYS = new Set([
   'knowledgeDocs',
 ]);
 
+export interface ActiveRequest {
+  operationId: string;
+  correlationId?: string;
+  controller: AbortController;
+}
+
+/**
+ * Request IDs received from the renderer are correlation IDs only.
+ * Provider operations are indexed by a UUID generated in the trusted main process.
+ */
+export class ActiveRequestRegistry {
+  private controllers = new Map<string, AbortController>();
+  private operationByCorrelationId = new Map<string, string>();
+
+  public start(rawCorrelationId?: unknown): ActiveRequest {
+    let correlationId: string | undefined;
+    if (rawCorrelationId !== undefined && rawCorrelationId !== null) {
+      if (typeof rawCorrelationId !== 'string' || rawCorrelationId.trim().length === 0 || rawCorrelationId.length > 128) {
+        throw new Error('Invalid AI request correlation ID');
+      }
+      correlationId = rawCorrelationId.trim();
+      if (this.operationByCorrelationId.has(correlationId)) {
+        throw new Error('An AI request with this correlation ID is already active');
+      }
+    }
+
+    const operationId = randomUUID();
+    const controller = new AbortController();
+    this.controllers.set(operationId, controller);
+    if (correlationId) this.operationByCorrelationId.set(correlationId, operationId);
+    return { operationId, correlationId, controller };
+  }
+
+  public complete(operationId: string, correlationId?: string): void {
+    this.controllers.delete(operationId);
+    if (correlationId && this.operationByCorrelationId.get(correlationId) === operationId) {
+      this.operationByCorrelationId.delete(correlationId);
+    }
+  }
+
+  public abort(correlationId: string): boolean {
+    const operationId = this.operationByCorrelationId.get(correlationId);
+    if (!operationId) return false;
+    const controller = this.controllers.get(operationId);
+    if (!controller) {
+      this.operationByCorrelationId.delete(correlationId);
+      return false;
+    }
+    controller.abort();
+    this.complete(operationId, correlationId);
+    return true;
+  }
+
+  public abortAll(): void {
+    for (const controller of this.controllers.values()) controller.abort();
+    this.controllers.clear();
+    this.operationByCorrelationId.clear();
+  }
+
+  public get size(): number {
+    return this.controllers.size;
+  }
+}
+
 export class IpcRouter {
   private customTrustedHtmlPath?: string;
   private forceProductionMode: boolean = false;
-  private activeAiControllers: Map<string, AbortController> = new Map();
+  private activeAiControllers = new ActiveRequestRegistry();
   private activeTranscriptionControllers: Set<AbortController> = new Set();
   private activeTranscriptionTasks: Set<Promise<string>> = new Set();
 
@@ -579,9 +644,8 @@ export class IpcRouter {
         requestId,
       } = options;
       const senderWebContents = event.sender;
-      const reqId = requestId || `req_${Date.now()}`;
-      const controller = new AbortController();
-      this.activeAiControllers.set(reqId, controller);
+      const activeRequest = this.activeAiControllers.start(requestId);
+      const { operationId, correlationId, controller } = activeRequest;
       stateManager.patchState({ isGenerating: true });
 
       try {
@@ -658,7 +722,7 @@ export class IpcRouter {
 
         return { content: resultText, sources: knowledgePassages };
       } finally {
-        this.activeAiControllers.delete(reqId);
+        this.activeAiControllers.complete(operationId, correlationId);
         stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
       }
     });
@@ -666,19 +730,12 @@ export class IpcRouter {
     ipcMain.handle('ai-abort-request', (event, { requestId }: any = {}) => {
       this.validateOrigin(event);
       if (requestId) {
-        const ctrl = this.activeAiControllers.get(requestId);
-        if (ctrl) {
-          ctrl.abort();
-          this.activeAiControllers.delete(requestId);
-          stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
-          return true;
-        }
-        return false;
+        if (typeof requestId !== 'string') return false;
+        const aborted = this.activeAiControllers.abort(requestId);
+        stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
+        return aborted;
       }
-      for (const ctrl of this.activeAiControllers.values()) {
-        ctrl.abort();
-      }
-      this.activeAiControllers.clear();
+      this.activeAiControllers.abortAll();
       stateManager.patchState({ isGenerating: false });
       return true;
     });
@@ -696,8 +753,7 @@ export class IpcRouter {
         isGenerating: false,
       });
 
-      for (const controller of this.activeAiControllers.values()) controller.abort();
-      this.activeAiControllers.clear();
+      this.activeAiControllers.abortAll();
       for (const controller of this.activeTranscriptionControllers) controller.abort();
 
       try {
