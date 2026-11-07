@@ -66,8 +66,8 @@ export interface ActiveRequest {
 }
 
 /**
- * Request IDs received from the renderer are correlation IDs only.
- * Provider operations are indexed by a UUID generated in the trusted main process.
+ * Renderer request IDs are correlation keys only. Provider operation IDs are
+ * generated inside the trusted main process and cannot be selected by a renderer.
  */
 export class ActiveRequestRegistry {
   private controllers = new Map<string, AbortController>();
@@ -763,8 +763,8 @@ export class IpcRouter {
       for (const controller of this.activeTranscriptionControllers) controller.abort();
 
       try {
-        // Wait for every provider handler to unwind after cancellation before deleting
-        // the vault or archived data. This also protects concurrent main-process requests.
+        // Wait for aborted AI and STT handlers to leave their finally blocks before
+        // deleting credentials and local data. Their providers receive the AbortSignal.
         await Promise.allSettled([
           ...Array.from(this.activeAiTasks),
           ...Array.from(this.activeTranscriptionTasks),
