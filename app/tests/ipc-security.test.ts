@@ -27,6 +27,28 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     stateManager.patchState({ isRecording: false, isGenerating: false, isEmergencyStopping: false });
   });
 
+  it('does not re-arm audio capture when emergency stop is invoked during purge', () => {
+    const emergencyRouter = new IpcRouter(trustedHtml);
+    const aiController = new AbortController();
+    const transcriptionController = new AbortController();
+    (emergencyRouter as any).activeAiControllers.set('purge-request', aiController);
+    (emergencyRouter as any).activeTranscriptionControllers.add(transcriptionController);
+
+    stateManager.patchState({
+      isRecording: true,
+      isGenerating: true,
+      isPurging: true,
+      isEmergencyStopping: true,
+    });
+    emergencyRouter.emergencyStop();
+
+    expect(aiController.signal.aborted).toBe(true);
+    expect(transcriptionController.signal.aborted).toBe(true);
+    expect(stateManager.getState().isRecording).toBe(false);
+    expect(stateManager.getState().isEmergencyStopping).toBe(false);
+    stateManager.patchState({ isPurging: false, isEmergencyStopping: false });
+  });
+
   it('rejects IPC invocation when senderFrame is null or undefined', () => {
     const fakeEvent: any = { senderFrame: null };
     expect(() => router.validateOrigin(fakeEvent)).toThrow(
