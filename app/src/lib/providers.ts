@@ -143,27 +143,8 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     signal,
   });
 
-  // Automatic retry with flagship gemini-3.8-flash if model returned 404 or 403
-  if (!response.ok && (response.status === 403 || response.status === 404) && modelName !== 'gemini-3.8-flash') {
-    modelName = 'gemini-3.8-flash';
-    endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey.trim(),
-      },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 2048,
-        },
-      }),
-      signal,
-    });
-  }
+  // Never substitute a different model after an authorization or model-not-found error.
+  // The selected model is part of the user's configuration and must remain observable.
 
   if (!response.ok) {
     const errorText = await response.text();

@@ -82,6 +82,8 @@ class StateManager {
   public patchState(patch: Partial<SharedState>): SharedState {
     if ((patch.activeModel as any) === 'gemini-2.5-flash') {
       patch.activeModel = 'gemini-3.8-flash';
+    } else if ((patch.activeModel as any) === 'gemini-3.1-pro') {
+      patch.activeModel = 'gemini-3.1-pro-preview';
     }
     this.state = { ...this.state, ...patch };
     this.scheduleSave();
@@ -145,6 +147,8 @@ class StateManager {
         // Automatic migration from restricted legacy gemini-2.5-flash to flagship gemini-3.8-flash
         if ((this.state.activeModel as string) === 'gemini-2.5-flash' || !this.state.activeModel) {
           this.state.activeModel = 'gemini-3.8-flash';
+        } else if ((this.state.activeModel as string) === 'gemini-3.1-pro') {
+          this.state.activeModel = 'gemini-3.1-pro-preview';
         }
       }
     } catch (e) {

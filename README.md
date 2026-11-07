@@ -415,13 +415,13 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 
 | Category | Supported Providers | Recommended Model | Latency |
 |---|---|---|:---:|
-| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`), Ollama (Local) | **Gemini 3.6 Flash** | ~320ms |
+| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`), Ollama (Local) | **Gemini 3.6 Flash** | ~320ms |
 | **Speech Recognition (STT)** | Groq Whisper, OpenAI Whisper, Deepgram, Web Speech API | **Groq Whisper Large v3 Turbo** | <300ms |
 | **Document RAG** | Built-in in-memory TF-IDF keyword & semantic chunk scorer | Embedded | <5ms |
 
 > [!NOTE]
 > **Active 2026 AI Model Lineup & Provider Guidance**:
-> * **Google Gemini**: Defaults to `gemini-3.6-flash`. Note that `gemini-2.5-flash` access has been restricted by Google to legacy developer projects; new API keys should use `gemini-3.6-flash` or `gemini-3.5-flash-lite`. Cluely Copilot detects 403/404 legacy errors and surfaces immediate diagnostic guidance.
+> * **Google Gemini**: Defaults to `gemini-3.6-flash`. Note that `gemini-2.5-flash` access has been restricted by Google to legacy developer projects; new API keys should use `gemini-3.6-flash` or `gemini-3.5-flash-lite`. Cluely Copilot preserves the selected model and surfaces 403/404 provider errors without silently switching models.
 > * **Anthropic Claude**: Active models are `claude-sonnet-5-5`, `claude-haiku-5-5`, and `claude-opus-5-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are automatically caught with informative retirement diagnostics.
 > * **OpenAI**: Supports `gpt-4o` and `gpt-4o-mini` with full multi-turn conversational history.
 > * **Local Ollama**: Fully offline execution without external API keys or cloud telemetry.
