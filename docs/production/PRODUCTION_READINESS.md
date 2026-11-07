@@ -1,8 +1,8 @@
 # Production Readiness Assessment
 
-**Assessment date:** 2026-11-07  
-**Audited source revision:** `fcb352ee774749974402c8298cebb8c50570732f`  
-**Baseline CI evidence:** [CI Verification Suite — run 42400942182](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42400942182)
+**Assessment date:** 2026-11-08 (Asia/Kolkata)  
+**Audited source revision:** [`a9e2ceced6783ebb083bb003a565881c9a38e417`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/a9e2ceced6783ebb083bb003a565881c9a38e417)  
+**Baseline CI evidence:** [CI Verification Suite — run 42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459)
 
 ## Status
 
@@ -56,6 +56,7 @@ The release automation is in [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md). It 
 ## Important implementation facts
 
 - Microphone and system-loopback audio use independent VAD pipelines. The implementation preserves overlapping speech; it does not intentionally mute local speech when remote speech is active.
+- Unexpected microphone or system-loopback track termination now triggers coordinated fail-closed capture shutdown, closes both audio contexts, resets VAD state, and surfaces an error; synthetic Electron E2E coverage was added in PR #63.
 - The production credential path uses Electron `safeStorage`. The AES-256-GCM branch in `CredentialVault` is available only when an explicit test key is injected; it is not a production fallback.
 - The credential vault uses Electron's asynchronous `safeStorage` APIs. Existing ciphertext from the legacy synchronous API is opened by the asynchronous decryptor; key-rotation results are re-encrypted and persisted under a serialized vault operation queue. The Linux backend allowlist remains fail-closed.
 - Data purge removes application-managed session and credential data and stops active capture through the application lifecycle. It is not forensic or physical erasure.

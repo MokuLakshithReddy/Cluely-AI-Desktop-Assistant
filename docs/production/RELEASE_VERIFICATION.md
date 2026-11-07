@@ -4,7 +4,7 @@
 
 The repository is preparing **v1.0.2**. The previous published release is **v1.0.1**; the v1.0.2 release workflow has been added, but this assessment does not claim that v1.0.2 has been published.
 
-The audited main revision is `fcb352ee774749974402c8298cebb8c50570732f`. Its [CI Verification Suite run 42400942182](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42400942182) completed successfully on the merged commit.
+The latest recorded main revision is [`a9e2ceced6783ebb083bb003a565881c9a38e417`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/a9e2ceced6783ebb083bb003a565881c9a38e417). Its [CI Verification Suite run 42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459) completed successfully: source verification passed, and Windows, macOS, and Linux packaged-app launch jobs all passed. The run's uploaded test-results artifact records 125/125 automated checks (124 Vitest tests plus one Electron UI/IPC smoke check).
 
 Do not use the v1.0.1 release or its historical assets as evidence that v1.0.2 has been built, signed, tested, or published.
 
@@ -43,7 +43,7 @@ For every OS included in the release:
 - Verify renderer/preload loading, IPC startup, expected windows, basic app readiness, and controlled clean shutdown.
 - Preserve logs and artifact metadata as CI evidence.
 
-The merged-main CI run above passed the packaged launch jobs on Windows, macOS, and Linux. Repeat these checks for the exact signed release candidate.
+The merged-main CI run above passed the packaged launch jobs on Windows, macOS, and Linux. Those packages are **unsigned CI validation artifacts**. Repeat the source, package, device, and signing checks for the exact signed release candidate.
 
 ### 3. Device-backed validation
 
