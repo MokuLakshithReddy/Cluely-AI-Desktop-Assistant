@@ -2,10 +2,73 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { IpcRouter } from '../electron/domains/ipc-router';
+import { stateManager } from '../electron/domains/state';
 
 describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
+
+  it('emergency stop aborts active AI and transcription work without deleting session history', () => {
+    const emergencyRouter = new IpcRouter(trustedHtml);
+    const aiController = new AbortController();
+    const transcriptionController = new AbortController();
+    (emergencyRouter as any).activeAiControllers.set('test-request', aiController);
+    (emergencyRouter as any).activeTranscriptionControllers.add(transcriptionController);
+
+    const previous = stateManager.getState();
+    const session = previous.session || {
+      id: 'emergency-stop-session',
+      createdAt: new Date().toISOString(),
+      messages: [],
+      transcript: [],
+    };
+    stateManager.patchState({
+      session,
+      isRecording: true,
+      isGenerating: true,
+      isPurging: false,
+      isEmergencyStopping: false,
+    });
+
+    emergencyRouter.emergencyStop();
+
+    expect(aiController.signal.aborted).toBe(true);
+    expect(transcriptionController.signal.aborted).toBe(true);
+    expect(stateManager.getState().isRecording).toBe(false);
+    expect(stateManager.getState().isGenerating).toBe(false);
+    expect(stateManager.getState().isEmergencyStopping).toBe(true);
+    expect(stateManager.getState().session).toEqual(session);
+
+    stateManager.patchState({
+      session: previous.session,
+      isRecording: previous.isRecording,
+      isGenerating: previous.isGenerating,
+      isPurging: previous.isPurging,
+      isEmergencyStopping: false,
+    });
+  });
+
+  it('does not re-arm audio capture when emergency stop is invoked during purge', () => {
+    const emergencyRouter = new IpcRouter(trustedHtml);
+    const aiController = new AbortController();
+    const transcriptionController = new AbortController();
+    (emergencyRouter as any).activeAiControllers.set('purge-request', aiController);
+    (emergencyRouter as any).activeTranscriptionControllers.add(transcriptionController);
+
+    stateManager.patchState({
+      isRecording: true,
+      isGenerating: true,
+      isPurging: true,
+      isEmergencyStopping: true,
+    });
+    emergencyRouter.emergencyStop();
+
+    expect(aiController.signal.aborted).toBe(true);
+    expect(transcriptionController.signal.aborted).toBe(true);
+    expect(stateManager.getState().isRecording).toBe(false);
+    expect(stateManager.getState().isEmergencyStopping).toBe(false);
+    stateManager.patchState({ isPurging: false, isEmergencyStopping: false });
+  });
 
   it('rejects IPC invocation when senderFrame is null or undefined', () => {
     const fakeEvent: any = { senderFrame: null };
