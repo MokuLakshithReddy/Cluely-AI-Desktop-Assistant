@@ -23,6 +23,7 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     ipcRouter.init();
+    shortcutManager.setEmergencyStopHandler(() => ipcRouter.emergencyStop());
     windowCoordinator.init();
     shortcutManager.init();
 
