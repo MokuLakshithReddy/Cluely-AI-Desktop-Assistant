@@ -24,10 +24,10 @@ Configure these secrets before creating the v1.0.2 tag:
 
 | Secret | Purpose |
 |---|---|
-| `WINDOWS_CSC_LINK` | Base64-encoded Windows Authenticode PFX certificate |
-| `WINDOWS_CSC_KEY_PASSWORD` | Password for the Windows signing certificate |
-| `MACOS_CSC_LINK` | Base64-encoded Apple Developer ID signing certificate |
-| `MACOS_CSC_KEY_PASSWORD` | Password for the Apple signing certificate |
+| `WINDOWS_CSC_LINK` | Base64-encoded Windows Authenticode PFX certificate (injected as electron-builder `WIN_CSC_LINK`) |
+| `WINDOWS_CSC_KEY_PASSWORD` | Password for the Windows signing certificate (injected as `WIN_CSC_KEY_PASSWORD`) |
+| `MACOS_CSC_LINK` | Base64-encoded Apple Developer ID signing certificate (injected as `CSC_LINK`) |
+| `MACOS_CSC_KEY_PASSWORD` | Password for the Apple signing certificate (injected as `CSC_KEY_PASSWORD`) |
 | `APPLE_ID` | Apple developer account used for notarization |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for notarization |
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
@@ -35,7 +35,7 @@ Configure these secrets before creating the v1.0.2 tag:
 | `RELEASE_GPG_PRIVATE_KEY` | ASCII-armored private key used to sign the checksum manifest |
 | `RELEASE_GPG_PASSPHRASE` | Passphrase for the release GPG private key |
 
-Keep signing secrets in GitHub Actions secrets; never commit certificates, passwords, private keys, provider keys, or token material.
+Keep signing secrets in GitHub Actions secrets; never commit certificates, passwords, private keys, provider keys, or token material. For Windows PFX certificates, ensure the base64 value fits Windows environment-variable limits; electron-builder documents the `WIN_CSC_LINK` path and encoding requirements in its [code-signing guide](https://www.electron.build/docs/features/code-signing/). macOS notarization is explicitly required by the release packaging config and verified with `xcrun stapler validate`.
 
 ## Create and push the signed release tag
 

@@ -126,8 +126,10 @@ jobs:
             platform: linux-appimage
             extension: .AppImage
     env:
-      CSC_LINK: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_LINK || (matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_LINK) || '' }}
-      CSC_KEY_PASSWORD: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_KEY_PASSWORD || (matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_KEY_PASSWORD) || '' }}
+      WIN_CSC_LINK: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_LINK || '' }}
+      WIN_CSC_KEY_PASSWORD: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_KEY_PASSWORD || '' }}
+      CSC_LINK: ${{ matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -171,7 +173,7 @@ jobs:
         working-directory: app
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
-        run: node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');const signed=process.env.RELEASE_PLATFORM!=='linux-appimage';fs.writeFileSync('.release-builder.json',JSON.stringify({...pkg.build,forceCodeSigning:signed},null,2));"
+        run: node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');const signed=process.env.RELEASE_PLATFORM!=='linux-appimage';const config={...pkg.build,forceCodeSigning:signed};if(process.env.RELEASE_PLATFORM==='macos-dmg'){config.mac={...pkg.build.mac,notarize:true};}fs.writeFileSync('.release-builder.json',JSON.stringify(config,null,2));"
       - name: Build signed production distributable
         working-directory: app
         run: npx electron-builder --publish never --config .release-builder.json
@@ -297,4 +299,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release-assets/* --title "Cluely Copilot $GITHUB_REF_NAME" --generate-notes --verify-tag
+          gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Cluely Copilot $GITHUB_REF_NAME" --generate-notes --verify-tag
