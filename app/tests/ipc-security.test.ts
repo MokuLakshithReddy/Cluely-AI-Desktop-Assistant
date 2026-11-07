@@ -1,18 +1,60 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { IpcRouter } from '../electron/domains/ipc-router';
+import { ActiveRequestRegistry, IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
 
 describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
 
+  it('assigns unique main-process operation IDs and rejects duplicate active correlation IDs', () => {
+    const registry = new ActiveRequestRegistry();
+    const first = registry.start('same-renderer-id');
+
+    expect(first.operationId).not.toBe('same-renderer-id');
+    expect(() => registry.start('same-renderer-id')).toThrow(/already active/);
+    expect(registry.size).toBe(1);
+    expect(registry.abort('same-renderer-id')).toBe(true);
+    expect(first.controller.signal.aborted).toBe(true);
+
+    const second = registry.start('same-renderer-id');
+    expect(second.operationId).not.toBe(first.operationId);
+
+    // A delayed completion from an aborted operation must not remove a newer alias.
+    registry.complete(first.operationId, first.correlationId);
+    expect(registry.size).toBe(1);
+    expect(registry.abort('same-renderer-id')).toBe(true);
+    expect(second.controller.signal.aborted).toBe(true);
+    expect(registry.size).toBe(0);
+  });
+
+  it('rejects invalid renderer correlation IDs', () => {
+    const registry = new ActiveRequestRegistry();
+    expect(() => registry.start('')).toThrow(/Invalid AI request correlation ID/);
+    expect(() => registry.start('x'.repeat(129))).toThrow(/Invalid AI request correlation ID/);
+    expect(() => registry.start({})).toThrow(/Invalid AI request correlation ID/);
+    expect(registry.size).toBe(0);
+  });
+
+  it('aborts all active provider operations and clears correlation mappings', () => {
+    const registry = new ActiveRequestRegistry();
+    const first = registry.start('request-one');
+    const second = registry.start('request-two');
+
+    registry.abortAll();
+
+    expect(first.controller.signal.aborted).toBe(true);
+    expect(second.controller.signal.aborted).toBe(true);
+    expect(registry.size).toBe(0);
+    expect(registry.abort('request-one')).toBe(false);
+    expect(registry.abort('request-two')).toBe(false);
+  });
+
   it('emergency stop aborts active AI and transcription work without deleting session history', () => {
     const emergencyRouter = new IpcRouter(trustedHtml);
-    const aiController = new AbortController();
+    const aiRequest = (emergencyRouter as any).activeAiControllers.start('test-request');
     const transcriptionController = new AbortController();
-    (emergencyRouter as any).activeAiControllers.set('test-request', aiController);
     (emergencyRouter as any).activeTranscriptionControllers.add(transcriptionController);
     const previous = stateManager.getState();
     const session = previous.session || {
@@ -28,7 +70,7 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     };
     stateManager.patchState({ session, isRecording: true, isGenerating: true, isPurging: false, isEmergencyStopping: false });
     emergencyRouter.emergencyStop();
-    expect(aiController.signal.aborted).toBe(true);
+    expect(aiRequest.controller.signal.aborted).toBe(true);
     expect(transcriptionController.signal.aborted).toBe(true);
     expect(stateManager.getState().isRecording).toBe(false);
     expect(stateManager.getState().isGenerating).toBe(false);
@@ -39,13 +81,12 @@ describe('IPC Security & Origin Validation Subsystem', () => {
 
   it('does not re-arm audio capture when emergency stop is invoked during purge', () => {
     const emergencyRouter = new IpcRouter(trustedHtml);
-    const aiController = new AbortController();
+    const aiRequest = (emergencyRouter as any).activeAiControllers.start('purge-request');
     const transcriptionController = new AbortController();
-    (emergencyRouter as any).activeAiControllers.set('purge-request', aiController);
     (emergencyRouter as any).activeTranscriptionControllers.add(transcriptionController);
     stateManager.patchState({ isRecording: true, isGenerating: true, isPurging: true, isEmergencyStopping: true });
     emergencyRouter.emergencyStop();
-    expect(aiController.signal.aborted).toBe(true);
+    expect(aiRequest.controller.signal.aborted).toBe(true);
     expect(transcriptionController.signal.aborted).toBe(true);
     expect(stateManager.getState().isRecording).toBe(false);
     expect(stateManager.getState().isEmergencyStopping).toBe(false);
