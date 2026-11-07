@@ -140,8 +140,9 @@ export class StateManager {
         const raw = fs.readFileSync(stateFile, 'utf8');
         const parsed = JSON.parse(raw);
 
-        // Sanitize: never allow plaintext apiKeys into state even if old file had them
+        // Sanitize persisted state: credentials and transient diagnostics must never be restored.
         delete parsed.apiKeys;
+        delete parsed.persistenceError;
 
         this.state = {
           ...INITIAL_STATE,
