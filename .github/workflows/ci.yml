@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Set up Node.js 20
+      - name: Set up Node.js 24.22.2
         uses: actions/setup-node@v4
         with:
           node-version: 24.22.2
@@ -71,7 +71,7 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Set up Node.js 20
+      - name: Set up Node.js 24.22.2
         uses: actions/setup-node@v4
         with:
           node-version: 24.22.2
@@ -98,6 +98,53 @@ jobs:
         env:
           EXPECTED_EXTENSION: ${{ matrix.expected-extension }}
         run: node -e "const fs=require('fs');const p='app/release';const ext=process.env.EXPECTED_EXTENSION;const files=fs.existsSync(p)?fs.readdirSync(p):[];const matches=files.filter(f=>f.endsWith(ext));if(!matches.length){console.error('Missing '+ext+' artifact in '+p,files);process.exit(1)}console.log('Verified package artifact(s):',matches)"
+      - name: Smoke-test packaged Windows executable
+        if: matrix.platform == 'windows-portable'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw "No portable Windows executable found in app/release." }
+          node app/tests/packaged-smoke.cjs $exe.FullName
+
+      - name: Smoke-test packaged macOS application
+        if: matrix.platform == 'macos-dmg'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find app/release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          if [[ -z "$dmg" ]]; then echo "No macOS DMG found"; exit 1; fi
+          mount_dir="$RUNNER_TEMP/cluely-dmg"
+          app_copy="$RUNNER_TEMP/Cluely Copilot.app"
+          mkdir -p "$mount_dir"
+          hdiutil attach "$dmg" -nobrowse -quiet -mountpoint "$mount_dir"
+          cleanup() { hdiutil detach "$mount_dir" -quiet || true; }
+          trap cleanup EXIT
+          app_bundle="$(find "$mount_dir" -maxdepth 3 -type d -name '*.app' -print -quit)"
+          if [[ -z "$app_bundle" ]]; then echo "No .app bundle found in DMG"; exit 1; fi
+          ditto "$app_bundle" "$app_copy"
+          hdiutil detach "$mount_dir" -quiet
+          trap - EXIT
+          node app/tests/packaged-smoke.cjs "$app_copy/Contents/MacOS/Cluely Copilot"
+
+      - name: Ensure Linux virtual display is available
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+
+      - name: Smoke-test packaged Linux AppImage
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find app/release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$appimage" ]]; then echo "No Linux AppImage found"; exit 1; fi
+          chmod +x "$appimage"
+          node app/tests/packaged-smoke.cjs "$appimage"
+
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
