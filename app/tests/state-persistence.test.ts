@@ -31,5 +31,7 @@ describe('State persistence error reporting', () => {
     manager.flushSaveOrThrow();
     expect(manager.getState().persistenceError).toBeNull();
     expect(fs.existsSync(stateFile)).toBe(true);
+    const persistedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    expect(persistedState).not.toHaveProperty('persistenceError');
   });
 });
