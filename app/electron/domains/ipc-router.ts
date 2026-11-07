@@ -33,6 +33,7 @@ const ALLOWED_SHORTCUT_KEYS = new Set([
   'toggleVisibility',
   'ask',
   'clear',
+  'emergencyStop',
   'toggleSession',
   'moveUp',
   'moveDown',
