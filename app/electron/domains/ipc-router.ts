@@ -51,6 +51,8 @@ const MAX_KNOWLEDGE_TOTAL_BYTES = 12 * 1024 * 1024;
 const MAX_KNOWLEDGE_TOTAL_CHUNKS = 10000;
 const MAX_CHUNK_BYTES = 256 * 1024;
 const MAX_STT_AUDIO_BASE64_CHARS = 8 * 1024 * 1024;
+const MAX_STT_AUDIO_BYTES = 6 * 1024 * 1024;
+const MAX_STT_AUDIO_DURATION_MS = 20000; // VAD emits at most 20-second segments
 const MAX_AI_QUERY_CHARS = 20000;
 const MAX_AI_SCREENSHOT_BASE64_CHARS = 8 * 1024 * 1024;
 const MAX_AI_HISTORY_ITEMS = 50;
@@ -360,6 +362,58 @@ export class IpcRouter {
     if (passageChars > MAX_AI_KNOWLEDGE_TOTAL_CHARS) {
       throw new Error('[IpcRouter] AI knowledge context exceeds the 80000 character aggregate limit');
     }
+  }
+
+  /**
+   * Validates the renderer's canonical mono 16 kHz, 16-bit PCM WAV payload.
+   * The 20-second duration limit matches VADProcessor.maxSegmentMs.
+   */
+  public validateSttAudioPayload(wavBase64: unknown): Buffer {
+    if (typeof wavBase64 !== 'string' || wavBase64.length === 0) {
+      throw new Error('Missing wavBase64 audio payload');
+    }
+    if (wavBase64.length > MAX_STT_AUDIO_BASE64_CHARS) {
+      throw new Error('Audio payload exceeds the 8 MiB encoded size limit');
+    }
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(wavBase64) || wavBase64.length % 4 !== 0) {
+      throw new Error('Audio payload is not valid base64');
+    }
+
+    const buffer = Buffer.from(wavBase64, 'base64');
+    if (buffer.toString('base64') !== wavBase64) {
+      throw new Error('Audio payload is not canonical base64');
+    }
+    if (buffer.byteLength > MAX_STT_AUDIO_BYTES) {
+      throw new Error('Decoded audio payload exceeds the 6 MiB size limit');
+    }
+
+    const isWav = buffer.byteLength >= 44 &&
+      buffer.toString('ascii', 0, 4) === 'RIFF' &&
+      buffer.toString('ascii', 8, 12) === 'WAVE' &&
+      buffer.toString('ascii', 12, 16) === 'fmt ' &&
+      buffer.toString('ascii', 36, 40) === 'data' &&
+      buffer.readUInt32LE(4) === buffer.byteLength - 8 &&
+      buffer.readUInt32LE(16) === 16 &&
+      buffer.readUInt16LE(20) === 1 && // PCM
+      buffer.readUInt16LE(22) === 1 && // mono
+      buffer.readUInt32LE(24) === 16000 &&
+      buffer.readUInt32LE(28) === 32000 &&
+      buffer.readUInt16LE(32) === 2 &&
+      buffer.readUInt16LE(34) === 16;
+    if (!isWav) {
+      throw new Error('Audio payload must be a canonical mono 16 kHz, 16-bit PCM WAV');
+    }
+
+    const dataBytes = buffer.readUInt32LE(40);
+    if (dataBytes === 0 || dataBytes !== buffer.byteLength - 44 || dataBytes % 2 !== 0) {
+      throw new Error('Audio WAV data chunk is malformed');
+    }
+    const durationMs = (dataBytes / 32000) * 1000;
+    if (durationMs > MAX_STT_AUDIO_DURATION_MS) {
+      throw new Error('Audio payload exceeds the 20-second duration limit');
+    }
+
+    return buffer;
   }
 
   /**
@@ -914,11 +968,7 @@ export class IpcRouter {
     ipcMain.handle('stt-transcribe-payload', async (event, { wavBase64, language }: any) => {
       this.validateOrigin(event);
       if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
-      if (!wavBase64 || typeof wavBase64 !== 'string') throw new Error('Missing wavBase64 audio payload');
-      if (wavBase64.length > MAX_STT_AUDIO_BASE64_CHARS) throw new Error('Audio payload exceeds the 8 MiB encoded size limit');
-      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(wavBase64) || wavBase64.length % 4 !== 0) {
-        throw new Error('Audio payload is not valid base64');
-      }
+      if (typeof wavBase64 !== 'string' || wavBase64.length === 0) throw new Error('Missing wavBase64 audio payload');
 
       const groqKey = await credentialVault.getKey('groq');
       const openaiKey = await credentialVault.getKey('openai');
@@ -927,8 +977,7 @@ export class IpcRouter {
       if (!activeKey) throw new Error('No Speech-to-Text key configured. Set Groq or OpenAI key in Settings.');
       if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
 
-      const buf = Buffer.from(wavBase64, 'base64');
-      if (buf.byteLength > 6 * 1024 * 1024) throw new Error('Decoded audio payload exceeds the 6 MiB size limit');
+      const buf = this.validateSttAudioPayload(wavBase64);
       const audioBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
       const controller = new AbortController();
       this.activeTranscriptionControllers.add(controller);
