@@ -117,8 +117,7 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
     expect(extracted.indexOf('System Design')).toBeLessThan(extracted.indexOf('Second page'));
   });
   it('returns empty text for a valid PDF page without text operators', async () => {
-    const extracted = await extractTextFromPdf(buildCompressedPdf(['']));
-    expect(extracted).toBe('');
+    expect(await extractTextFromPdf(buildCompressedPdf(['']))).toBe('');
   });
   it('rejects malformed PDF data rather than scraping incidental printable bytes', async () => {
     const malformed = new TextEncoder().encode('not a pdf: obj stream fake text').buffer;
