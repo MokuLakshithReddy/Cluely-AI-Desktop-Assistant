@@ -36,7 +36,7 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
         .map(item => ('str' in item && typeof item.str === 'string' ? item.str : ''))
         .filter(Boolean)
         .join(' ')
-        .replace(/\\s+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
       if (pageText) pageTexts.push(pageText);
@@ -46,7 +46,7 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
     await loadingTask.destroy();
   }
 
-  return pageTexts.join('\\n\\n');
+  return pageTexts.join('\n\n');
 }
 
 /**
