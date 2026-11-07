@@ -307,12 +307,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
         {/* Security badge */}
         <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
           <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-            <ShieldCheck className="w-4 h-4" /> {isWeb ? 'Ephemeral Memory' : 'Secure OS Vault'}
+            <ShieldCheck className="w-4 h-4" /> {isWeb ? 'Ephemeral Memory' : 'OS Credential Vault'}
           </div>
           <p className="text-[10px] leading-tight text-slate-500">
             {isWeb
               ? 'Web Mode: API keys kept in ephemeral browser memory only. Never written to disk or localStorage.'
-              : 'Keys encrypted via Windows DPAPI / macOS Keychain. Plaintext keys never touch renderer state.'}
+              : 'Keys use an OS-backed credential store. On Linux, the insecure basic_text backend is rejected; configure Secret Service/libsecret or KWallet. Plaintext keys never enter renderer state.'}
           </p>
         </div>
       </div>

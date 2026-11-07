@@ -50,7 +50,13 @@ async function runDesktopE2E({ windowCoordinator }) {
 
     let vaultAvailable = false;
     try {
-      vaultAvailable = Boolean(safeStorage && safeStorage.isEncryptionAvailable());
+      const encryptionAvailable = Boolean(safeStorage && safeStorage.isEncryptionAvailable());
+      const backend = process.platform === 'linux' && safeStorage &&
+        typeof safeStorage.getSelectedStorageBackend === 'function'
+        ? safeStorage.getSelectedStorageBackend()
+        : null;
+      vaultAvailable = encryptionAvailable &&
+        !(process.platform === 'linux' && (!backend || backend === 'basic_text'));
     } catch {
       vaultAvailable = false;
     }
