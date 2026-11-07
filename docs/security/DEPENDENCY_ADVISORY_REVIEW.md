@@ -16,7 +16,7 @@ The latest CI dependency audit for this branch reports:
 | Moderate | 6 |
 | Low | 0 |
 
-The six moderate paths represent one distinct advisory: [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) affecting `minimatch` versions `>=7.0.0 <11.0.1`. The currently generated lockfile resolves `minimatch@10.2.6` at the app-builder toolchain root and `minimatch@9.0.9` under `@electron/universal`. The advisory is fixed in `minimatch@11.0.1`.
+The six moderate paths represent one distinct advisory: [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) affecting `minimatch` versions `>=7.0.0 <11.0.1`. The committed lockfile produced by the verified CI run resolves `electron-builder@26.18.1` and `app-builder-lib@26.18.1`; it contains `minimatch@10.2.6` at the packaging-toolchain root and `minimatch@9.0.9` under `@electron/universal`. The advisory is fixed in `minimatch@11.0.1`.
 
 The dependency chain is part of the packaging toolchain:
 
@@ -30,7 +30,7 @@ The earlier high-severity `undici` finding was resolved by pinning `undici` to t
 ## Temporary mitigation
 
 1. Keep the full dependency audit in CI and fail the build on any new high or critical finding using `npm audit --audit-level=high`.
-2. Keep the lockfile committed and install with `npm ci`; do not silently regenerate dependencies during production release verification.
+2. Keep the lockfile committed and install with `npm ci`. CI and release verification must never regenerate dependency resolution during a build.
 3. Run package builds on ephemeral GitHub-hosted runners.
 4. Do not pass user-supplied glob patterns or untrusted path expressions into Electron Builder or its file-matching configuration.
 5. Keep release signing secrets unavailable to ordinary pull-request verification jobs.

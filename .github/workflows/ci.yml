@@ -15,8 +15,6 @@ jobs:
   verify:
     name: Build & Verify (Windows)
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -26,14 +24,6 @@ jobs:
           node-version: 24.22.2
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
-      - name: Generate lockfile for upgraded direct dependencies
-        run: npm install --package-lock-only --ignore-scripts --no-audit
-      - name: Upload generated dependency lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: dependency-lockfile
-          path: package-lock.json
-          retention-days: 3
       - name: Install dependencies
         run: npm ci
       - name: Capture npm audit report
@@ -73,28 +63,6 @@ jobs:
           name: test-results
           path: docs/testing/TEST_RESULTS.md
           retention-days: 14
-      - name: Commit generated lockfile to the pull request branch
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          lockfile_copy="$RUNNER_TEMP/package-lock.json"
-          cp package-lock.json "$lockfile_copy"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin "$PR_BRANCH"
-          git checkout -B "$PR_BRANCH" "origin/$PR_BRANCH"
-          cp "$lockfile_copy" package-lock.json
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "The PR branch already has the generated lockfile."
-            exit 0
-          fi
-          git commit -m "chore(deps): commit audited dependency lockfile"
-          git push origin "HEAD:$PR_BRANCH"
-
   package:
     name: Package Electron (${{ matrix.platform }})
     needs: verify
@@ -121,8 +89,6 @@ jobs:
           node-version: 24.22.2
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
-      - name: Generate lockfile for upgraded direct dependencies
-        run: npm install --package-lock-only --ignore-scripts --no-audit
       - name: Install dependencies
         run: npm ci
       - name: Build application
