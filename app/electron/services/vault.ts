@@ -12,7 +12,10 @@ export function isSecureStorageBackendAvailable(
   if (!encryptionAvailable) return false;
   // Electron's Linux basic_text backend uses a hard-coded password and is not a
   // secure secret store. Unknown Linux backends fail closed as well.
-  if (platform === 'linux') return Boolean(selectedBackend && selectedBackend !== 'basic_text');
+  if (platform === 'linux') {
+    const supportedBackends = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']);
+    return Boolean(selectedBackend && supportedBackends.has(selectedBackend));
+  }
   return true;
 }
 
