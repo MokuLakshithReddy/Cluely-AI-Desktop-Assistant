@@ -1,10 +1,10 @@
 # Cluely Copilot: Reverse-Engineered Desktop AI Assistant
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
-[![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Release%20v1.0.1)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1)
-[![Tests Passing](https://img.shields.io/badge/Tests-91%2F91%20Passing%20(100%25)-success)](docs/testing/TEST_RESULTS.md)
+[![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-125%2F125%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
-[![Node Runtime](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v24%2B-brightgreen)](#prerequisites)
+[![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
 [![REA Verified](https://img.shields.io/badge/REA-Evidence%20Grounded-purple)](docs/reverse-engineering/CLUELY_ANALYSIS.md)
 
@@ -21,7 +21,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (91/91 Passing)](#6-automated-verification--test-suites-9191-passing)
+6. [Automated Verification & Test Suites (125/125 Passing)](#6-automated-verification--test-suites-125125-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -52,7 +52,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 
 ### 🛡️ Screen Sharing Anti-Capture Stealth (`setContentProtection`)
 * **OS-Level Display Affinity**: Integrates `win.setContentProtection(true)` on Windows (`WDA_EXCLUDEFROMCAPTURE`) and macOS (`NSWindowSharingNone`).
-* **Meeting App Invisibility**: When stealth mode is toggled on, the assistant overlay remains completely invisible during screen shares in **Zoom**, **Microsoft Teams**, **Google Meet**, **Discord**, and **Slack**, as well as **OBS Studio** (using Desktop Duplication or Windows Graphics Capture).
+* **Best-Effort Display Protection**: When enabled, Electron requests OS-level content protection for supported screen-capture paths. It is not a universal invisibility guarantee; compatibility must be tested for each OS build and capture application.
 
 ### 🧠 Context Fusion & Specialized Assistance Modes
 * **Unified Multimodal Context Synthesizer**: Automatically blends recent spoken transcript lines, high-resolution screen context, retrieved knowledge chunks, and user prompts into a single structured prompt.
@@ -276,35 +276,38 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (91/91 Passing)
+## 6. Automated Verification & Test Suites (125/125 Passing)
 
-The repository features **91 automated checks** across 15 test files (14 Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **100% pass rate**:
+The latest verified CI run recorded **125 passing automated checks**: 124 Vitest tests across 16 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
-| Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |
-|---|---|:---:|:---:|:---:|
-| [`ai-context.test.ts`](app/tests/ai-context.test.ts) | AI Context Assembly, Dual-Speaker Tagging & 5 Modes | 7 | 7 | **PASSED** |
-| [`ai-streaming.test.ts`](app/tests/ai-streaming.test.ts) | Token Stream Accumulation, History Preservation & Abort | 4 | 4 | **PASSED** |
-| [`audio-ownership.test.ts`](app/tests/audio-ownership.test.ts) | Dual-Channel Audio Ownership & Stream Leak Prevention | 3 | 3 | **PASSED** |
-| [`audio-vad.test.ts`](app/tests/audio-vad.test.ts) | 48k->16k Resampling, RMS+ZCR Detection & Crosstalk Gating | 6 | 6 | **PASSED** |
-| [`credential-vault.test.ts`](app/tests/credential-vault.test.ts) | SafeStorage DPAPI, Fail-Safe Rejection & Write Error Propagation | 7 | 7 | **PASSED** |
-| [`dashboard-routing.test.ts`](app/tests/dashboard-routing.test.ts) | Dashboard Route Hash Parsing & Sub-Tab Query Routing | 4 | 4 | **PASSED** |
-| [`e2e-desktop-session.test.ts`](app/tests/e2e-desktop-session.test.ts) | Synthetic audio/scaling/RAG/provider/session pipeline integration | 6 | 6 | **PASSED** |
-| [`state-broadcast.test.ts`](app/tests/state-broadcast.test.ts) | Shared-state updates reach control, chat & Dashboard windows | 2 | 2 | **PASSED** |
-| [`ipc-security.test.ts`](app/tests/ipc-security.test.ts) | Origin Guard, Production Mode Dev-Block, Substring Defense & Schema Checks | 22 | 22 | **PASSED** |
-| [`knowledge-rag.test.ts`](app/tests/knowledge-rag.test.ts) | PDF Token Stream Parsing, Document Chunking & TF-IDF Scoring | 6 | 6 | **PASSED** |
-| [`provider-models.test.ts`](app/tests/provider-models.test.ts) | 2026 Model Routing, Diagnostic Errors & Multi-Turn History | 6 | 6 | **PASSED** |
-| [`screen-capture.test.ts`](app/tests/screen-capture.test.ts) | 4K & Ultrawide Proportional Scaling Capped at 1920px | 5 | 5 | **PASSED** |
-| [`session-archive.test.ts`](app/tests/session-archive.test.ts) | Multi-Session Persistence, Path Traversal Containment & 5MB Limit | 7 | 7 | **PASSED** |
-| [`web-bridge.test.ts`](app/tests/web-bridge.test.ts) | Web Bridge In-Memory Vault, No-LocalStorage & Scoped Abort | 5 | 5 | **PASSED** |
-| [`electron-smoke.cjs`](app/tests/electron-smoke.cjs) | Electron Dashboard UI, preload bridge, IPC persistence & clean shutdown | 1 | 1 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **91** | **91** | **100% PASS** |
+Evidence: [CI run 42388364832](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)  
+Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
-> [!NOTE]
-> * **Desktop E2E Scope**: [`docs/testing/E2E_VERIFICATION_REPORT.md`](docs/testing/E2E_VERIFICATION_REPORT.md) distinguishes synthetic pipeline integration from the Electron Dashboard/preload/IPC smoke flow. Physical microphone, system-loopback and active-display capture still require manual device-backed verification.
-> * **Objective Quality Benchmarks**: For quantitative measurements of WER (Groq 2.1% vs OpenAI 2.4%), response latency (Gemini 3.8 Flash 340ms TTFT), grounding fidelity (96.4% recall), and cancellation responsiveness (<25ms), see [`docs/benchmarks/QUALITY_MEASUREMENTS.md`](docs/benchmarks/QUALITY_MEASUREMENTS.md).
-> * **Windows Authenticode & Signature Verification**: For code-signing thumbprints, PowerShell verification commands, and SmartScreen guidance, see [`docs/production/RELEASE_VERIFICATION.md`](docs/production/RELEASE_VERIFICATION.md).
+| Test Suite | Focus Area | Passed |
+|---|---|---:|
+| `ai-context.test.ts` | AI context assembly and operating modes | 7 |
+| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
+| `audio-ownership.test.ts` | Dual-source audio ownership and cleanup | 3 |
+| `audio-vad.test.ts` | Resampling, independent VAD, speech buffering and WAV encoding | 10 |
+| `credential-vault.test.ts` | Async safeStorage, legacy ciphertext, key rotation and concurrency | 14 |
+| `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
+| `e2e-desktop-session.test.ts` | Synthetic pipeline integration with mocked hardware/provider inputs | 6 |
+| `ipc-security.test.ts` | Sender validation, request identity and payload limits | 32 |
+| `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
+| `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 7 |
+| `screen-capture.test.ts` | Display thumbnail scaling | 5 |
+| `session-archive.test.ts` | Session archive persistence and path containment | 8 |
+| `state-broadcast.test.ts` | Shared-state renderer updates | 2 |
+| `state-persistence.test.ts` | Persistence error reporting and recovery | 2 |
+| `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
+| `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 3 |
+| `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
+| **Total** | **124 Vitest tests + 1 Electron smoke check** | **125** |
 
-### Execution Environments
+The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
+
+### Verification Environments
+
 * **Local Verification Environment**: Developer workstation; the generated test report records the exact OS/kernel, architecture, and Node.js version for each run.
 * **Hosted CI Environment**: GitHub-hosted Windows runner selected by `windows-latest`; the runner image can change, so consult the generated test report and workflow logs for the exact environment.
 
@@ -312,14 +315,14 @@ The repository features **91 automated checks** across 15 test files (14 Vitest 
 
 ## 7. Real-World Operational Verification Matrix
 
-Documented in detail in [`docs/production/PRODUCTION_READINESS.md`](docs/production/PRODUCTION_READINESS.md), these 6 operational areas were verified against real desktop environments:
+The following summarizes implementation behavior and available automated evidence. Physical microphone, loopback, screen-permission, provider and conferencing checks must be recorded separately in [`docs/testing/DEVICE_VALIDATION_MATRIX.md`](docs/testing/DEVICE_VALIDATION_MATRIX.md); they are not implied by CI results:
 
 1. **Dual Audio Capture & Loopback**: Microphone and loopback are processed as independent VAD sources. Overlapping local and remote speech is preserved; browser/device echo cancellation remains enabled for microphone input. Device-backed verification should still be performed on supported hardware.
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
 3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
 4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. The vault safely rejects unencrypted disk writes if secure storage is unavailable (`safeFail`).
 5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Cluely Copilot.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
-6. **Screen-Sharing Stealth Mode**: Verified invisible across Zoom, Microsoft Teams, Google Meet, Discord, and OBS (Desktop Duplication source).
+6. **Screen-Sharing Display Protection**: Uses the OS-provided Electron content-protection mechanism. Its behavior depends on the OS and capture stack and is not a universal invisibility guarantee.
 
 ---
 
@@ -327,7 +330,7 @@ Documented in detail in [`docs/production/PRODUCTION_READINESS.md`](docs/product
 
 ### Prerequisites
 * **Operating System**: Windows 10/11 x64 (macOS and Linux also supported for development)
-* **Node.js**: v20.x LTS or v24.x
+* **Node.js**: v24.22.2 (CI runtime)
 * **Package Manager**: npm v10+
 
 ### Installation
@@ -378,7 +381,7 @@ npm run pack
 
 # 2. Portable standalone single executable (distribution)
 npm run dist:win
-# Output: app/release/Cluely-Copilot-1.0.1-Windows-x64.exe (72.6MB)
+# Output: app/release/Cluely Copilot 1.0.2.exe
 ```
 
 ### Launching the Packaged Application
