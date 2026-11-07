@@ -107,6 +107,28 @@ describe('Audio Processing, VAD & Crosstalk Subsystem', () => {
     expect(onSpeechEnd).not.toHaveBeenCalled();
   });
 
+  it('keeps approximately 300ms of pre-speech audio with production-sized callbacks', () => {
+    const vad = new VADProcessor({ preSpeechPadMs: 300, sampleRate: 16000 });
+    let emitted: ArrayBuffer | null = null;
+    vad.onSpeechEnd = wav => { emitted = wav; };
+
+    // Production: 4096 samples at 48kHz, resampled to approximately 1365 @16kHz.
+    const productionCallback = new Float32Array(1365).fill(0);
+    for (let i = 0; i < 4; i++) vad.processFrame(productionCallback);
+
+    const speechFrame = new Float32Array(512);
+    for (let i = 0; i < speechFrame.length; i++) {
+      speechFrame[i] = Math.sin((2 * Math.PI * 300 * i) / 16000) * 0.3;
+    }
+    vad.processFrame(speechFrame);
+    vad.flush();
+
+    expect(emitted).not.toBeNull();
+    const sampleCount = ((emitted as ArrayBuffer).byteLength - 44) / 2;
+    // 300ms at 16kHz is 4800 samples, plus the 512-sample speech frame.
+    expect(sampleCount).toBe(4800 + 512);
+  });
+
   it('correctly encodes Float32Array into valid 16-bit PCM WAV with RIFF header', () => {
     const samples = new Float32Array(1600).fill(0.25);
     const wav = encodeWAV(samples, 1, 16000, 16);

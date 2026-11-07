@@ -64,7 +64,7 @@ export class VADProcessor {
   private silenceStartTimestamp: number | null = null;
   private speechBuffer: Float32Array[] = [];
   private preSpeechBuffer: Float32Array[] = [];
-  private preSpeechMaxFrames: number;
+  private preSpeechMaxSamples: number;
   private adaptiveNoiseFloor = 0.005;
 
   public onSpeechStart?: () => void;
@@ -72,9 +72,7 @@ export class VADProcessor {
 
   constructor(config: Partial<VADConfig> = {}) {
     this.config = { ...DEFAULT_VAD_CONFIG, ...config };
-    this.preSpeechMaxFrames = Math.ceil(
-      (this.config.preSpeechPadMs / 1000) * (this.config.sampleRate / this.config.frameSize)
-    );
+    this.preSpeechMaxSamples = Math.max(0, Math.round((this.config.preSpeechPadMs / 1000) * this.config.sampleRate));
   }
 
   /**
@@ -146,15 +144,36 @@ export class VADProcessor {
           this.finalizeSegment(now);
         }
       } else {
-        // Maintain ring buffer of pre-speech padding
-        this.preSpeechBuffer.push(frame);
-        if (this.preSpeechBuffer.length > this.preSpeechMaxFrames) {
-          this.preSpeechBuffer.shift();
-        }
+        // Maintain a duration-based ring buffer. Audio callback sizes vary by device
+        // (the production 4096/48kHz callback yields ~1365 samples at 16kHz), so a
+        // fixed frame count does not represent a stable pre-speech duration.
+        this.rememberPreSpeechFrame(frame);
       }
     }
 
     return this.isSpeaking;
+  }
+
+  private rememberPreSpeechFrame(frame: Float32Array): void {
+    const limit = this.preSpeechMaxSamples;
+    if (limit <= 0 || frame.length === 0) return;
+
+    // Own the queued data and avoid retaining a larger-than-configured history.
+    const chunk = frame.length > limit ? frame.slice(frame.length - limit) : frame.slice();
+    this.preSpeechBuffer.push(chunk);
+    let bufferedSamples = this.preSpeechBuffer.reduce((total, item) => total + item.length, 0);
+    let excessSamples = bufferedSamples - limit;
+
+    while (excessSamples > 0 && this.preSpeechBuffer.length > 0) {
+      const oldest = this.preSpeechBuffer[0];
+      if (oldest.length <= excessSamples) {
+        this.preSpeechBuffer.shift();
+        excessSamples -= oldest.length;
+      } else {
+        this.preSpeechBuffer[0] = oldest.slice(excessSamples);
+        excessSamples = 0;
+      }
+    }
   }
 
   private finalizeSegment(now: number) {
