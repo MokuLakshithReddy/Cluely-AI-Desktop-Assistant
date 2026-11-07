@@ -43,6 +43,7 @@ describe('State persistence error reporting', () => {
     writeSpy.mockRestore();
     manager.flushSaveOrThrow();
     expect(manager.getState().persistenceError).toBeNull();
+    expect(JSON.parse(fs.readFileSync(stateFile, 'utf8')).showChat).toBe(false);
     expect(fs.existsSync(stateFile)).toBe(true);
     const persistedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     expect(persistedState).not.toHaveProperty('persistenceError');
