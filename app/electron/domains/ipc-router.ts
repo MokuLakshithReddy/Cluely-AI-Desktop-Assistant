@@ -62,6 +62,7 @@ export class IpcRouter {
   private customTrustedHtmlPath?: string;
   private forceProductionMode: boolean = false;
   private activeAiControllers: Map<string, AbortController> = new Map();
+  private activeAiTasks: Set<Promise<void>> = new Set();
   private activeTranscriptionControllers: Set<AbortController> = new Set();
   private activeTranscriptionTasks: Set<Promise<string>> = new Set();
 
@@ -659,6 +660,8 @@ export class IpcRouter {
         return { content: resultText, sources: knowledgePassages };
       } finally {
         this.activeAiControllers.delete(reqId);
+        this.activeAiTasks.delete(aiTaskSettled);
+        resolveAiTask();
         stateManager.patchState({ isGenerating: this.activeAiControllers.size > 0 });
       }
     });
@@ -701,8 +704,12 @@ export class IpcRouter {
       for (const controller of this.activeTranscriptionControllers) controller.abort();
 
       try {
-        // Wait for in-flight STT to settle before deleting local data and credentials.
-        await Promise.allSettled(Array.from(this.activeTranscriptionTasks));
+        // Wait for aborted AI and STT handlers to leave their finally blocks before
+        // deleting credentials and local data. Their providers receive the AbortSignal.
+        await Promise.allSettled([
+          ...Array.from(this.activeAiTasks),
+          ...Array.from(this.activeTranscriptionTasks),
+        ]);
         await credentialVault.deleteAllKeys();
         await sessionRepository.purgeAll();
 
