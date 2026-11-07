@@ -24,6 +24,10 @@ describe('Credential Vault & Secret Protection Subsystem', () => {
     expect(isSecureStorageBackendAvailable('linux', false, 'gnome_libsecret')).toBe(false);
     expect(isSecureStorageBackendAvailable('linux', true, 'gnome_libsecret')).toBe(true);
     expect(isSecureStorageBackendAvailable('linux', true, 'kwallet')).toBe(true);
+    expect(isSecureStorageBackendAvailable('linux', true, 'kwallet5')).toBe(true);
+    expect(isSecureStorageBackendAvailable('linux', true, 'kwallet6')).toBe(true);
+    expect(isSecureStorageBackendAvailable('linux', true, 'some_future_unknown_backend')).toBe(false);
+    expect(isSecureStorageBackendAvailable('linux', true, 'basic_text')).toBe(false);
     expect(isSecureStorageBackendAvailable('win32', true, undefined)).toBe(true);
     expect(isSecureStorageBackendAvailable('darwin', true, undefined)).toBe(true);
   });
