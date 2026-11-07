@@ -1,116 +1,51 @@
-# Privacy, Consent & Data Governance Framework
+# Privacy, Consent, and Data Governance
 
-**Document Version**: 1.0.0  
-**Target Application**: Cluely Copilot (Desktop AI Assistant)  
-**Effective Date**: October 2026  
-**Status**: **OFFICIAL PRODUCT GOVERNANCE SPECIFICATION**
+## Product principle
 
----
+Cluely Copilot is intended to be a user-controlled desktop assistant. Audio capture, screen context, documents, chat history, and provider credentials can be sensitive. Users must understand when capture is active, where data is processed, and what a local purge can and cannot remove.
 
-## 1. Core Philosophy: Consent as a Product Feature
+## Consent and user control
 
-In professional engineering, technical consultation, and collaborative workplace environments, an AI desktop assistant cannot succeed without **absolute transparency and earned trust**. Covert recording tools create severe legal liability, breach workplace policies, and destroy peer relationships.
+- Start microphone and system-audio capture only through an explicit user action in the application.
+- Keep clear visual capture/voice-activity indicators visible while capture is active.
+- Provide a dedicated emergency-stop control that stops capture and aborts active AI/STT work.
+- The Escape key collapses the chat UI; it is not the emergency-stop action.
+- Users are responsible for obtaining participant consent and complying with local recording laws, organizational policies, and meeting rules before capturing conversations.
 
-Cluely Copilot is designed from the ground up as a **transparent, consent-first desktop copilot**. Privacy and consent are not afterthoughts or compliance burdens—they are primary architectural features of the product.
+The application implements user controls and indicators, but software cannot establish that every participant has consented. Do not use the app to conduct covert recording.
 
-```
-+-----------------------------------------------------------------------------------+
-|                        TRANSPARENT CLIENT WORKSTATION                             |
-|                                                                                   |
-|  [Prominent Indicator] 🔴 Active Meeting Capture (Visible to User at all times)  |
-|                                                                                   |
-|  [Volatile RAM Buffer] Audio frames in memory -> VAD -> STT -> Immediately Purged |
-|                                                                                   |
-|  [Hardware DPAPI Vault] API Keys encrypted via Windows DPAPI / macOS Keychain      |
-|                                                                                   |
-|  [Zero Disk Leaks] Base64 Screenshots stripped prior to session JSON persistence   |
-|                                                                                   |
-|  [Zero Central Server] NO Cluely cloud backend, NO proxies, NO telemetry beacons  |
-+-----------------------------------------------------------------------------------+
-                                         │ Direct BYOK HTTPS Calls
-                                         ▼
-                   [Official AI Provider APIs (Google, Groq, Anthropic)]
-```
+## Processing and data flows
 
----
+| Data | Application behavior | External processing |
+|---|---|---|
+| Microphone audio | In-memory capture and VAD processing | Speech segments are sent to the configured STT provider |
+| System/meeting audio | Separate in-memory capture and VAD pipeline | Speech segments are sent to the configured STT provider |
+| Screenshot | Captured in response to visual-context action | May be sent to the selected AI provider |
+| Documents | Parsed and indexed in local knowledge storage | Retrieved context may be included in a user-initiated AI request |
+| Chat and transcript | Maintained in app state and session archive | Relevant context may be included in AI requests |
+| Provider API keys | Stored in the desktop credential vault | Sent to the chosen provider for authenticated requests |
 
-## 2. Real-Time Visual Capture Indicators & Controls
+Cloud providers process the payloads they receive according to their own terms, policies, and account settings. Cluely Copilot cannot guarantee deletion from third-party provider systems.
 
-1. **Persistent Visual State**:
-   * Whenever audio capture is initiated, the floating assistant bar immediately displays an unambiguous high-visibility indicator:
-     $$\text{Status: } \mathbf{\color{red}\bullet\ Active\ Meeting\ Capture}$$
-   * The audio visualizer animates in real time, showing distinct activity for the user's microphone (cyan pulse) and system loopback (purple pulse).
-2. **No Stealth or Covert Background Recording**:
-   * Audio capture is **never** started silently on application launch or background startup.
-   * Audio capture requires explicit user activation via the microphone toggle or the user-defined global hotkey (`Alt+S` / `Ctrl+Shift+X`).
-3. **Instant Stop & Emergency Stop**:
-   * An immediate "Stop Listening" control is accessible from the floating bar.
-   * The default global Emergency Stop shortcut is `CommandOrControl+Shift+Escape`. It stops microphone and system-audio tracks, discards buffered-but-unsubmitted audio, and aborts active AI/STT requests.
-   * `Escape` remains a chat-collapse shortcut and is not a microphone mute. Actual device shutdown timing depends on the operating system and media stack; no fixed millisecond guarantee is claimed.
-4. **Meeting Participant Notification & Consent Guidance**:
-   * Users operating in two-party or multi-party consent jurisdictions (e.g. California, Illinois, Germany) must obtain agreement from all call participants before enabling audio processing.
-   * Cluely Copilot provides a standard recommended notice:
-     > *"I am using an AI copilot to assist with transcription and technical runbook retrieval during our discussion."*
+## Credential storage
 
----
+Desktop credentials are encrypted with Electron `safeStorage` using the OS-backed provider. Linux basic-text and unknown backends are rejected. Raw credentials are kept out of renderer shared-state broadcasts.
 
-## 3. Data Boundary & Transmission Architecture
+The audited source revision still uses synchronous `safeStorage` calls. The asynchronous migration and compatibility testing for existing stored credentials remain tracked in [issue #19](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/19). AES test-key encryption is not a production fallback.
 
-### Zero Central Cluely Servers or Intermediary Proxies
-* **No Middleman Server**: Cluely Technologies does not maintain an intermediary cloud service, proxy gateway, logging server, or tracking database.
-* **Direct BYOK Communication**: All speech-to-text and language model inferences travel **directly** from the user's workstation over encrypted TLS 1.3 connections to the AI provider endpoint configured by the user (Google Gemini, OpenAI, Anthropic, Groq, or a completely offline local model via Ollama).
-* **Zero Telemetry**: The codebase contains **zero tracking pixels, zero analytics SDKs (e.g., Mixpanel, Segment, Google Analytics), and zero crash-reporting pings**.
+## Retention and deletion
 
-### Ephemeral Audio Processing
-* **Volatile Memory Only**: Incoming microphone and loopback audio frames are held strictly in temporary `Float32Array` circular buffers in volatile system RAM.
-* **Instant Deletion**: The instant a speech segment is packaged into a 16-bit PCM RIFF WAV buffer and dispatched to the STT API, the raw audio buffer is unreferenced and reclaimed by garbage collection.
-* **Zero Raw Audio on Disk**: At no point is raw audio written to the workstation's hard drive or SSD.
+- Audio samples used by the live capture pipeline are processed in memory and are not intentionally added to archived session records.
+- Screenshot base64 content is stripped from saved message records.
+- Session archives, local knowledge data, and the credential vault are stored under the application user-data area.
+- The purge command removes application-managed archives and the vault and requests teardown of active capture/transcription work.
 
-### Visual Context & Screenshot Base64 Stripping
-* **User-Triggered Screen Capture**: Screen captures are captured solely when the user requests multimodal guidance (`Ctrl+Enter` or "Ask AI with Screen").
-* **Transient API Context**: The screenshot is downscaled to a max dimension of 1920px in memory, attached to the outbound LLM request, and immediately released.
-* **Disk Persistence Guard**: In `session-repository.ts`, before any session archive is written to `userData/sessions/*.json`, the `screenshot` property is explicitly stripped:
-  ```typescript
-  const sanitizedMessages = session.messages.map(({ screenshot, ...rest }) => rest);
-  ```
-  This guarantees that saved conversation histories remain tiny (~4 KB text files) and cannot leak desktop display imagery to disk.
+Purge is logical application-level deletion, not certified forensic erasure. It cannot remove backups, filesystem snapshots, OS-level remnants, exported files, provider copies, or data outside the app's control.
 
----
+## Display protection
 
-## 4. Hardware-Backed Credential Security
+The optional Electron content-protection setting asks the operating system to exclude protected app windows from supported capture paths. The behavior varies by operating system and capture API. It is not a guarantee against every screen recorder, administrator-controlled capture method, remote desktop, external camera, or hardware capture device.
 
-API keys grant access to billable cloud resources and must be guarded against extraction by other software on the workstation:
+## Testing and release evidence
 
-* **Desktop Environment (Electron SafeStorage)**:
-  * API keys are encrypted using **Windows Data Protection API (DPAPI)** on Windows and **Keychain Services** on macOS.
-  * Encrypted keys are stored in `userData/credentials.vault` using authenticated AES-256-GCM.
-  * Keys are bound to the specific user profile and machine hardware.
-  * **Fail-Safe Policy (`safeFail`)**: If hardware-backed secure storage is unavailable, key writes are rejected rather than falling back to unencrypted disk storage.
-  * Plaintext keys are never shared across IPC or exposed in renderer browser state.
-* **Browser Preview Environment (Web Bridge)**:
-  * For web preview mode, credentials reside purely in ephemeral JavaScript heap memory (`inMemoryVaultKeys`).
-  * Credentials are **never written to browser `localStorage` or `sessionStorage`**.
-  * Closing or refreshing the browser tab instantly obliterates all credentials from memory.
-
----
-
-## 5. Overlay Display Affinity (`setContentProtection`)
-
-Cluely Copilot provides a user toggle for Display Protection / Overlay Affinity (`win.setContentProtection(true)`):
-
-* **Purpose**: In professional presentation settings, users frequently share their entire desktop. Window content protection sets the Win32 `WDA_EXCLUDEFROMCAPTURE` affinity flag.
-* **Functional Benefit**: This ensures the assistant's floating window and private notes do not appear inside **Zoom**, **Microsoft Teams**, **Google Meet**, or **WebEx** screen shares, keeping the presenter's personal notes private from attendees.
-* **Transparency Boundary**: This setting does not bypass operating system accessibility hooks, enterprise screen monitors, or hardware video capture devices (e.g. HDMI splitters).
-
----
-
-## 6. Complete Data Sovereignty: One-Click Data Purge
-
-Users retain total ownership and control over their stored data. At any time, navigating to **Dashboard → Session Manager** or calling the IPC endpoint `purge-all-data` triggers an application-level purge of the data stores owned by Cluely Copilot:
-
-1. **Session Archives**: All `.json` session history files in `userData/sessions/` are deleted from disk.
-2. **Knowledge Documents**: In-memory document chunk indices, TF-IDF vector tables, and parsed PDF tokens are deallocated.
-3. **Active State**: In-memory transcript items and message histories are reset to empty arrays (`[]`).
-4. **Credential Vault File**: The encrypted `userData/credentials.vault` file is deleted, removing all saved provider credentials from the application profile. Shared state is then synchronized so provider-presence flags are false.
-5. **Deletion Boundary**: This is logical application-level deletion. The application does not guarantee forensic or physical erasure of old storage blocks on SSDs, filesystem snapshots, backups, or unrelated operating-system logs and caches.
-
+Automated tests include unit/integration coverage and a desktop Dashboard/preload/IPC smoke. Active-capture purge testing uses fake media sources. Physical device, permission, live provider, and packaged-app launch verification are separate release gates; see [issue #49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) and [issue #48](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/48).

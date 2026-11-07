@@ -1,127 +1,77 @@
-# Windows Release Verification & Authenticode Security Guide
+# Release Verification and Distribution Guide
 
-**Document Version**: 1.0.0  
-**Release Version**: v1.0.1  
-**Target Platform**: Microsoft Windows 10 / 11 (x64)  
-**Binary Distribution**: `Cluely-Copilot-1.0.1-Windows-x64.exe`  
-**GitHub Release URL**: [https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1)
+## Current release record
 
----
+The latest published GitHub release at the 2026-11-07 audit was [v1.0.1](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.1), published on 2026-10-29. Its tag resolves to commit `6f776ecf80afc52403446c49895f6f10a3064508`, which is 65 commits behind the audited `main` revision `911c61bb62585e256b251aa022b6ecea3ed3d9a5`.
 
-## 1. Release Artifact Specifications
+The v1.0.1 release contains a Windows executable and a checksum manifest. It does not contain macOS or Linux release assets.
 
-Every production binary published under the Cluely Copilot release stream is deterministically built from source, packaged via `electron-builder`, and cryptographically signed using Microsoft Authenticode.
+Do not treat the old release's metadata or its historical verification document as proof that the current source revision has been built, signed, or tested.
 
-| Property | Value |
-|---|---|
-| **Binary File Name** | `Cluely-Copilot-1.0.1-Windows-x64.exe` |
-| **Release Tag** | `v1.0.1` |
-| **Target Architecture** | Windows x64 (AMD64 / Intel 64-bit) |
-| **Packaging Framework** | `electron-builder` v25.1.8 (NSIS Installer) |
-| **SHA-256 Checksum** | `157ef479e8481d4d29b04ba52b4e16695a53030fc647dcf5e25d1d1eff4e71f5` |
-| **Checksum Manifest** | `Cluely-Copilot-1.0.1-Windows-x64.exe.sha256` |
+## CI package outputs are not production releases
 
----
+The CI workflow can generate:
+- Windows portable executable
+- macOS DMG
+- Linux AppImage
 
-## 2. Windows Authenticode Cryptographic Signature Details
+The latest audited run is [42384194110](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42384194110). The package jobs use a temporary electron-builder configuration with `forceCodeSigning: false` and verify that an expected file extension exists. These are unsigned CI validation artifacts. The jobs do not install/launch-test the packaged apps.
 
-The binary is signed with an embedded Microsoft Authenticode digital signature and counter-signed with a cryptographically verifiable RFC 3161 timestamp issued by DigiCert:
+A successful source build, an existing package file, or a passing Electron development smoke test must not be described as packaged-app runtime validation.
 
-```text
-[Authenticode Digital Signature]
-  Signer Common Name (CN): Cluely Copilot Developer
-  Signer Serial Number:    5C6955BC959B6DB2487BA4E1CB60C31E
-  Signer Certificate SHA-1 Thumbprint: 6CC23332BC4A72004EF0AC553D0E1FD19D34E843
-  Signature Digest Algorithm: SHA-256
+## Required release gates
 
-[RFC 3161 Cryptographic Timestamp]
-  TimeStamper Authority:   DigiCert Trusted G4 TimeStamping RSA4096 SHA256 2025 CA1
-  Timestamp Responder:     CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1, O="DigiCert, Inc.", C=US
-  Timestamp Serial Number: 084FDC334F7E454EDBC30F8FF9921835
-  Timestamp Thumbprint:    51D9ABDA034973D84F4266ACA48248E6B369C439
-  Timestamp Server:        http://timestamp.digicert.com
-```
+A production release must not be published until all applicable checks below are complete on the exact candidate commit.
 
----
+### 1. Source and dependency verification
 
-## 3. User Verification Commands (PowerShell)
+- Confirm root and app package versions agree with the intended release.
+- Use a supported Electron release and supported Node.js LTS runtime.
+- Run a clean `npm ci` from the committed lockfile.
+- Run lint/typecheck, all unit/integration tests, and the Electron UI/IPC smoke test.
+- Record the exact commit SHA and workflow run URL.
 
-Users and security auditors can verify the cryptographic integrity and Authenticode signature of the downloaded installer before running it:
+### 2. Packaged artifact verification
 
-### Step 1: Verify SHA-256 Checksum
-Open PowerShell in the folder containing the downloaded installer:
+For every OS included in the release:
+- Build the distributable on its native runner.
+- Install or launch the actual packaged artifact in a clean environment without a development server or repository-local dependencies.
+- Verify renderer/preload loading, IPC startup, expected windows, basic app readiness, and controlled clean shutdown.
+- Preserve logs and artifact metadata as CI evidence.
 
-```powershell
-Get-FileHash .\Cluely-Copilot-1.0.1-Windows-x64.exe -Algorithm SHA256
-```
+### 3. Device-backed validation
 
-**Expected Output**:
-```text
-Algorithm       Hash                                                             Path
----------       ----                                                             ----
-SHA256          157EF479E8481D4D29B04BA52B4E16695A53030FC647DCF5E25D1D1EFF4E... Cluely-Copilot-1.0.1-Windows-x64.exe
-```
+Use the procedure and sign-off template in the hardware/device matrix. Do not infer real microphone, loopback, screen permission, or meeting-app compatibility from mocked media tests.
 
-Confirm that the hash matches:
-```text
-157ef479e8481d4d29b04ba52b4e16695a53030fc647dcf5e25d1d1eff4e71f5
-```
+### 4. Signing and integrity
 
----
+- Windows: sign the final executable with the production Authenticode identity and verify its signature and timestamp from the final published file.
+- macOS: sign the app with the intended Developer ID identity, notarize it, and verify the stapled ticket on the final DMG/app.
+- Linux: publish checksums and, where configured, an independently verifiable artifact signature.
+- Keep signing keys/certificates in protected CI secrets or hardware-backed signing services. Never commit credentials, certificates, or private keys.
+- Generate SHA-256 checksums from final assets and verify them before publication.
 
-### Step 2: Verify Embedded Authenticode Signature
-Run the built-in Windows `Get-AuthenticodeSignature` cmdlet:
+A CI job that disables code signing is not evidence of a signed production artifact. Signing metadata copied into documentation is not a substitute for verifying the actual downloaded file.
+
+### 5. Tag and publication
+
+- Bump root and app package versions consistently.
+- Tag the exact commit that passed the release workflow.
+- Make the release workflow reject tags that point to a different commit than the verified candidate.
+- Attach only artifacts that passed their relevant build, packaged-launch, device-validation, and signing gates.
+- Include the commit SHA, runtime versions, artifact checksums, supported OS matrix, verification scope, and known limitations in the release notes.
+
+## PowerShell verification for a published Windows artifact
+
+After downloading the executable and checksum manifest:
 
 ```powershell
-Get-AuthenticodeSignature .\Cluely-Copilot-1.0.1-Windows-x64.exe | Format-List SignerCertificate, TimeStamperCertificate, Status, SignatureType
+Get-FileHash .\\Cluely-Copilot.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\\Cluely-Copilot.exe | Format-List Status, SignatureType, SignerCertificate, TimeStamperCertificate
 ```
 
-**Expected Output**:
-```text
-SignerCertificate      : [Subject] CN=Cluely Copilot Developer ...
-                         [Thumbprint] 6CC23332BC4A72004EF0AC553D0E1FD19D34E843
-TimeStamperCertificate : [Subject] CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1 ...
-                         [Thumbprint] 51D9ABDA034973D84F4266ACA48248E6B369C439
-SignatureType          : Authenticode
-```
+Compare the SHA-256 output with the checksum published for that exact asset. Require a valid signature from the expected publisher before instructing users to run the executable.
 
----
+## Release decision
 
-## 4. Understanding Windows SmartScreen & Smart App Control
-
-### Why Does Windows Display "Smart App Control has not verified this app" or "Windows protected your PC"?
-1. **Publisher Reputation in Windows**:
-   * Microsoft SmartScreen and Windows 11 Smart App Control evaluate executables based on cloud-tracked **binary and certificate reputation**, rather than local malware heuristics.
-   * Standard Code Signing certificates and initial developer releases have not yet accumulated hundreds of thousands of corporate downloads across Microsoft's global telemetry network.
-2. **Authenticode Verification**:
-   * Inspecting **File Properties → Digital Signatures** on `Cluely-Copilot-1.0.1-Windows-x64.exe` confirms that the binary is cryptographically intact and has not been altered or tampered with since compilation.
-3. **Running the Verified Binary**:
-   * In the SmartScreen prompt, click **"More info"**.
-   * Verify that the publisher matches **"Cluely Copilot Developer"**.
-   * Click **"Run anyway"**.
-4. **Roadmap to Instant Zero-Prompt Trust**:
-   * For enterprise and broad consumer distribution, the project roadmap includes provisioning an **Extended Validation (EV) Hardware Security Module (HSM)** token or enrolling in the **Microsoft Artifact Signing Service** (Public Trust Model), establishing immediate out-of-the-box SmartScreen reputation.
-
----
-
-## 5. Clean-Room Build & Reproduction Procedure
-
-To rebuild and package the verified Windows installer from source:
-
-```powershell
-# 1. Clone the repository and enter the application workspace
-git clone https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant.git
-cd Cluely-AI-Desktop-Assistant/app
-
-# 2. Clean install dependencies
-npm ci
-
-# 3. Execute full verification suite (89/89 tests must pass)
-npm run test:report
-
-# 4. Package Windows distribution
-npm run dist:win
-```
-
-The resulting executable will be generated in `app/release/Cluely-Copilot-1.0.1-Windows-x64.exe`.
-
+The dated production-readiness assessment is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md). At the time of that audit, the repository was **NO-GO** for general production release. This guide does not change that status; only verified closure of the release gates does.
