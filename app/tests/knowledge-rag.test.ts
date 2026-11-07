@@ -130,6 +130,18 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
     expect(results).toHaveLength(0);
   });
 
+  it('accepts a document at the exact 2 MiB ingestion limit', async () => {
+    const content = 'x'.repeat(2 * 1024 * 1024);
+    const file = {
+      name: 'exact-limit.txt',
+      size: 2 * 1024 * 1024,
+      text: async () => content,
+    } as unknown as File;
+
+    const parsed = await parseDocumentFile(file);
+    expect(parsed.content).toHaveLength(2 * 1024 * 1024);
+  });
+
   it('rejects oversized documents before reading their content', async () => {
     const file = {
       name: 'large.txt',
