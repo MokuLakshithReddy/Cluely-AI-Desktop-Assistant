@@ -27,6 +27,20 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     expect(registry.size).toBe(0);
   });
 
+  it('aborts all active provider operations and clears correlation mappings', () => {
+    const registry = new ActiveRequestRegistry();
+    const first = registry.start('request-one');
+    const second = registry.start('request-two');
+
+    registry.abortAll();
+
+    expect(first.controller.signal.aborted).toBe(true);
+    expect(second.controller.signal.aborted).toBe(true);
+    expect(registry.size).toBe(0);
+    expect(registry.abort('request-one')).toBe(false);
+    expect(registry.abort('request-two')).toBe(false);
+  });
+
   it('rejects invalid renderer correlation IDs', () => {
     const registry = new ActiveRequestRegistry();
     expect(() => registry.start('')).toThrow(/Invalid AI request correlation ID/);
