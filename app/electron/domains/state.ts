@@ -26,6 +26,7 @@ export const INITIAL_STATE: SharedState = {
   isCapturingScreenshot: false,
   isRecording: false,
   isPurging: false,
+  isEmergencyStopping: false,
   activeMode: 'copilot',
   activeModel: 'gemini-3.8-flash',
   hasApiKeys: {
@@ -39,6 +40,7 @@ export const INITIAL_STATE: SharedState = {
     toggleVisibility: 'CommandOrControl+Shift+Space',
     ask: 'CommandOrControl+Enter',
     clear: 'Escape',
+    emergencyStop: 'CommandOrControl+Shift+Escape',
     toggleSession: 'CommandOrControl+Shift+X',
     moveUp: 'CommandOrControl+Up',
     moveDown: 'CommandOrControl+Down',
@@ -155,6 +157,7 @@ export class StateManager {
           isDashboardWindowLoaded: false,
           isRecording: false,
           isPurging: false,
+          isEmergencyStopping: false,
           meHasVoiceActivity: false,
           themHasVoiceActivity: false,
           isCapturingScreenshot: false,
