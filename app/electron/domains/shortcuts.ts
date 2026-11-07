@@ -3,8 +3,13 @@ import { stateManager } from './state';
 import { windowCoordinator } from './windows';
 
 export class ShortcutManager {
+  private emergencyStopHandler?: () => void;
   private registeredShortcuts: Map<string, string> = new Map();
   private lastShortcutsJson: string = '';
+
+  public setEmergencyStopHandler(handler: () => void): void {
+    this.emergencyStopHandler = handler;
+  }
 
   public init() {
     this.registerAll();
@@ -63,7 +68,15 @@ export class ShortcutManager {
       this.registeredShortcuts.set('clear', shortcuts.clear);
     }
 
-    // 4. Toggle Session
+    // 4. Emergency Stop (privacy control: stop streams and abort in-flight work)
+    if (shortcuts.emergencyStop) {
+      globalShortcut.register(shortcuts.emergencyStop, () => {
+        this.emergencyStopHandler?.();
+      });
+      this.registeredShortcuts.set('emergencyStop', shortcuts.emergencyStop);
+    }
+
+    // 5. Toggle Session
     if (shortcuts.toggleSession) {
       globalShortcut.register(shortcuts.toggleSession, () => {
         const state = stateManager.getState();
