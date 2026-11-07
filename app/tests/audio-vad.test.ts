@@ -129,6 +129,23 @@ describe('Audio Processing, VAD & Crosstalk Subsystem', () => {
     expect(sampleCount).toBe(4800 + 512);
   });
 
+  it('does not retain pre-speech samples when padding is disabled', () => {
+    const vad = new VADProcessor({ preSpeechPadMs: 0, sampleRate: 16000 });
+    let emitted: ArrayBuffer | null = null;
+    vad.onSpeechEnd = wav => { emitted = wav; };
+
+    for (let i = 0; i < 4; i++) vad.processFrame(new Float32Array(1365));
+    const speechFrame = new Float32Array(512);
+    for (let i = 0; i < speechFrame.length; i++) {
+      speechFrame[i] = Math.sin((2 * Math.PI * 300 * i) / 16000) * 0.3;
+    }
+    vad.processFrame(speechFrame);
+    vad.flush();
+
+    expect(emitted).not.toBeNull();
+    expect(((emitted as ArrayBuffer).byteLength - 44) / 2).toBe(512);
+  });
+
   it('correctly encodes Float32Array into valid 16-bit PCM WAV with RIFF header', () => {
     const samples = new Float32Array(1600).fill(0.25);
     const wav = encodeWAV(samples, 1, 16000, 16);
