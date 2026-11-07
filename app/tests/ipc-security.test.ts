@@ -7,7 +7,7 @@ describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
 
-  it('uses unique main-process operation IDs and protects concurrent request correlation IDs', () => {
+  it('uses unique main-process operation IDs and protects concurrent correlation IDs', () => {
     const registry = new ActiveRequestRegistry();
     const first = registry.start('same-renderer-id');
 
@@ -19,7 +19,7 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     const second = registry.start('same-renderer-id');
     expect(second.operationId).not.toBe(first.operationId);
 
-    // A delayed completion from the first request must not erase the second alias.
+    // A delayed completion from the first operation must not erase the new alias.
     registry.complete(first.operationId, first.correlationId);
     expect(registry.size).toBe(1);
     expect(registry.abort('same-renderer-id')).toBe(true);
@@ -27,7 +27,7 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     expect(registry.size).toBe(0);
   });
 
-  it('rejects invalid renderer request correlation IDs', () => {
+  it('rejects invalid renderer correlation IDs', () => {
     const registry = new ActiveRequestRegistry();
     expect(() => registry.start('')).toThrow(/Invalid AI request correlation ID/);
     expect(() => registry.start('x'.repeat(129))).toThrow(/Invalid AI request correlation ID/);
