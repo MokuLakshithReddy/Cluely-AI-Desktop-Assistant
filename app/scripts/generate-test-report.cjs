@@ -16,32 +16,48 @@ function replaceRequired(content, pattern, replacement, label) {
 
 console.log('Generating automated test evidence report from real test runners...');
 
-// 1. Run Vitest with JSON reporter
-let vitestJsonRaw = '';
+// 1. Run Vitest with JSON reporter.
+//
+// Vitest 5 writes JSON reports to a file by default (rather than stdout).
+// Use an explicit path so the parser consumes the report produced by this run,
+// even when Vitest exits non-zero because one or more assertions failed.
+const vitestJsonFile = '.vitest-json-results.json';
+const vitestJsonPath = path.join(appDir, vitestJsonFile);
 const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
+fs.rmSync(vitestJsonPath, { force: true });
+let vitestCommandError = null;
 try {
-  vitestJsonRaw = execSync(`${npxCmd} vitest run --reporter=json`, {
+  execSync(`${npxCmd} vitest run --reporter=json --outputFile=${vitestJsonFile}`, {
     cwd: appDir,
     encoding: 'utf8',
     env: { ...process.env, CI: 'true' },
     maxBuffer: 10 * 1024 * 1024,
   });
 } catch (err) {
-  // execSync throws if tests fail, but stdout still contains JSON
-  vitestJsonRaw = err.stdout ? err.stdout.toString() : '';
+  // A non-zero exit is expected when tests fail. Vitest still writes its JSON
+  // report, which is the authoritative source for the pass/fail counts.
+  vitestCommandError = err;
 }
 
 let vitestData;
+let vitestParseError = null;
 try {
-  // Find JSON start
-  const jsonStart = vitestJsonRaw.indexOf('{');
-  if (jsonStart >= 0) {
-    vitestData = JSON.parse(vitestJsonRaw.slice(jsonStart));
-  } else {
-    throw new Error('No JSON output found in Vitest output');
-  }
+  vitestData = JSON.parse(fs.readFileSync(vitestJsonPath, 'utf8'));
 } catch (e) {
-  console.error('Failed to parse Vitest JSON:', e);
+  vitestParseError = e;
+} finally {
+  fs.rmSync(vitestJsonPath, { force: true });
+}
+if (vitestParseError) {
+  console.error('Failed to read or parse Vitest JSON report:', vitestParseError);
+  if (vitestCommandError) {
+    console.error('Vitest command diagnostics:', {
+      message: vitestCommandError.message,
+      stdout: vitestCommandError.stdout?.toString().slice(-4000),
+      stderr: vitestCommandError.stderr?.toString().slice(-4000),
+    });
+  }
   process.exit(1);
 }
 
