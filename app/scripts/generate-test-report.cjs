@@ -155,27 +155,27 @@ console.log(`Successfully generated verified test report at: ${resultsPath}`);
 // specific callout or heading immediately after it.
 const readmePath = path.join(repoRoot, 'README.md');
 if (fs.existsSync(readmePath)) {
-  let readme = fs.readFileSync(readmePath, 'utf8').replace(/\\r\\n/g, '\\n');
-  const lines = readme.split('\\n');
-  const headerIndex = lines.findIndex(line => /^\\|\\s*Test Suite(?: File)?\\s*\\|/.test(line));
+  let readme = fs.readFileSync(readmePath, 'utf8').replace(/\r\n/g, '\n');
+  const lines = readme.split('\n');
+  const headerIndex = lines.findIndex(line => /^\|\s*Test Suite(?: File)?\s*\|/.test(line));
   if (headerIndex < 0) {
     throw new Error('README test suite table is missing; refusing to publish stale test evidence.');
   }
 
   const headerCells = lines[headerIndex].split('|').slice(1, -1).map(cell => cell.trim());
   const separatorIndex = headerIndex + 1;
-  if (separatorIndex >= lines.length || !/^\\|\\s*:?-{3,}/.test(lines[separatorIndex])) {
+  if (separatorIndex >= lines.length || !/^\|\s*:?-{3,}/.test(lines[separatorIndex])) {
     throw new Error('README test suite table has no valid Markdown separator row.');
   }
 
   let tableEnd = separatorIndex + 1;
-  while (tableEnd < lines.length && /^\\|/.test(lines[tableEnd])) tableEnd++;
+  while (tableEnd < lines.length && /^\|/.test(lines[tableEnd])) tableEnd++;
 
   const descriptions = new Map();
   for (const row of lines.slice(separatorIndex + 1, tableEnd)) {
     const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
     const codeMatch = cells[0]?.match(/`([^`]+)`/);
-    const linkMatch = cells[0]?.match(/\\]\\(app\\/tests\\/([^)]+)\\)/);
+    const linkMatch = cells[0]?.match(/\]\(app\/tests\/([^)]+)\)/);
     const fileName = codeMatch?.[1] || linkMatch?.[1];
     if (fileName && cells[1] && fileName !== 'Total') {
       descriptions.set(fileName, cells[1]);
@@ -213,9 +213,9 @@ if (fs.existsSync(readmePath)) {
   }
 
   lines.splice(headerIndex + 2, tableEnd - (headerIndex + 2), ...generatedRows);
-  readme = lines.join('\\n');
+  readme = lines.join('\n');
 
-  const headingPattern = /Automated Verification & Test Suites \\(\\d+\\/\\d+ Passing\\)/g;
+  const headingPattern = /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/g;
   if (!headingPattern.test(readme)) {
     throw new Error('README automated-verification heading is missing its generated pass-count marker.');
   }
@@ -226,7 +226,7 @@ if (fs.existsSync(readmePath)) {
 
   // Keep the narrative count aligned when the README uses the current summary
   // paragraph; older layouts may not contain this paragraph.
-  const latestSummary = /The latest verified CI run recorded \\*\\*\\d+ passing automated checks\\*\\*: \\d+ Vitest tests across \\d+ suites and one Electron UI\\/preload\\/IPC smoke test\\./;
+  const latestSummary = /The latest verified CI run recorded \*\*\d+ passing automated checks\*\*: \d+ Vitest tests across \d+ suites and one Electron UI\/preload\/IPC smoke test\./;
   if (latestSummary.test(readme)) {
     readme = readme.replace(
       latestSummary,
@@ -236,11 +236,11 @@ if (fs.existsSync(readmePath)) {
 
   // Update older README command comments only when those comments exist.
   readme = readme.replace(
-    /# Run the \\d+ Vitest unit & integration tests/g,
+    /# Run the \d+ Vitest unit & integration tests/g,
     `# Run the ${totalUnitTests} Vitest unit & integration tests`
   );
   readme = readme.replace(
-    /# Generate the automated test results markdown report \\(\\d+ total verified (?:tests|checks)\\)/g,
+    /# Generate the automated test results markdown report \(\d+ total verified (?:tests|checks)\)/g,
     `# Generate the automated test results markdown report (${grandTotalTests} total verified checks)`
   );
 
