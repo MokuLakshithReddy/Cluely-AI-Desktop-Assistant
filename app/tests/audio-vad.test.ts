@@ -91,6 +91,21 @@ describe('Audio Processing, VAD & Crosstalk Subsystem', () => {
     expect(isSpeaking).toBe(false);
   });
 
+  it('discards buffered speech without emitting a segment during emergency teardown', () => {
+    const vad = new VADProcessor({ energyThreshold: 0.02 });
+    let emitted = false;
+    vad.onSpeechEnd = () => { emitted = true; };
+    const speechFrame = new Float32Array(512);
+    for (let i = 0; i < speechFrame.length; i++) {
+      speechFrame[i] = Math.sin((2 * Math.PI * 300 * i) / 16000) * 0.3;
+    }
+    vad.processFrame(speechFrame);
+    expect(vad.isVoiceActive()).toBe(true);
+    vad.discard();
+    expect(vad.isVoiceActive()).toBe(false);
+    expect(emitted).toBe(false);
+  });
+
   it('correctly encodes Float32Array into valid 16-bit PCM WAV with RIFF header', () => {
     const samples = new Float32Array(1600).fill(0.25);
     const wav = encodeWAV(samples, 1, 16000, 16);
