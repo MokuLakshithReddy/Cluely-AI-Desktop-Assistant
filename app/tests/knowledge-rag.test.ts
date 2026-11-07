@@ -25,7 +25,7 @@ function buildTextPdf(pageTexts: string[]): ArrayBuffer {
     Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'ascii'),
     ...pageTexts.map(text => {
       const commands = text
-        ? `BT /F1 12 Tf 72 720 Td (${text.replace(/([\\\\()])/g, '\\\\$1')}) Tj ET`
+        ? `BT /F1 12 Tf 72 720 Td (${text.replace(/([\\()])/g, '\\\\$1')}) Tj ET`
         : 'BT ET';
       const compressed = deflateSync(Buffer.from(commands, 'latin1'));
       return Buffer.concat([
