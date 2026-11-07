@@ -3,44 +3,39 @@ name: CI Verification Suite
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ '**' ]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   verify:
     name: Build & Verify (Windows)
     runs-on: windows-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
-
       - name: Install dependencies
         run: npm ci
-
       - name: Run Type Check & Lint
         run: npm run lint
-
       - name: Run Vitest Suite
         run: npm test
-
       - name: Build Renderer and Electron Bundle
         run: npm run build
-
       - name: Run Verified Electron Smoke Test (Clean exit code 0)
         run: npm run smoke
-
       - name: Generate Automated Test Evidence Report
         run: npm run test:report
-
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -49,10 +44,83 @@ jobs:
             app/dist
             app/dist-electron
           retention-days: 7
-
       - name: Upload Test Evidence Report
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: docs/testing/TEST_RESULTS.md
           retention-days: 14
+
+  package:
+    name: Package Electron (${{ matrix.platform }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-portable
+            expected-extension: .exe
+          - os: macos-latest
+            platform: macos-dmg
+            expected-extension: .dmg
+          - os: ubuntu-latest
+            platform: linux-appimage
+            expected-extension: .AppImage
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+      - name: Install dependencies
+        run: npm ci
+      - name: Build application
+        run: npm run build
+      - name: Create platform distributable (unsigned PR validation)
+        working-directory: app
+        run: npx electron-builder --publish never -c.forceCodeSigning=false
+      - name: Verify expected distributable exists
+        env:
+          EXPECTED_EXTENSION: ${{ matrix.expected-extension }}
+        run: node -e "const fs=require('fs');const p='app/release';const ext=process.env.EXPECTED_EXTENSION;const files=fs.existsSync(p)?fs.readdirSync(p):[];const matches=files.filter(f=>f.endsWith(ext));if(!matches.length){console.error('Missing '+ext+' artifact in '+p,files);process.exit(1)}console.log('Verified package artifact(s):',matches)"
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluely-${{ matrix.platform }}
+          path: app/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release-contract:
+    name: Validate Release Tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require tag version to match package versions and tested main
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          root_version="$(node -p "require('./package.json').version")"
+          app_version="$(node -p "require('./app/package.json').version")"
+          if [[ "$tag_version" != "$root_version" || "$tag_version" != "$app_version" ]]; then
+            echo "Release tag $GITHUB_REF_NAME must match root ($root_version) and app ($app_version) package versions."
+            exit 1
+          fi
+          git fetch origin main
+          main_sha="$(git rev-parse origin/main)"
+          if [[ "$GITHUB_SHA" != "$main_sha" ]]; then
+            echo "Release tag must point at the exact main commit that passed CI."
+            echo "Tag: $GITHUB_SHA"
+            echo "Main: $main_sha"
+            exit 1
+          fi
