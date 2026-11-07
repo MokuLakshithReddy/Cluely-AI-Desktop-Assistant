@@ -367,8 +367,10 @@ async function runDesktopE2E({ windowCoordinator }) {
             recordingStopped: state.isRecording === false,
             bothTracksStopped: capture.micTrack.stopped && capture.loopbackTrack.stopped,
             contextCount: contexts.slice(contextStart).length,
+            processorCount: processors.length - processorStart,
             contextClosedStates: contexts.slice(contextStart).map(context => context.closed),
             bothContextsClosed: contexts.slice(contextStart).length === 2 &&
+              processors.length - processorStart === 2 &&
               contexts.slice(contextStart).every(context => context.closed),
             activityFlagsCleared: !state.meHasVoiceActivity && !state.themHasVoiceActivity,
             userVisibleErrorRecorded: Boolean(state.session?.transcript?.some(item =>
@@ -524,6 +526,16 @@ async function runDesktopE2E({ windowCoordinator }) {
     for (const scenario of unexpectedTrackEndResult.scenarios) {
       assert.equal(scenario.recordingStopped, true, `${scenario.source} track termination must stop recording`);
       assert.equal(scenario.bothTracksStopped, true, `${scenario.source} track termination must stop both audio tracks`);
+      assert.equal(
+        scenario.contextCount,
+        2,
+        `${scenario.source} capture must create exactly one microphone/loopback AudioContext pair: ${JSON.stringify(scenario)}`
+      );
+      assert.equal(
+        scenario.processorCount,
+        2,
+        `${scenario.source} capture must create exactly one microphone/loopback processor pair: ${JSON.stringify(scenario)}`
+      );
       assert.equal(
         scenario.bothContextsClosed,
         true,
