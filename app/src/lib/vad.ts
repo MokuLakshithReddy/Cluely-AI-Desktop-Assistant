@@ -4,7 +4,6 @@
  * - 48kHz to 16kHz downsampling
  * - Adaptive RMS energy and Zero-Crossing Rate (ZCR) speech classification
  * - 300ms silence redemption window and 20s max segment timeout
- * - Crosstalk / Echo suppression (zeros local mic if system audio is active)
  * - 16-bit PCM RIFF WAV encoder
  */
 
@@ -102,12 +101,7 @@ export class VADProcessor {
   /**
    * Process a 16kHz audio frame with speech discrimination
    */
-  public processFrame(frame: Float32Array, isEchoSuppressed: boolean = false): boolean {
-    if (isEchoSuppressed) {
-      // If echo suppression is active, zero out frame
-      frame = new Float32Array(frame.length);
-    }
-
+  public processFrame(frame: Float32Array): boolean {
     const energy = this.calculateRms(frame);
     const zcr = this.calculateZcr(frame);
     const now = Date.now();

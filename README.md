@@ -37,7 +37,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 * **Speaker Separation (`me` vs `them`)**: Ingests local microphone speech (`role: "me"`) and remote participants via Windows system audio loopback (`role: "them"`) as distinct audio streams.
 * **Driver-Free Windows Loopback Capture**: Implements `session.defaultSession.setDisplayMediaRequestHandler` with `audio: "loopback"` in the privileged Electron main process, eliminating the need for virtual audio cables or third-party audio drivers.
 * **Voice Activity Detection (VAD)**: Audio buffers are resampled from 48kHz to 16kHz with dynamic RMS energy tracking, Zero-Crossing Rate (ZCR) human voice discrimination, a 300ms silence redemption window, and a 20-second segment cap.
-* **Acoustic Crosstalk & Echo Suppression**: Automatically zeroes out local microphone input when remote participant audio is active (`themHasVoiceActivity`), preventing laptop speaker sound from polluting the user's transcript.
+* **Independent Dual-Source Capture**: Microphone and system loopback are processed independently, preserving genuine local speech when participants speak simultaneously. Browser/device echo cancellation remains enabled on microphone input; overlapping speech is never intentionally zeroed based on remote VAD activity.
 * **Sub-Second Speech-to-Text (STT)**: Encodes speech segments into standard 16-bit PCM RIFF WAV chunks dispatched to ultra-fast cloud STT (**Groq Whisper Large v3 Turbo** at <300ms latency or OpenAI Whisper), populating a live chronological transcript timeline with speaker labels.
 
 ### 🖥️ Real-Time Display Perception & Vision Grounding
@@ -314,7 +314,7 @@ The repository features **91 automated checks** across 15 test files (14 Vitest 
 
 Documented in detail in [`docs/production/PRODUCTION_READINESS.md`](docs/production/PRODUCTION_READINESS.md), these 6 operational areas were verified against real desktop environments:
 
-1. **Dual Audio Capture & Loopback**: Verified with YouTube/call audio output playing while speaking into a microphone. Remote speech is captured under `[Speaker]`, and real-time crosstalk suppression zeroes local mic input to eliminate laptop speaker feedback.
+1. **Dual Audio Capture & Loopback**: Microphone and loopback are processed as independent VAD sources. Overlapping local and remote speech is preserved; browser/device echo cancellation remains enabled for microphone input. Device-backed verification should still be performed on supported hardware.
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
 3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
 4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. The vault safely rejects unencrypted disk writes if secure storage is unavailable (`safeFail`).
