@@ -319,6 +319,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
 
       {/* Main Tab Area */}
       <div className="flex-1 overflow-y-auto p-8 select-text">
+        {state.persistenceError && (
+          <div role="alert" className="mb-5 p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs text-rose-300 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{state.persistenceError}</span>
+          </div>
+        )}
         {activeTab === 'models' && (
           <div className="max-w-xl space-y-6">
             <div>
