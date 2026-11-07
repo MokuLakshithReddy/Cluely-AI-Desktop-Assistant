@@ -45,9 +45,12 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     expect(() => router.sanitizePatchState({ knowledgeDocs: exactChunk })).not.toThrow();
 
     expect(() => router.validateAiRequestOptions({
-      model: 'gemini-3.8-flash', mode: 'copilot', query: 'x'.repeat(20000),
-      conversationHistory: Array(50).fill({ role: 'user', content: 'x' }),
-      knowledgePassages: Array(10).fill('passage'),
+      model: 'gemini-3.8-flash',
+      mode: 'copilot',
+      query: 'x'.repeat(20000),
+      conversationHistory: Array(50).fill({ role: 'user', content: 'x'.repeat(2000) }),
+      recentTranscript: Array(5).fill({ text: 'x'.repeat(10000) }),
+      knowledgePassages: Array(10).fill('x'.repeat(8000)),
     })).not.toThrow();
   });
 
@@ -69,6 +72,15 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     expect(() => router.validateAiRequestOptions({
       model: 'gemini-3.8-flash', mode: 'copilot', query: 'x'.repeat(20001),
     })).toThrow(/AI query exceeds/);
+
+    const exactEncodedByteCap = Buffer.alloc(6 * 1024 * 1024).toString('base64');
+    expect(exactEncodedByteCap.length).toBe(8 * 1024 * 1024);
+    expect(() => router.validateSttAudioPayload(exactEncodedByteCap))
+      .toThrow(/canonical mono 16 kHz/); // Reaches format validation: size boundary itself is accepted.
+
+    const overEncodedByteCap = Buffer.alloc((6 * 1024 * 1024) + 3).toString('base64');
+    expect(() => router.validateSttAudioPayload(overEncodedByteCap))
+      .toThrow(/8 MiB encoded size limit/);
 
     const exactlyTwentySeconds = buildPcmWav(16000 * 20).toString('base64');
     expect(router.validateSttAudioPayload(exactlyTwentySeconds).byteLength).toBe(44 + (16000 * 20 * 2));
