@@ -8,6 +8,61 @@ describe('IPC Security & Origin Validation Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
   const router = new IpcRouter(trustedHtml);
 
+  it('rejects aggregate knowledge content and chunk overflow', () => {
+    const docs = Array.from({ length: 8 }, (_, index) => ({
+      id: `doc_${index}`,
+      title: `Document ${index}`,
+      content: 'x'.repeat(1700000),
+      chunks: [],
+    }));
+    expect(() => router.sanitizePatchState({ knowledgeDocs: docs }))
+      .toThrow(/aggregate document content exceeds/);
+
+    const tooManyChunks = Array.from({ length: 6 }, (_, index) => ({
+      id: `chunk_doc_${index}`,
+      title: `Chunk document ${index}`,
+      content: 'content',
+      chunks: Array(2000).fill('chunk'),
+    }));
+    expect(() => router.sanitizePatchState({ knowledgeDocs: tooManyChunks }))
+      .toThrow(/aggregate chunk count exceeds/);
+
+    const oversizedChunk = [{
+      id: 'large_chunk_doc',
+      title: 'Large chunk',
+      content: 'content',
+      chunks: ['x'.repeat(256 * 1024 + 1)],
+    }];
+    expect(() => router.sanitizePatchState({ knowledgeDocs: oversizedChunk }))
+      .toThrow(/chunk 0 exceeds the 256 KiB limit/);
+  });
+
+  it('rejects oversized AI generation context before provider execution', () => {
+    expect(() => router.validateAiRequestOptions({
+      model: 'gemini-3.8-flash', mode: 'copilot', query: 'x'.repeat(20001),
+    })).toThrow(/AI query exceeds/);
+
+    expect(() => router.validateAiRequestOptions({
+      model: 'gemini-3.8-flash', mode: 'copilot', query: 'ok',
+      conversationHistory: Array(51).fill({ role: 'user', content: 'x' }),
+    })).toThrow(/conversation history exceeds/);
+
+    expect(() => router.validateAiRequestOptions({
+      model: 'gemini-3.8-flash', mode: 'copilot', query: 'ok',
+      knowledgePassages: Array(11).fill('x'),
+    })).toThrow(/knowledge context exceeds/);
+
+    expect(() => router.validateAiRequestOptions({
+      model: 'gemini-3.8-flash', mode: 'copilot', query: 'ok',
+      recentTranscript: Array(101).fill({ text: 'speech' }),
+    })).toThrow(/transcript context exceeds/);
+
+    expect(() => router.validateAiRequestOptions({
+      model: 'gemini-3.8-flash', mode: 'copilot', query: 'ok',
+      screenshotBase64: 'x'.repeat(8 * 1024 * 1024 + 1),
+    })).toThrow(/Screenshot context exceeds/);
+  });
+
   it('assigns unique main-process operation IDs and rejects duplicate active correlation IDs', () => {
     const registry = new ActiveRequestRegistry();
     const first = registry.start('same-renderer-id');
