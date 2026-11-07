@@ -1,7 +1,7 @@
 # Production Readiness Assessment
 
 **Assessment date:** 2026-11-07  
-**Audited source revision:** `911c61bb62585e256b251aa022b6ecea3ed3d9a5`  
+**Audited source revision:** `5d62dd721fa86e3fb355d4feeec15f4fae1da5f6`  
 **Baseline CI evidence:** [CI run 42384194110](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42384194110)
 
 ## Status
@@ -17,9 +17,9 @@ This is a dated assessment of the source revision above. Re-run release gates ag
 | TypeScript and lint | CI `npm run lint` | Static checks only |
 | Unit and integration tests | CI Vitest suite | Includes synthetic inputs and mocks |
 | Electron UI/IPC smoke | Dashboard, preload, IPC session persistence, purge, graceful shutdown | Does not use physical capture hardware |
-| Windows package generation | CI package job | Confirms a portable executable is produced; does not launch-test the packaged artifact |
-| macOS package generation | CI package job | Confirms a DMG is produced; does not install/launch-test the packaged app |
-| Linux package generation | CI package job | Confirms an AppImage is produced; does not launch-test the packaged app |
+| Windows packaged-app smoke | CI native Windows package job | Builds the portable executable and launches it to verify packaged renderer/preload/IPC readiness and controlled shutdown |
+| macOS packaged-app smoke | CI native macOS package job | Mounts the DMG, extracts the app bundle, launches it, and verifies controlled shutdown |
+| Linux packaged-app smoke | CI native Linux package job | Launches the AppImage under a virtual display and verifies packaged renderer/preload/IPC readiness and controlled shutdown |
 
 The active-capture purge E2E mounts the production capture hook but injects fake media devices, tracks, and audio contexts. It is orchestration/teardown coverage, not physical microphone or loopback testing.
 
@@ -41,18 +41,15 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 
 ## Release blockers
 
-1. **Supported runtime:** upgrade away from the end-of-life Electron 34 / Node 20 baseline. See [#47](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/47).
-2. **Credential migration:** move the vault to asynchronous `safeStorage` APIs and preserve existing encrypted credentials. See [#19](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/19).
-3. **Packaged launch tests:** install or launch each actual Windows, macOS, and Linux artifact on clean runners/VMs, rather than checking only for an output file extension. See [#48](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/48).
-4. **Device-backed validation:** test real microphone, loopback audio, display capture, OS permission denial/revocation, device disconnects, provider errors, emergency stop, and purge on every claimed OS. See [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49).
-5. **Release provenance and signing:** publish a new version from the exact verified commit, with production signing/notarization and artifact checksums. The published v1.0.1 release is not the latest source revision. See [#50](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/50).
-6. **Documentation and licensing:** keep readiness, release, security claims, and license terms aligned with the implementation. See [#51](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/51) and [#52](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/52).
+1. **Real-device validation:** execute and attach the Windows, macOS, and supported Linux device matrix for microphone, system audio, display permissions, emergency stop, purge, and live-provider error recovery. The matrix is a runbook, not evidence of completed tests. See [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49).
+2. **Dependency security:** remediate all critical/high dependency advisories in the committed lockfile and verify the resulting dependency tree. Audit evidence is tracked in [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/60).
+3. **Versioned release:** publish v1.0.2 only after the exact release tag, root/app package versions, signed/notarized per-platform artifacts, packaged smoke evidence, and signed checksum manifest all agree. See [#50](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/50).
 
 ## Important implementation facts
 
 - Microphone and system-loopback audio use independent VAD pipelines. The implementation intentionally preserves overlapping speech; it does not apply the older cross-source microphone-suppression behavior.
 - The production credential path uses Electron `safeStorage`. The AES-256-GCM branch in `CredentialVault` is available only when an explicit test key is injected; it is not a production fallback.
-- The audited baseline vault calls synchronous `safeStorage` methods. Do not claim the asynchronous migration is complete until #19 is verified.
+- The credential vault uses Electron's asynchronous `safeStorage` APIs. Existing ciphertext from the legacy synchronous API is opened by the asynchronous decryptor; key-rotation results are re-encrypted and persisted under a serialized vault operation queue. The Linux backend allowlist remains fail-closed.
 - Data purge removes application-managed session and credential data and stops active capture through the application lifecycle. It is not forensic or physical erasure.
 - Electron `setContentProtection` is a platform-provided display-capture mitigation. It cannot guarantee invisibility in every capture tool, OS version, remote desktop path, or external hardware capture setup.
 

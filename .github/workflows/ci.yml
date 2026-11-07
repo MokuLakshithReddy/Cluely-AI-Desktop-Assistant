@@ -26,6 +26,19 @@ jobs:
           cache-dependency-path: 'package-lock.json'
       - name: Install dependencies
         run: npm ci
+      - name: Capture npm audit report
+        shell: bash
+        run: npm audit --json > npm-audit.json || true
+      - name: Reject unapproved high and critical npm advisories
+        run: npm audit --audit-level=high
+      - name: Upload npm audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: npm-audit.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Run Type Check & Lint
         run: npm run lint
       - name: Run Vitest Suite
@@ -50,7 +63,6 @@ jobs:
           name: test-results
           path: docs/testing/TEST_RESULTS.md
           retention-days: 14
-
   package:
     name: Package Electron (${{ matrix.platform }})
     needs: verify

@@ -1,0 +1,302 @@
+name: Signed Production Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  validate:
+    name: Validate signed release tag and source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js 24.22.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+      - name: Require production-readiness issues to be completed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Do not publish while a runtime, credential, packaged-launch,
+          # hardware-validation, documentation, licensing, or dependency
+          # security blocker remains open.
+          for issue in 19 47 48 49 51 52 60; do
+            response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}")"
+            state="$(jq -r '.state' <<<"$response")"
+            reason="$(jq -r '.state_reason // empty' <<<"$response")"
+            if [[ "$state" != "closed" || "$reason" != "completed" ]]; then
+              echo "Release blocked: issue #${issue} is not closed as completed (state=${state}, reason=${reason})."
+              exit 1
+            fi
+          done
+      - name: Verify tag version, main commit, and signed tag
+        shell: bash
+        env:
+          RELEASE_GPG_PUBLIC_KEY: ${{ secrets.RELEASE_GPG_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          root_version="$(node -p "require('./package.json').version")"
+          app_version="$(node -p "require('./app/package.json').version")"
+          if [[ "$tag_version" != "$root_version" || "$tag_version" != "$app_version" ]]; then
+            echo "Tag version $tag_version must match root ($root_version) and app ($app_version)."
+            exit 1
+          fi
+          git fetch origin main
+          main_sha="$(git rev-parse origin/main)"
+          if [[ "$GITHUB_SHA" != "$main_sha" ]]; then
+            echo "Release tag must point to the exact current main commit that passed CI."
+            echo "Tag: $GITHUB_SHA"
+            echo "Main: $main_sha"
+            exit 1
+          fi
+          if [[ -z "$RELEASE_GPG_PUBLIC_KEY" ]]; then
+            echo "RELEASE_GPG_PUBLIC_KEY is required to verify signed release tags."
+            exit 1
+          fi
+          printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
+          git verify-tag "$GITHUB_REF_NAME"
+
+  verify:
+    name: Verify release source
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js 24.22.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Capture dependency audit report
+        shell: bash
+        run: |
+          npm audit --json > npm-audit.json || true
+      - name: Reject critical and high dependency vulnerabilities
+        run: npm audit --audit-level=high
+      - name: Type check and lint
+        run: npm run lint
+      - name: Run unit and integration tests
+        run: npm test
+      - name: Build application
+        run: npm run build
+      - name: Run Electron UI/IPC smoke
+        run: npm run smoke
+      - name: Generate test evidence
+        run: npm run test:report
+      - name: Upload dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dependency-audit
+          path: npm-audit.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  package:
+    name: Signed package (${{ matrix.platform }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-portable
+            extension: .exe
+          - os: macos-latest
+            platform: macos-dmg
+            extension: .dmg
+          - os: ubuntu-latest
+            platform: linux-appimage
+            extension: .AppImage
+    env:
+      WIN_CSC_LINK: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_LINK || '' }}
+      WIN_CSC_KEY_PASSWORD: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_KEY_PASSWORD || '' }}
+      CSC_LINK: ${{ matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js 24.22.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Require Windows Authenticode signing credentials
+        if: matrix.platform == 'windows-portable'
+        shell: pwsh
+        run: |
+          if (-not $env:WIN_CSC_LINK -or -not $env:WIN_CSC_KEY_PASSWORD) {
+            throw "Set WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD before publishing a Windows release."
+          }
+      - name: Require Apple Developer ID and notarization credentials
+        if: matrix.platform == 'macos-dmg'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required macOS signing/notarization environment: $name"
+              exit 1
+            fi
+          done
+      - name: Install macOS DMG tooling
+        if: matrix.platform == 'macos-dmg'
+        working-directory: app
+        run: npm install --no-save --package-lock=false --workspaces=false dmg-license@1.0.11
+      - name: Remove unused optional PDF.js Node canvas stub
+        working-directory: app
+        run: node -e "const fs=require('node:fs');const p='node_modules/pdfjs-dist/node_modules/@napi-rs/canvas';fs.rmSync(p,{recursive:true,force:true});"
+      - name: Create platform-specific release packaging configuration
+        working-directory: app
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+        run: node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');const signed=process.env.RELEASE_PLATFORM!=='linux-appimage';const config={...pkg.build,forceCodeSigning:signed};if(process.env.RELEASE_PLATFORM==='macos-dmg'){config.mac={...pkg.build.mac,notarize:true};}fs.writeFileSync('.release-builder.json',JSON.stringify(config,null,2));"
+      - name: Build signed production distributable
+        working-directory: app
+        run: npx electron-builder --publish never --config .release-builder.json
+      - name: Verify Windows Authenticode signature
+        if: matrix.platform == 'windows-portable'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw "Windows release executable was not produced." }
+          $signature = Get-AuthenticodeSignature $exe.FullName
+          if ($signature.Status -ne "Valid") { throw "Windows Authenticode signature is not valid: $($signature.Status)" }
+          Write-Host "Verified signed publisher:" $signature.SignerCertificate.Subject
+      - name: Verify macOS code signature and notarization
+        if: matrix.platform == 'macos-dmg'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_bundle="$(find app/release -maxdepth 4 -type d -name '*.app' -print -quit)"
+          dmg="$(find app/release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          if [[ -z "$app_bundle" || -z "$dmg" ]]; then
+            echo "Expected signed .app bundle and DMG were not produced."
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          xcrun stapler validate "$dmg"
+      - name: Verify expected Linux AppImage
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find app/release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$appimage" ]]; then echo "Linux AppImage was not produced"; exit 1; fi
+          chmod +x "$appimage"
+      - name: Ensure Linux virtual display is available
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+      - name: Launch-test packaged Windows executable
+        if: matrix.platform == 'windows-portable'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
+          node app/tests/packaged-smoke.cjs $exe.FullName
+      - name: Launch-test packaged macOS application
+        if: matrix.platform == 'macos-dmg'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount_dir="$RUNNER_TEMP/cluely-release-dmg"
+          app_copy="$RUNNER_TEMP/Cluely Copilot.app"
+          dmg="$(find app/release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          mkdir -p "$mount_dir"
+          hdiutil attach "$dmg" -nobrowse -quiet -mountpoint "$mount_dir"
+          cleanup() { hdiutil detach "$mount_dir" -quiet || true; }
+          trap cleanup EXIT
+          app_bundle="$(find "$mount_dir" -maxdepth 3 -type d -name '*.app' -print -quit)"
+          if [[ -z "$app_bundle" ]]; then echo "No app bundle found in DMG"; exit 1; fi
+          ditto "$app_bundle" "$app_copy"
+          hdiutil detach "$mount_dir" -quiet
+          trap - EXIT
+          node app/tests/packaged-smoke.cjs "$app_copy/Contents/MacOS/Cluely Copilot"
+      - name: Launch-test packaged Linux AppImage
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find app/release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          chmod +x "$appimage"
+          node app/tests/packaged-smoke.cjs "$appimage"
+      - name: Upload signed platform artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: app/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub release and signed checksums
+    needs: [validate, verify, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Require all three platform assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          find release-assets -maxdepth 1 -type f -print
+          for ext in exe dmg AppImage; do
+            if ! find release-assets -maxdepth 1 -type f -iname "*.$ext" | grep -q .; then
+              echo "Missing production release artifact: .$ext"
+              exit 1
+            fi
+          done
+      - name: Generate and sign SHA-256 manifest
+        shell: bash
+        env:
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_GPG_PRIVATE_KEY" || -z "$RELEASE_GPG_PASSPHRASE" ]]; then
+            echo "RELEASE_GPG_PRIVATE_KEY and RELEASE_GPG_PASSPHRASE are required to sign the artifact manifest."
+            exit 1
+          fi
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+          cd release-assets
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" --armor --detach-sign --output SHA256SUMS.txt.asc SHA256SUMS.txt
+      - name: Publish versioned GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Cluely Copilot $GITHUB_REF_NAME" --generate-notes --verify-tag

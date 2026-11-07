@@ -16,33 +16,45 @@ function replaceRequired(content, pattern, replacement, label) {
 
 console.log('Generating automated test evidence report from real test runners...');
 
-// 1. Run Vitest with JSON reporter
-let vitestJsonRaw = '';
+// 1. Run Vitest with JSON reporter.
+//
+// Vitest 5 writes JSON reports to a file by default (rather than stdout).
+// Use an explicit path so the parser consumes the report produced by this run,
+// even when Vitest exits non-zero because one or more assertions failed.
+const vitestJsonFile = '.vitest-json-results.json';
+const vitestJsonPath = path.join(appDir, vitestJsonFile);
 const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
+fs.rmSync(vitestJsonPath, { force: true });
+let vitestCommandError = null;
 try {
-  vitestJsonRaw = execSync(`${npxCmd} vitest run --reporter=json`, {
+  execSync(`${npxCmd} vitest run --reporter=json --outputFile=${vitestJsonFile}`, {
     cwd: appDir,
     encoding: 'utf8',
     env: { ...process.env, CI: 'true' },
     maxBuffer: 10 * 1024 * 1024,
   });
 } catch (err) {
-  // execSync throws if tests fail, but stdout still contains JSON
-  vitestJsonRaw = err.stdout ? err.stdout.toString() : '';
+  // A non-zero exit is expected when tests fail. Vitest still writes its JSON
+  // report, which is the authoritative source for the pass/fail counts.
+  vitestCommandError = err;
 }
 
 let vitestData;
 try {
-  // Find JSON start
-  const jsonStart = vitestJsonRaw.indexOf('{');
-  if (jsonStart >= 0) {
-    vitestData = JSON.parse(vitestJsonRaw.slice(jsonStart));
-  } else {
-    throw new Error('No JSON output found in Vitest output');
-  }
+  vitestData = JSON.parse(fs.readFileSync(vitestJsonPath, 'utf8'));
 } catch (e) {
-  console.error('Failed to parse Vitest JSON:', e);
+  console.error('Failed to read or parse Vitest JSON report:', e);
+  if (vitestCommandError) {
+    console.error('Vitest command diagnostics:', {
+      message: vitestCommandError.message,
+      stdout: vitestCommandError.stdout?.toString().slice(-4000),
+      stderr: vitestCommandError.stderr?.toString().slice(-4000),
+    });
+  }
   process.exit(1);
+} finally {
+  fs.rmSync(vitestJsonPath, { force: true });
 }
 
 // 2. Run Verified Electron Smoke Test
@@ -148,27 +160,38 @@ if (!smokePassed && (smokeStdout || smokeStderr || smokeResult.error)) {
 fs.writeFileSync(resultsPath, md, 'utf8');
 console.log(`Successfully generated verified test report at: ${resultsPath}`);
 
-// 4. Synchronize the README suite rows and summaries from the real test data.
+// 4. Synchronize the README suite table and verification totals.
+//
+// The README has had more than one documented table layout. Update the
+// existing table in place and preserve its schema instead of relying on a
+// specific callout or heading immediately after it.
 const readmePath = path.join(repoRoot, 'README.md');
 if (fs.existsSync(readmePath)) {
-  // Windows checkouts may use CRLF; normalize before parsing Markdown anchors.
   let readme = fs.readFileSync(readmePath, 'utf8').replace(/\r\n/g, '\n');
-  const heading = '| Test Suite File | Subsystem / Focus Area | Total Tests | Passed | Status |';
-  const headingStart = readme.indexOf(heading);
-  const firstBreak = headingStart >= 0 ? readme.indexOf('\n', headingStart) : -1;
-  const alignBreak = firstBreak >= 0 ? readme.indexOf('\n', firstBreak + 1) : -1;
-  const tableEnd = alignBreak >= 0 ? readme.indexOf('\n\n> [!NOTE]', alignBreak) : -1;
-
-  if (headingStart < 0 || firstBreak < 0 || alignBreak < 0 || tableEnd < 0) {
-    throw new Error('README test table structure changed; refusing to silently skip test-count synchronization.');
+  const lines = readme.split('\n');
+  const headerIndex = lines.findIndex(line => /^\|\s*Test Suite(?: File)?\s*\|/.test(line));
+  if (headerIndex < 0) {
+    throw new Error('README test suite table is missing; refusing to publish stale test evidence.');
   }
 
-  const existingRows = readme.slice(alignBreak + 1, tableEnd).split('\n');
+  const headerCells = lines[headerIndex].split('|').slice(1, -1).map(cell => cell.trim());
+  const separatorIndex = headerIndex + 1;
+  if (separatorIndex >= lines.length || !/^\|\s*:?-{3,}/.test(lines[separatorIndex])) {
+    throw new Error('README test suite table has no valid Markdown separator row.');
+  }
+
+  let tableEnd = separatorIndex + 1;
+  while (tableEnd < lines.length && /^\|/.test(lines[tableEnd])) tableEnd++;
+
   const descriptions = new Map();
-  for (const row of existingRows) {
+  for (const row of lines.slice(separatorIndex + 1, tableEnd)) {
     const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
-    const codeMatch = cells[0]?.match(new RegExp('`([^`]+)`'));
-    if (codeMatch && cells[1]) descriptions.set(codeMatch[1], cells[1]);
+    const codeMatch = cells[0]?.match(/`([^`]+)`/);
+    const linkMatch = cells[0]?.match(/\]\(app\/tests\/([^)]+)\)/);
+    const fileName = codeMatch?.[1] || linkMatch?.[1];
+    if (fileName && cells[1] && fileName !== 'Total') {
+      descriptions.set(fileName, cells[1]);
+    }
   }
 
   const generatedRows = [];
@@ -180,38 +203,57 @@ if (fs.existsSync(readmePath)) {
     const fallbackDescription = suite.assertionResults[0]?.ancestorTitles[0] || fileName;
     const description = descriptions.get(fileName) ||
       (fileName === 'window-coordinator.test.ts'
-        ? 'Window close recovery, macOS reinitialization & listener idempotency'
+        ? 'Window lifecycle and macOS close-all recovery'
         : fallbackDescription);
-    generatedRows.push(`| [\`${fileName}\`](app/tests/${fileName}) | ${description} | ${total} | ${passed} | **${status}** |`);
+
+    if (headerCells.length === 3) {
+      generatedRows.push(`| \`${fileName}\` | ${description} | ${passed} |`);
+    } else if (headerCells.length === 5) {
+      generatedRows.push(`| [\`${fileName}\`](app/tests/${fileName}) | ${description} | ${total} | ${passed} | **${status}** |`);
+    } else {
+      throw new Error(`Unsupported README test table schema: expected 3 or 5 columns, found ${headerCells.length}.`);
+    }
   }
 
-  generatedRows.push(`| [\`electron-smoke.cjs\`](app/tests/electron-smoke.cjs) | Electron Dashboard UI/IPC E2E, purge, persistence & graceful shutdown | 1 | ${smokePassed ? 1 : 0} | **${smokePassed ? 'PASSED' : 'FAILED'}** |`);
-  generatedRows.push(`| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`);
+  const smokeDescription = 'Electron Dashboard, preload/IPC persistence and shutdown';
+  if (headerCells.length === 3) {
+    generatedRows.push(`| \`electron-smoke.cjs\` | ${smokeDescription} | ${smokePassed ? 1 : 0} |`);
+    generatedRows.push(`| **Total** | **${totalSuites} Vitest suites + 1 Electron smoke check** | **${grandPassedTests}** |`);
+  } else {
+    generatedRows.push(`| [\`electron-smoke.cjs\`](app/tests/electron-smoke.cjs) | ${smokeDescription} | 1 | ${smokePassed ? 1 : 0} | **${smokePassed ? 'PASSED' : 'FAILED'}** |`);
+    generatedRows.push(`| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **${grandTotalTests}** | **${grandPassedTests}** | **${passRate}% PASS** |`);
+  }
 
-  readme = readme.slice(0, alignBreak + 1) + generatedRows.join('\n') + readme.slice(tableEnd);
-  readme = replaceRequired(
-    readme,
-    /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/,
-    `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`,
-    'README test heading'
+  lines.splice(headerIndex + 2, tableEnd - (headerIndex + 2), ...generatedRows);
+  readme = lines.join('\n');
+
+  const headingPattern = /Automated Verification & Test Suites \(\d+\/\d+ Passing\)/g;
+  if (!headingPattern.test(readme)) {
+    throw new Error('README automated-verification heading is missing its generated pass-count marker.');
+  }
+  readme = readme.replace(
+    headingPattern,
+    `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`
   );
-  readme = replaceRequired(
-    readme,
-    /The repository features \*\*\d+ automated checks\*\* across \d+ test files \([^)]*\), with a verified \*\*\d+% pass rate\*\*:/,
-    `The repository features **${grandTotalTests} automated checks** across ${totalSuites + 1} test files (${totalSuites} Vitest suites + 1 Electron UI/preload/IPC E2E smoke test), with a verified **${passRate}% pass rate**:`,
-    'README test summary'
+
+  // Keep the narrative count aligned when the README uses the current summary
+  // paragraph; older layouts may not contain this paragraph.
+  const latestSummary = /The latest verified CI run recorded \*\*\d+ passing automated checks\*\*: \d+ Vitest tests across \d+ suites and one Electron UI\/preload\/IPC smoke test\./;
+  if (latestSummary.test(readme)) {
+    readme = readme.replace(
+      latestSummary,
+      `The latest verified CI run recorded **${grandPassedTests} passing automated checks**: ${passedUnitTests} Vitest tests across ${totalSuites} suites and one Electron UI/preload/IPC smoke test.`
+    );
+  }
+
+  // Update older README command comments only when those comments exist.
+  readme = readme.replace(
+    /# Run the \d+ Vitest unit & integration tests/g,
+    `# Run the ${totalUnitTests} Vitest unit & integration tests`
   );
-  readme = replaceRequired(
-    readme,
-    /# Run the \d+ Vitest unit & integration tests/,
-    `# Run the ${totalUnitTests} Vitest unit & integration tests`,
-    'README Vitest command count'
-  );
-  readme = replaceRequired(
-    readme,
-    /# Generate the automated test results markdown report \(\d+ total verified (?:tests|checks)\)/,
-    `# Generate the automated test results markdown report (${grandTotalTests} total verified checks)`,
-    'README report command count'
+  readme = readme.replace(
+    /# Generate the automated test results markdown report \(\d+ total verified (?:tests|checks)\)/g,
+    `# Generate the automated test results markdown report (${grandTotalTests} total verified checks)`
   );
 
   fs.writeFileSync(readmePath, readme, 'utf8');
