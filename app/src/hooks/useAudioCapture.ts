@@ -326,7 +326,7 @@ export function useAudioCapture(
     }
   };
 
-  const stopDualCapture = () => {
+  const stopDualCapture = (flushPendingSpeech: boolean = true) => {
     captureSessionIdRef.current++;
 
     // Stop Microphone
@@ -339,7 +339,8 @@ export function useAudioCapture(
       micAudioCtxRef.current = null;
     }
     if (micVadRef.current) {
-      micVadRef.current.flush();
+      if (flushPendingSpeech) micVadRef.current.flush();
+      else micVadRef.current.discard();
       micVadRef.current = null;
     }
 
@@ -353,10 +354,23 @@ export function useAudioCapture(
       systemAudioCtxRef.current = null;
     }
     if (systemVadRef.current) {
-      systemVadRef.current.flush();
+      if (flushPendingSpeech) systemVadRef.current.flush();
+      else systemVadRef.current.discard();
       systemVadRef.current = null;
     }
 
-    patchState({ meHasVoiceActivity: false, themHasVoiceActivity: false });
+    void patchState({ meHasVoiceActivity: false, themHasVoiceActivity: false });
   };
+
+  const emergencyStop = async () => {
+    // Do not flush buffered speech into the transcription pipeline on emergency stop.
+    stopDualCapture(false);
+    await patchState({
+      isRecording: false,
+      meHasVoiceActivity: false,
+      themHasVoiceActivity: false,
+    });
+  };
+
+  return { emergencyStop };
 }
