@@ -1,55 +1,52 @@
 import { KnowledgeDoc } from './types';
 
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
+
 /**
- * Extracts plain text from binary PDF file data without external native dependencies.
- * Parses PDF text operators (BT...ET, Tj, TJ) and text streams.
+ * PDF.js extracts text from compressed streams, decodes supported font encodings,
+ * and handles page/resource structures instead of guessing from raw PDF bytes.
+ *
+ * The Node test runner uses PDF.js's built-in fake worker; packaged renderers use
+ * the worker asset emitted by Vite.
  */
+if (typeof process === 'undefined' || !process.versions?.node) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+}
+
 export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
-  const bytes = new Uint8Array(buffer);
-  let textContent = '';
-
-  // Convert bytes to string for token parsing
-  let binaryStr = '';
-  const step = 8192;
-  for (let i = 0; i < bytes.length; i += step) {
-    binaryStr += String.fromCharCode.apply(
-      null,
-      Array.from(bytes.subarray(i, Math.min(i + step, bytes.length)))
-    );
+  if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) {
+    throw new Error('PDF input is empty or invalid.');
   }
 
-  // 1. Match Tj text blocks: (Some Text) Tj
-  const tjRegex = /\(([^)]+)\)\s*Tj/g;
-  let match;
-  while ((match = tjRegex.exec(binaryStr)) !== null) {
-    const clean = match[1].replace(/\\([()\\])/g, '$1');
-    textContent += clean + ' ';
-  }
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(buffer),
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
 
-  // 2. Match TJ array blocks: [(Part 1) 20 (Part 2)] TJ
-  const tjArrayRegex = /\[([^\]]+)\]\s*TJ/g;
-  while ((match = tjArrayRegex.exec(binaryStr)) !== null) {
-    const inner = match[1];
-    const subRegex = /\(([^)]+)\)/g;
-    let subMatch;
-    while ((subMatch = subRegex.exec(inner)) !== null) {
-      const clean = subMatch[1].replace(/\\([()\\])/g, '$1');
-      textContent += clean + ' ';
+  const pdf = await loadingTask.promise;
+  const pageTexts: string[] = [];
+
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map(item => ('str' in item && typeof item.str === 'string' ? item.str : ''))
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (pageText) pageTexts.push(pageText);
+      page.cleanup();
     }
+  } finally {
+    await loadingTask.destroy();
   }
 
-  // 3. Fallback: If minimal PDF operators were found, extract printable ASCII sequences
-  if (textContent.trim().length < 50) {
-    const asciiRegex = /[a-zA-Z0-9.,;:!?'"()\s\-_]{6,}/g;
-    const asciiMatches = binaryStr.match(asciiRegex) || [];
-    // Filter out PDF syntax keywords
-    const filtered = asciiMatches.filter(
-      s => !s.includes('obj') && !s.includes('endobj') && !s.includes('xref') && !s.includes('stream')
-    );
-    textContent = filtered.join('\n');
-  }
-
-  return textContent.trim();
+  return pageTexts.join('\n\n');
 }
 
 /**

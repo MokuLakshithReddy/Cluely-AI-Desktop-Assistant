@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { deflateSync } from 'node:zlib';
 import {
   chunkDocument,
   retrieveRelevantPassages,
@@ -6,6 +7,47 @@ import {
   extractTextFromPdf,
 } from '../src/lib/knowledge';
 import { KnowledgeDoc } from '../src/lib/types';
+
+function buildCompressedPdf(pageTexts: string[]): ArrayBuffer {
+  const nl = String.fromCharCode(10);
+  const pageCount = pageTexts.length;
+  const firstPageId = 3;
+  const fontId = firstPageId + pageCount;
+  const firstContentId = fontId + 1;
+  const bodies: Buffer[] = [
+    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'ascii'),
+    Buffer.from('<< /Type /Pages /Kids [' + pageTexts.map((_, i) => (firstPageId + i) + ' 0 R').join(' ') + '] /Count ' + pageCount + ' >>', 'ascii'),
+    ...pageTexts.map((_, i) => Buffer.from('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ' + fontId + ' 0 R >> >> /Contents ' + (firstContentId + i) + ' 0 R >>', 'ascii')),
+    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'ascii'),
+    ...pageTexts.map(text => {
+      const content = Buffer.from('BT /F1 12 Tf 72 720 Td (' + text + ') Tj ET', 'latin1');
+      const compressed = deflateSync(content);
+      return Buffer.concat([
+        Buffer.from('<< /Length ' + compressed.length + ' /Filter /FlateDecode >>' + nl + 'stream' + nl, 'ascii'),
+        compressed,
+        Buffer.from(nl + 'endstream', 'ascii'),
+      ]);
+    }),
+  ];
+  const header = Buffer.from('%PDF-1.7' + nl, 'ascii');
+  const parts: Buffer[] = [header];
+  const offsets = [0];
+  let cursor = header.length;
+  bodies.forEach((body, index) => {
+    offsets.push(cursor);
+    const objectHeader = Buffer.from((index + 1) + ' 0 obj' + nl, 'ascii');
+    const objectFooter = Buffer.from(nl + 'endobj' + nl, 'ascii');
+    parts.push(objectHeader, body, objectFooter);
+    cursor += objectHeader.length + body.length + objectFooter.length;
+  });
+  const xrefOffset = cursor;
+  const xrefLines = ['xref', '0 ' + (bodies.length + 1), '0000000000 65535 f '];
+  offsets.slice(1).forEach(offset => xrefLines.push(String(offset).padStart(10, '0') + ' 00000 n '));
+  const xref = Buffer.from(xrefLines.join(nl) + nl + 'trailer' + nl + '<< /Size ' + (bodies.length + 1) + ' /Root 1 0 R >>' + nl + 'startxref' + nl + xrefOffset + nl + '%%EOF', 'ascii');
+  parts.push(xref);
+  const pdf = Buffer.concat(parts);
+  return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength);
+}
 
 describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
   it('chunks documents with overlapping windows respecting paragraph breaks', () => {
@@ -87,25 +129,33 @@ describe('Knowledge Base & Document Retrieval (RAG) Subsystem', () => {
     expect(results).toHaveLength(0);
   });
 
-  it('extracts text from synthetic PDF buffer with Tj and TJ operators', async () => {
-    // Construct synthetic PDF binary with text operator: (System Design Interview Notes) Tj
-    const syntheticPdf = `%PDF-1.4
-1 0 obj
-<< /Length 50 >>
-stream
-BT
-/F1 12 Tf
-(System Design Interview Notes for Distributed Systems) Tj
-ET
-endstream
-endobj
-%%EOF`;
+  it('extracts compressed multi-page PDF text and decodes WinAnsi characters', async () => {
+    const pdf = buildCompressedPdf([
+      'System Design Interview Notes for Distributed Systems',
+      'Second page discusses café indexing and document retrieval.',
+    ]);
+    const extracted = await extractTextFromPdf(pdf);
+    expect(extracted).toBe('System Design Interview Notes for Distributed Systems\n\nSecond page discusses café indexing and document retrieval.');
+  });
 
-    const encoder = new TextEncoder();
-    const buf = encoder.encode(syntheticPdf).buffer;
-    const extracted = await extractTextFromPdf(buf);
+  it('normalizes repeated whitespace and preserves real page separators', async () => {
+    const pdf = buildCompressedPdf([
+      'System    Design   Interview Notes',
+      'Second     page   contains   repeated   spaces.',
+    ]);
+    const extracted = await extractTextFromPdf(pdf);
 
-    expect(extracted).toContain('System Design Interview Notes for Distributed Systems');
+    expect(extracted).toBe('System Design Interview Notes\n\nSecond page contains repeated spaces.');
+    expect(extracted).not.toContain('\\n');
+  });
+
+  it('returns empty text for a valid PDF page without text operators', async () => {
+    expect(await extractTextFromPdf(buildCompressedPdf(['']))).toBe('');
+  });
+
+  it('rejects malformed PDF data rather than scraping incidental printable bytes', async () => {
+    const malformed = new TextEncoder().encode('not a pdf: obj stream fake text').buffer;
+    await expect(extractTextFromPdf(malformed)).rejects.toThrow();
   });
 
   it('ranks chunks using term frequency and inverse document frequency', () => {
@@ -132,4 +182,3 @@ endobj
     expect(results[0]).toContain('Deep Dive Redis');
   });
 });
-
