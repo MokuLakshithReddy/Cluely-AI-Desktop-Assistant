@@ -21,7 +21,9 @@ These controls reduce renderer privileges; they do not make unsafe renderer cont
 - Windows uses the OS DPAPI-backed implementation; macOS uses Keychain-backed storage. On Linux, the application accepts only the explicitly allowlisted Secret Service/KWallet backends and rejects `basic_text` and unknown backends.
 - Plaintext provider keys are not included in shared renderer state; renderers receive presence flags rather than raw credentials.
 - The AES-256-GCM implementation in `CredentialVault` requires an explicit injected test key and exists for headless tests. It is not an automatic production fallback.
-- The currently audited implementation uses synchronous `safeStorage` methods. The async migration and compatibility path for existing vault entries are tracked in [#19](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/19). Do not consider the migration complete until that issue and its verification criteria are closed.
+- The current implementation uses Electron's asynchronous `isAsyncEncryptionAvailable`, `encryptStringAsync`, and `decryptStringAsync` APIs. Vault read/modify/write operations are serialized, and encrypted vault updates use a temporary file followed by an atomic rename.
+- Existing `safe:` ciphertext written by the legacy synchronous API is read through Electron's asynchronous decryptor. When Electron reports that a stored value should be re-encrypted, the vault writes the replacement ciphertext.
+- The AES-256-GCM branch requires an explicitly injected 32-byte test key and is limited to headless tests; it is not a production fallback. The migration is implemented in [PR #56](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/pull/56), which closes [issue #19](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/19).
 
 OS-backed credential encryption is not a guarantee that secrets are protected from malware or an attacker who already controls the logged-in user account or application process.
 
