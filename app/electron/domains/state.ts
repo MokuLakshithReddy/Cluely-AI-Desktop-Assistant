@@ -4,6 +4,15 @@ import { app } from 'electron';
 import { SharedState } from '../../src/lib/types';
 import { credentialVault } from '../services/vault';
 
+function getApplicationVersion(): string {
+  try {
+    const version = app.getVersion();
+    return typeof version === 'string' && version.trim() ? version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 function getStateFile(): string {
   try {
     return path.join(app.getPath('userData'), 'cluely-shared-state.json');
@@ -13,7 +22,7 @@ function getStateFile(): string {
 }
 
 export const INITIAL_STATE: SharedState = {
-  appVersion: '1.0.1',
+  appVersion: getApplicationVersion(),
   isControlWindowLoaded: false,
   isChatWindowLoaded: false,
   isDashboardWindowLoaded: false,
@@ -147,11 +156,13 @@ export class StateManager {
         // Sanitize persisted state: credentials and transient diagnostics must never be restored.
         delete parsed.apiKeys;
         delete parsed.persistenceError;
+        // Application version belongs to the packaged application, never to user state.
+        delete parsed.appVersion;
 
         this.state = {
           ...INITIAL_STATE,
-          appVersion: (app && typeof app.isReady === 'function' && app.isReady()) ? app.getVersion() : '1.0.1',
           ...parsed,
+          appVersion: getApplicationVersion(),
           isControlWindowLoaded: false,
           isChatWindowLoaded: false,
           isDashboardWindowLoaded: false,
@@ -184,6 +195,8 @@ export class StateManager {
       // Clean serialization copy: ensure no secrets or screenshot payloads are saved to disk
       const toSave: any = { ...this.state };
       delete toSave.apiKeys;
+      // The package version is runtime metadata, not a user preference.
+      delete toSave.appVersion;
       // Persistence diagnostics are transient UI state and must never be stored in the file.
       delete toSave.persistenceError;
 
