@@ -1,28 +1,44 @@
-# Cluely Feature Matrix: Target Behavior vs. Independent Implementation
+# Cluely Copilot Feature Matrix: Source-Verified Implementation Status
 
-| Category | Capability / Feature | Cluely Observed Target Behavior | Independent Implementation Architecture | Status |
-|---|---|---|---|---|
-| **Desktop Shell** | Frameless Floating Pill Window | Compact draggable pill (`type: 'panel'`, `alwaysOnTop: true`, `skipTaskbar: true`, `frame: false`) | Electron `BrowserWindow` with custom drag regions, transparent background, and pin states | **Implemented & Verified** |
-| **Desktop Shell** | Expandable Chat Panel Window | Card attached below/next to pill with smooth resize and collapse/expand animations | Docked React panel with auto-fit height, scroll restoration, and minimize controls | **Implemented & Verified** |
-| **Desktop Shell** | Screen Share Anti-Capture | Calls `win.setContentProtection(true)` to hide window from Zoom, Teams, Meet (`WDA_EXCLUDEFROMCAPTURE`) | Electron `setContentProtection(enabled)` with user preference toggle (`isStealthMode`) | **Implemented & Verified** |
-| **Desktop Shell** | Global Keyboard Shortcuts | `globalShortcut.register` for toggle visibility, ask/capture, move window (80px), scroll (240px) | Configurable accelerator manager with clean unregister on blur/quit and conflict detection | **Implemented & Verified** |
-| **Desktop Shell** | System Tray & Menu | Tray icon showing active/idle state with menu options: Start/Stop, Show/Hide, Settings, Quit | Electron `Tray` with dynamic icon state, context menu, and click-to-toggle | **Implemented & Verified** |
-| **Desktop Shell** | Persistent State Management | State persisted in `shared-state.json` with broadcast on changes (`shared-state-updated`) | Reactive Electron store (`shared-state.json`) with IPC synchronization across all windows | **Implemented & Verified** |
-| **Audio** | Dual-Stream Separation | `me` (local mic) and `them` (remote participant / system audio) handled as distinct streams | Dual audio workers: mic input + Windows loopback audio via `setDisplayMediaRequestHandler` | **Implemented & Verified** |
-| **Audio** | Microphone Audio Ingestion | 48kHz 16-bit PCM captured via `node-record-lpcm16` / `sox.exe` or Web Audio API | Web Audio API / navigator.mediaDevices with 48kHz audio worklet + native fallback | **Implemented & Verified** |
-| **Audio** | System Audio Loopback | Non-Darwin: Chrome loopback capture via `session.defaultSession.setDisplayMediaRequestHandler` | Native Chromium loopback capture with automatic source selection | **Implemented & Verified** |
-| **Audio** | Voice Activity Detection (VAD) | Silero VAD (ONNX Runtime Web) running at 16kHz with 300ms redemption and 20s max segment | Silero ONNX VAD + adaptive energy-based fallback VAD with exact speech start/end events | **Implemented & Verified** |
-| **Audio** | Crosstalk / Echo Suppression | When `themHasVoiceActivity` is true, mic input on `me` is zeroed out to prevent double-transcription | Real-time speaker arbitration: suppresses `me` stream when `them` stream energy is active | **Implemented & Verified** |
-| **Audio** | Incremental Speech-to-Text | WAV base64 sent per speech segment, populating live session transcript with timestamps | Multi-provider STT adapter: OpenAI Whisper, Groq Whisper (<300ms latency), Deepgram, Web Speech API | **Implemented & Verified** |
-| **Screen** | Multi-Display Screen Capture | `desktopCapturer.getSources` with auto-matching to current display bounds | Electron `desktopCapturer` matching active display with fallback to primary display | **Implemented & Verified** |
-| **Screen** | Image Optimization & Scaling | Downscales images exceeding 1920px max dimension, preserving aspect ratio | High-performance canvas / native image scaling capped at 1920px for optimal latency | **Implemented & Verified** |
-| **Screen** | Screen Context Integration | Attaches screenshot to chat message payload on demand or shortcut trigger | Sends base64 image along with user query to multimodal vision LLMs | **Implemented & Verified** |
-| **AI Reasoning** | Multi-Provider Multimodal LLM | Backend proxy connecting to proprietary server endpoints | Direct BYOK (Bring Your Own Key) adapter: Google Gemini 2.5 Flash / Pro, OpenAI GPT-4o / GPT-4o Mini, Anthropic Claude 3.7 Sonnet / Claude 3.5 Haiku, Ollama | **Implemented & Verified** |
-| **AI Reasoning** | Streaming Token Responses | Real-time token streaming with Markdown and code syntax highlighting | Server-Sent Events / streaming fetch with syntax highlighter, KaTeX math, and copy controls | **Implemented & Verified** |
-| **AI Reasoning** | Context Fusion Engine | Combines live audio transcript + screenshot + user prompt + mode instructions | Token-budgeted context assembler formatting multimodal prompts with speaker labels | **Implemented & Verified** |
-| **AI Reasoning** | Assistance Modes | Modes for Interview, Coding, Sales, Meeting Summary, General Assistance | System prompt presets tailored for live technical interviews, code debugging, and meetings | **Implemented & Verified** |
-| **Knowledge** | Document Ingestion & RAG | Uploads files and indexes context for session queries | Local document chunker and keyword/vector retriever supporting Markdown, PDF, and code files | **Implemented & Verified** |
-| **Session** | Session Lifecycle Management | Start, Pause, Resume, End session with transcript export and persistence | Session coordinator managing active streams, memory cleanup, and export (JSON/Markdown) | **Implemented & Verified** |
-| **Security** | Secure IPC & Preload | Context isolation enabled, strict origin validation on all IPC messages | `contextIsolation: true`, `nodeIntegration: false`, typed IPC router, strict URL whitelist | **Implemented & Verified** |
-| **Security** | Privacy & Data Retention | User control over audio retention, screenshot logging, and credentials | Zero raw-audio disk retention by default; ephemeral memory buffers; secure local API key vault | **Implemented & Verified** |
+This matrix describes the independent implementation in `app/`, not capabilities observed in the original Cluely application. Statuses are based on the current repository source and automated tests as of the revision containing this document.
 
+**Verification boundary:** “Implemented” means the relevant behavior exists in this source tree. It does not imply physical-device, OS-permission, conferencing-app, or live-provider validation. Those require the real-device matrix in [DEVICE_VALIDATION_MATRIX.md](../testing/DEVICE_VALIDATION_MATRIX.md).
+
+| Category | Capability | Current implementation | Status / limitation |
+|---|---|---|---|
+| Desktop shell | Floating control window | Electron frameless, transparent, always-on-top control window; source dimensions are 490 × 56 | Implemented; packaged launch is CI-tested |
+| Desktop shell | Chat window | Separate resizable Electron window positioned beneath the control window | Implemented; packaged launch is CI-tested |
+| Desktop shell | Dashboard | Separate settings, credentials, knowledge, shortcuts, and session-history window | Implemented; UI/IPC smoke-tested |
+| Desktop shell | System tray | No Electron Tray implementation is present in the reviewed source | Not implemented |
+| Desktop shell | Global shortcuts | Configurable global accelerators for visibility, ask, clear, emergency stop, session toggle, and window movement | Implemented; registration-conflict UX and real desktop conflict testing are not established |
+| Desktop shell | Window recovery | Recreates control/chat windows on supported lifecycle events and avoids duplicate state subscriptions | Implemented; automated lifecycle tests exist |
+| Desktop shell | Display content protection | Calls Electron `setContentProtection` when stealth mode is enabled | Best-effort OS feature; never claim universal invisibility |
+| Audio | Local microphone capture | Renderer requests microphone access with `getUserMedia`; Web Audio `ScriptProcessorNode` processes 48 kHz input | Implemented in source; real microphone/permission matrix pending |
+| Audio | System-audio loopback | Electron `setDisplayMediaRequestHandler` grants a screen source with `audio: 'loopback'` while recording is active | Implemented in source; do not infer identical support across Windows, macOS, and Linux; physical validation pending |
+| Audio | Dual-source attribution | Microphone and system-loopback use separate streams, resamplers, VAD processors, and transcript roles | Implemented in source; synthetic independent-VAD coverage exists |
+| Audio | VAD algorithm | Adaptive RMS energy threshold plus zero-crossing-rate discrimination, with pre-speech buffering, silence redemption, and a 20-second segment cap | Implemented; this is not Silero or ONNX VAD |
+| Audio | Crosstalk suppression | No production rule suppresses microphone samples when remote VAD is active; independent sources are retained | Not implemented; do not claim speaker arbitration or echo cancellation beyond browser/device microphone constraints |
+| Audio | Speech-to-text | Groq Whisper and OpenAI transcription endpoints are supported through the main-process IPC bridge | Implemented in source; live provider and device tests pending; no Deepgram/Web Speech adapter is present |
+| Screen | Screenshot capture | Main process captures the display matching the control window, falls back to primary display, and downsizes to a 1920 px maximum dimension | Implemented in source; real permission/display matrix pending |
+| AI | Provider adapters | Gemini, OpenAI, Anthropic, and local Ollama request adapters | Implemented in source; exact model/account availability is not guaranteed |
+| AI | Streaming | SSE parsing for cloud providers and newline-delimited JSON streaming for Ollama | Implemented; provider-specific live streaming validation pending |
+| AI | Assistance modes | Copilot, interview, coding, sales, and executive prompt presets | Implemented in source |
+| AI | Context assembly | User query, recent completed transcript, conversation history, screenshot, and retrieved knowledge passages | Implemented in source |
+| Knowledge | File ingestion | PDF.js text extraction plus text/Markdown/JSON/source-file ingestion; per-file input limit is 2 MiB | Implemented in source; document-specific compatibility still needs broader fixtures |
+| Knowledge | Retrieval | Local TF-IDF lexical ranking over overlapping character-based chunks | Implemented; this is not embedding-based semantic or vector search |
+| Sessions | Local archive | Main-process JSON session repository with identifier validation and path-containment checks | Implemented; automated persistence tests exist |
+| Sessions | Screenshot retention | Screenshot payloads are stripped from saved session messages | Implemented in state and repository serialization paths |
+| Privacy | Emergency stop | Global shortcut stops capture state and aborts active AI/STT operations; renderer capture hook tears down media resources | Implemented in source; real-device behavior still pending |
+| Privacy | Data purge | Closes write gate, aborts active work, deletes app-managed credentials/session archives, and clears active state | Implemented as application-level logical deletion; not forensic erasure; physical-device race validation pending |
+| Security | Renderer isolation | BrowserWindows use context isolation, disabled Node integration, sandboxing, restricted preload bridge, and navigation/window-open guards | Implemented in source; continue reviewing every new IPC method |
+| Security | IPC validation | Exact trusted-origin checks, per-channel validation, nested payload schemas, and aggregate size limits | Implemented; automated negative-path tests exist |
+| Security | Credential storage | Async Electron `safeStorage` APIs; Linux accepts allowlisted Secret Service/KWallet backends and fails closed otherwise | Implemented in source; OS keychain behavior still needs real-device validation |
+
+## Important corrections to earlier claims
+
+- The local VAD is an RMS/ZCR implementation, not Silero VAD or ONNX Runtime.
+- The two capture sources have independent VAD pipelines. The code does not intentionally zero local microphone audio during remote speech.
+- The current STT adapters are Groq and OpenAI. Do not advertise Deepgram or browser-native speech recognition as implemented.
+- Knowledge retrieval is TF-IDF lexical ranking, not vector search or embedding-based semantic retrieval.
+- The AES-256-GCM vault branch is only available to tests when an explicit test key is injected. Production credential storage does not silently fall back to application-managed AES.
+- CI package smoke tests and synthetic media tests do not complete the physical-device validation gate.
