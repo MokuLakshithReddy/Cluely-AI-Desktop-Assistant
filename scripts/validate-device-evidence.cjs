@@ -74,6 +74,37 @@ function validateCampaign(campaign, options = {}) {
     checkUrl(candidate.ciRunUrl, 'candidate.ciRunUrl');
     checkString(candidate.electronVersion, 'candidate.electronVersion');
     checkString(candidate.nodeVersion, 'candidate.nodeVersion');
+    if (!Array.isArray(candidate.supportedConfigurations) || candidate.supportedConfigurations.length < 3) {
+      add('candidate.supportedConfigurations', 'must explicitly list every supported OS/device configuration for Windows, macOS, and Linux');
+    }
+  }
+
+  const configurationScopes = new Map();
+  const scopePlatforms = new Set();
+  if (isObject(candidate) && Array.isArray(candidate.supportedConfigurations)) {
+    candidate.supportedConfigurations.forEach((scope, scopeIndex) => {
+      const scopePath = 'candidate.supportedConfigurations[' + scopeIndex + ']';
+      if (!isObject(scope)) {
+        add(scopePath, 'must be an object');
+        return;
+      }
+      checkString(scope.id, scopePath + '.id');
+      checkString(scope.description, scopePath + '.description');
+      if (!REQUIRED_PLATFORMS.includes(scope.platform)) {
+        add(scopePath + '.platform', 'must be one of: ' + REQUIRED_PLATFORMS.join(', '));
+      } else {
+        scopePlatforms.add(scope.platform);
+      }
+      if (nonEmptyString(scope.id)) {
+        if (configurationScopes.has(scope.id)) add(scopePath + '.id', 'must be unique across supported configurations');
+        else configurationScopes.set(scope.id, scope.platform);
+      }
+    });
+  }
+  for (const platform of REQUIRED_PLATFORMS) {
+    if (!scopePlatforms.has(platform)) {
+      add('candidate.supportedConfigurations', 'must declare at least one supported configuration for ' + platform);
+    }
   }
 
   if (!Array.isArray(campaign.runs) || campaign.runs.length === 0) {
@@ -82,6 +113,7 @@ function validateCampaign(campaign, options = {}) {
 
   const runIds = new Set();
   const coveredPlatforms = new Set();
+  const coveredConfigurations = new Set();
   let completeRecordCount = 0;
   let pendingRecordCount = 0;
 
@@ -103,6 +135,17 @@ function validateCampaign(campaign, options = {}) {
         add(base + '.platform', 'must be one of: ' + REQUIRED_PLATFORMS.join(', '));
       } else {
         coveredPlatforms.add(run.platform);
+      }
+      checkString(run.configurationId, base + '.configurationId');
+      if (nonEmptyString(run.configurationId)) {
+        if (!configurationScopes.has(run.configurationId)) {
+          add(base + '.configurationId', 'does not match a declared supported configuration');
+        } else {
+          if (configurationScopes.get(run.configurationId) !== run.platform) {
+            add(base + '.configurationId', 'platform does not match the declared supported configuration');
+          }
+          coveredConfigurations.add(run.configurationId);
+        }
       }
 
       [
@@ -196,6 +239,11 @@ function validateCampaign(campaign, options = {}) {
   for (const platform of REQUIRED_PLATFORMS) {
     if (!coveredPlatforms.has(platform)) {
       add('runs', 'missing real-device coverage for the ' + platform + ' release target');
+    }
+  }
+  for (const configurationId of configurationScopes.keys()) {
+    if (!coveredConfigurations.has(configurationId)) {
+      add('runs', 'missing a device run for declared supported configuration ' + configurationId);
     }
   }
 
