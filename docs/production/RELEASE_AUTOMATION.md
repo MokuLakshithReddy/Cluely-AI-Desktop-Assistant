@@ -33,6 +33,7 @@ Configure these secrets before creating the v1.0.2 tag:
 |---|---|
 | `WINDOWS_CSC_LINK` | Base64-encoded Windows Authenticode PFX certificate (injected as electron-builder `WIN_CSC_LINK`) |
 | `WINDOWS_CSC_KEY_PASSWORD` | Password for the Windows signing certificate (injected as `WIN_CSC_KEY_PASSWORD`) |
+| `WINDOWS_EXPECTED_CERT_THUMBPRINT` | Exact 40-character hexadecimal Authenticode certificate thumbprint expected on the Windows executable |
 | `MACOS_CSC_LINK` | Base64-encoded Apple Developer ID signing certificate (injected as `CSC_LINK`) |
 | `MACOS_CSC_KEY_PASSWORD` | Password for the Apple signing certificate (injected as `CSC_KEY_PASSWORD`) |
 | `APPLE_ID` | Apple developer account used for notarization |
@@ -42,7 +43,7 @@ Configure these secrets before creating the v1.0.2 tag:
 | `RELEASE_GPG_PRIVATE_KEY` | ASCII-armored private key used to sign the checksum manifest |
 | `RELEASE_GPG_PASSPHRASE` | Passphrase for the release GPG private key |
 
-Keep signing secrets in GitHub Actions secrets; never commit certificates, passwords, private keys, provider keys, or token material. For Windows PFX certificates, ensure the base64 value fits Windows environment-variable limits; electron-builder documents the `WIN_CSC_LINK` path and encoding requirements in its [code-signing guide](https://www.electron.build/docs/features/code-signing/). macOS notarization is explicitly required by the release packaging config and verified with `xcrun stapler validate`.
+Keep signing secrets in GitHub Actions secrets; never commit certificates, passwords, private keys, provider keys, or token material. For Windows PFX certificates, ensure the base64 value fits Windows environment-variable limits; electron-builder documents the `WIN_CSC_LINK` path and encoding requirements in its [code-signing guide](https://www.electron.build/docs/features/code-signing/). The release workflow also compares the Windows executable's Authenticode certificate thumbprint with `WINDOWS_EXPECTED_CERT_THUMBPRINT`; obtain that exact thumbprint from the approved publisher certificate and update it when the certificate is renewed. For macOS, the workflow verifies that the app is signed by a `Developer ID Application` certificate whose `TeamIdentifier` exactly matches `APPLE_TEAM_ID`, then validates the stapled notarization ticket.
 
 ## Create and push the signed release tag
 
