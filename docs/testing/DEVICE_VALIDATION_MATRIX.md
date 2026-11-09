@@ -4,6 +4,8 @@
 
 **Status at creation:** no physical-device test evidence is recorded in this document. Synthetic media and mocked Electron tests are not substitutes for the device runs below.
 
+Use [`DEVICE_EVIDENCE_FORMAT.md`](./DEVICE_EVIDENCE_FORMAT.md) for stable per-case IDs, the evidence JSON structure, and the release-owner validation command.
+
 ## 1. Release candidate identity
 
 Complete this section for each validation campaign. Do not reuse a result after the app binary or relevant runtime changes.
