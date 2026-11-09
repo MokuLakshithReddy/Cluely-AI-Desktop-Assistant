@@ -200,7 +200,7 @@ When a user triggers an answer (either by pressing Enter in the chat pill or usi
 
 Our clean-room implementation reproduces all critical observable capabilities discovered:
 1. **Desktop Shell**: Electron + TypeScript + Vite + React + Tailwind CSS with multi-window coordination, frameless floating pill, content protection toggle, and global shortcuts.
-2. **Audio Pipeline**: Dual-channel mic + Windows loopback audio, Silero/RMS+ZCR VAD, crosstalk suppression, and multi-provider STT (Whisper, Deepgram, Google Cloud Speech).
+2. **Audio Pipeline**: Dual-channel microphone + system-loopback capture, independent RMS/ZCR VAD processors, and Groq/OpenAI Whisper-based STT adapters. Crosstalk suppression is not implemented in the independent application.
 3. **Screen Understanding**: Native `desktopCapturer` with 1920px aspect-ratio downscaling and multimodal LLM integration (Gemini 2.0 / 1.5 Flash, GPT-4o, Claude 3.5 Sonnet, Ollama).
 4. **Context Manager**: Unified context synthesis combining speech timeline, visual evidence, user instructions, and local knowledge retrieval.
 5. **Security & Privacy**: Zero raw-audio persistence by default, local OS-backed safeStorage credential vault, strict IPC origin enforcement, and explicit capture indicators.

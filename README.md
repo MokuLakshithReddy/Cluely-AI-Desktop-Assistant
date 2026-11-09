@@ -43,10 +43,10 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 ### 🖥️ Real-Time Display Perception & Vision Grounding
 * **Display Bounds Matching**: Utilizes Electron's `desktopCapturer` to dynamically identify and capture the exact display currently hosting the assistant window.
 * **Adaptive Aspect-Ratio Downscaling**: Displays exceeding 1920px max dimension (e.g. 4K, 1440p Ultrawide) are downscaled proportionally to max-1920. This optimizes token usage and slashes vision API processing latency.
-* **Multimodal Reasoning**: Visual evidence is transmitted alongside user queries to vision-capable LLMs (Gemini 2.0 Flash, GPT-4o, Claude 3.5 Sonnet) for debugging compiler errors, analyzing slide decks, and reviewing code.
+* **Multimodal Reasoning**: Visual evidence is transmitted alongside user queries to the configured Gemini, OpenAI, or Anthropic model adapters for debugging compiler errors, analyzing slide decks, and reviewing code. Local Ollama text/vision models are also supported when installed.
 
 ### 🪟 Floating Assistant Shell & Window Coordination
-* **Frameless Floating Pill**: Compact, translucent overlay (`width: 380, height: 52`, `alwaysOnTop: true`, `type: 'panel'`, `skipTaskbar: true`) with custom drag regions and desktop boundary clamping.
+* **Frameless Floating Control**: Compact, translucent Electron window (490 × 56, frameless and always-on-top) with a separate resizable chat window. The control window is not configured as a native macOS panel, and the project does not currently implement a system tray.
 * **Expandable Docked Chat Card**: Anchored directly to the pill, rendering streaming Markdown, code blocks with syntax highlighting, and follow-up recommendation chips.
 * **Settings & Knowledge Dashboard**: Multi-tab settings panel for API key vault management, document upload, shortcut configuration, and session history export.
 
@@ -65,11 +65,11 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 
 ### 📚 Local Knowledge Base & Document Retrieval (RAG)
 * **Local Ingestion**: Ingest Markdown notes, resumes, API documentation, and PDF files.
-* **Smart Chunking**: Overlapping text windows (500 tokens with 80-token overlap) respecting paragraph boundaries.
-* **In-Memory Retrieval**: High-speed TF-IDF keyword and semantic scoring retrieving relevant background passages with explicit source citations.
+* **Smart Chunking**: Overlapping character-based text windows (500 characters with 80 characters of overlap), with paragraph/header boundary adjustments.
+* **In-Memory Retrieval**: Local TF-IDF lexical ranking over document chunks. This is keyword-based retrieval, not embedding-based semantic or vector search.
 
 ### 🔐 Zero-Leakage Credential Vault & Privacy
-* **OS-Backed Key Storage**: API keys are encrypted via Electron `safeStorage` (Windows DPAPI / macOS Keychain) with an authenticated AES-256-GCM fallback.
+* **OS-Backed Key Storage**: API keys are encrypted using Electron's asynchronous `safeStorage` APIs and supported OS credential backends. Linux rejects the insecure `basic_text` backend. The AES-256-GCM branch is available only to tests with an explicitly injected test key; production has no application-managed encryption fallback.
 * **Renderer Masking**: Decrypted keys exist strictly within the main process memory; renderers receive only boolean presence flags (`hasApiKeys`).
 * **Zero Raw Audio Retention**: Audio chunks are held strictly in ephemeral RAM during VAD processing and purged immediately after transcription. No audio is written to disk.
 * **Multi-Session Archiving**: Sessions are persisted locally in user data with strict path traversal boundary verification (`/^[a-zA-Z0-9_-]+$/`), chronological indexing, and one-click JSON/Markdown export.
@@ -119,7 +119,7 @@ flowchart TD
         Shortcuts["ShortcutManager (Global Accelerators)"]
         ScreenSvc["ScreenshotService (desktopCapturer + 1920px Scaler)"]
         StateMgr["StateManager (cluely-shared-state.json Persistence)"]
-        VaultSvc["CredentialVault (safeStorage DPAPI / AES-256-GCM)"]
+        VaultSvc["CredentialVault (async OS-backed safeStorage)"]
         SessionRepo["SessionRepository (Path-Validated Multi-Session Storage)"]
         IpcSec["IpcRouter (Origin Guard, Payload Validation & Loopback Handler)"]
     end
@@ -133,9 +133,9 @@ flowchart TD
     end
 
     subgraph AIAdapters ["Pluggable Perception & Reasoning Layer (app/src/lib/)"]
-        Gemini["Google Gemini 2.0 Flash / Pro (Vision + Fast Reasoning)"]
-        OpenAI["OpenAI GPT-4o (Vision + Multi-turn Reasoning)"]
-        Groq["Groq Whisper Turbo (<300ms Cloud Speech-to-Text)"]
+        Gemini["Google Gemini adapter (selected vision/reasoning model)"]
+        OpenAI["OpenAI adapter (selected model + multi-turn reasoning)"]
+        Groq["Groq Whisper STT adapter"]
         RAG["Knowledge Retriever (Character Chunker + TF-IDF Lexical Ranker)"]
     end
 
@@ -201,7 +201,7 @@ flowchart TD
     │   │   ├── state.ts                # Shared state persistence (stripped of sensitive credentials)
     │   │   └── ipc-router.ts           # Strict origin validation, deep schema checks & loopback handler
     │   └── services/
-    │       ├── vault.ts                # safeStorage DPAPI / AES-256-GCM credential vault
+    │       ├── vault.ts                # Async OS-backed safeStorage credential vault
     │       └── session-repository.ts   # Multi-session disk storage with path traversal containment
     ├── src/                            # Sandboxed React Application
     │   ├── App.tsx                     # Route hash dispatcher (#control, #chat, #dashboard)
@@ -214,13 +214,13 @@ flowchart TD
     │   │   └── Dashboard.tsx           # BYOK vault configuration, document RAG, and session manager
     │   ├── hooks/
     │   │   ├── useSharedState.ts       # Atomic state synchronization & IPC patch dispatcher
-    │   │   ├── useAudioCapture.ts      # Dual-channel mic + loopback capture & crosstalk suppression
+    │   │   ├── useAudioCapture.ts      # Dual-channel mic + loopback capture with independent VAD streams
     │   │   └── useAiAssistant.ts       # Non-destructive streaming context synthesis & token accumulator
     │   └── lib/
     │       ├── types.ts                # Shared state, SessionRecord, message, and document contracts
     │       ├── vad.ts                  # 48k->16k resampler, RMS+ZCR detector & 16-bit PCM RIFF WAV encoder
-    │       ├── providers.ts            # Gemini 2.0 Flash, OpenAI GPT-4o, Claude 3.5 & Groq STT adapters
-    │       └── knowledge.ts            # Synthetic PDF token parser, overlapping chunker & TF-IDF retriever
+    │       ├── providers.ts            # Gemini, OpenAI, Anthropic, Ollama and Groq/OpenAI STT adapters
+    │       └── knowledge.ts            # PDF.js extraction, overlapping chunker & TF-IDF lexical retriever
     └── tests/                          # Automated Verification Test Suite
         ├── audio-vad.test.ts           # Resampling, energy, ZCR, and VAD unit tests (6 tests)
         ├── audio-ownership.test.ts     # Dual-channel audio ownership & stream leak prevention (3 tests)
@@ -261,8 +261,8 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 * **Deep Payload Sanitization**: State patch payloads are checked against a strict whitelist of permissible keys. Transcripts, messages, and knowledge documents are validated against nested schemas, array length limits (5,000 transcript items, 1,000 messages, 500 docs), and character caps (2MB per doc, 500k chars per message).
 
 ### 🔒 Credential Vault Protection
-* **Hardware-Backed OS Encryption**: Stored via Electron `safeStorage` (Windows DPAPI / macOS Keychain).
-* **Fail-Safe Policy (`safeFail`)**: If hardware-backed secure storage is unavailable, key writes are rejected rather than silently written in plaintext to disk.
+* **OS-Backed Credential Encryption**: Stored via Electron `safeStorage`; the selected platform backend determines the OS credential integration.
+* **Fail-Closed Policy**: If a supported OS-backed secure storage provider is unavailable, credential writes are rejected rather than persisted in plaintext or encrypted with an application-managed fallback.
 * **Zero Disk Leakage**: Plaintext credentials are never written to `cluely-shared-state.json` or shared across IPC. Renderers receive only boolean presence flags (`hasApiKeys`).
 * **Ephemeral Web Mode**: In browser preview mode, keys reside purely in transient memory (`inMemoryVaultKeys`) and are **never saved to localStorage**.
 
@@ -320,7 +320,7 @@ The following summarizes implementation behavior and available automated evidenc
 1. **Dual Audio Capture & Loopback**: Microphone and loopback are processed as independent VAD sources. Overlapping local and remote speech is preserved; browser/device echo cancellation remains enabled for microphone input. Device-backed verification should still be performed on supported hardware.
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
 3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
-4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. The vault safely rejects unencrypted disk writes if secure storage is unavailable (`safeFail`).
+4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. Credential writes fail closed if supported OS-backed secure storage is unavailable.
 5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Cluely Copilot.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
 6. **Screen-Sharing Display Protection**: Uses the OS-provided Electron content-protection mechanism. Its behavior depends on the OS and capture stack and is not a universal invisibility guarantee.
 
@@ -419,13 +419,13 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 
 | Category | Supported Providers | Recommended Model | Latency |
 |---|---|---|:---:|
-| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`), Ollama (Local) | **Gemini 3.6 Flash** | ~320ms |
-| **Speech Recognition (STT)** | Groq Whisper, OpenAI Whisper, Deepgram, Web Speech API | **Groq Whisper Large v3 Turbo** | <300ms |
-| **Document RAG** | Built-in in-memory TF-IDF lexical retrieval with character-based overlapping chunks | Embedded | <5ms |
+| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (selected `claude-*` models), Ollama (Local) | **Gemini 3.8 Flash** | Varies by provider/network |
+| **Speech Recognition (STT)** | Groq Whisper and OpenAI Whisper | **Groq Whisper Large v3 Turbo** | Varies by provider/network |
+| **Document RAG** | Built-in in-memory TF-IDF lexical retrieval with character-based overlapping chunks | Local | Local |
 
 > [!NOTE]
 > **Active 2026 AI Model Lineup & Provider Guidance**:
-> * **Google Gemini**: Defaults to `gemini-3.6-flash`. Note that `gemini-2.5-flash` access has been restricted by Google to legacy developer projects; new API keys should use `gemini-3.6-flash` or `gemini-3.5-flash-lite`. Cluely Copilot preserves the selected model and surfaces 403/404 provider errors without silently switching models.
+> * **Google Gemini**: Defaults to `gemini-3.8-flash`. The Dashboard also offers `gemini-3.6-flash`, `gemini-3.5-flash-lite`, and `gemini-3.1-pro-preview`. Legacy `gemini-2.5-flash` selections are migrated to `gemini-3.8-flash`; provider authorization and model errors remain visible rather than silently switching to an unrelated model.
 > * **Anthropic Claude**: Active models are `claude-sonnet-5-5`, `claude-haiku-5-5`, and `claude-opus-5-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are automatically caught with informative retirement diagnostics.
 > * **OpenAI**: Supports `gpt-4o` and `gpt-4o-mini` with full multi-turn conversational history.
 > * **Local Ollama**: Fully offline execution without external API keys or cloud telemetry.

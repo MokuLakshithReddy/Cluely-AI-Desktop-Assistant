@@ -17,37 +17,41 @@ describe('Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider 
     } catch {}
   });
 
-  it('Stage 1: Checks synthetic audio resampling, VAD metrics, test-only crosstalk zeroing, and WAV header', () => {
-    // 1. Ingest remote speaker audio ("them") via system loopback at 48kHz
+  it('Stage 1: Checks synthetic audio resampling, independent VAD activity, and WAV header', () => {
+    // Feed the same overlapping speech frame into the two independent production VAD
+    // processor instances used by the microphone and system-loopback capture pipelines.
     const resampler = new AudioResampler(48000, 16000);
-    const raw48kThem = new Float32Array(4800); // 100ms
-    for (let i = 0; i < raw48kThem.length; i++) {
-      raw48kThem[i] = Math.sin((2 * Math.PI * 300 * i) / 48000) * 0.4;
+    const raw48k = new Float32Array(4800); // 100ms of synthetic 300Hz speech-like audio
+    for (let i = 0; i < raw48k.length; i++) {
+      raw48k[i] = Math.sin((2 * Math.PI * 300 * i) / 48000) * 0.4;
     }
-    const them16k = resampler.resample(raw48kThem);
-    expect(them16k.length).toBe(1600);
+    const audio16k = resampler.resample(raw48k);
+    expect(audio16k.length).toBe(1600);
 
-    const vad = new VADProcessor({ energyThreshold: 0.02, redemptionMs: 50, preSpeechPadMs: 50 });
-    const themRms = vad.calculateRms(them16k);
-    const themZcr = vad.calculateZcr(them16k);
+    const micVad = new VADProcessor({ energyThreshold: 0.02 });
+    const systemVad = new VADProcessor({ energyThreshold: 0.02 });
+    let micSpeechStarts = 0;
+    let systemSpeechStarts = 0;
+    micVad.onSpeechStart = () => { micSpeechStarts += 1; };
+    systemVad.onSpeechStart = () => { systemSpeechStarts += 1; };
 
+    // Each source must retain its own speech state when both are active at once.
+    micVad.processFrame(audio16k);
+    systemVad.processFrame(audio16k);
+    expect(micVad.isVoiceActive()).toBe(true);
+    expect(systemVad.isVoiceActive()).toBe(true);
+    expect(micSpeechStarts).toBe(1);
+    expect(systemSpeechStarts).toBe(1);
+
+    // Validate the signal metrics used by the current RMS/ZCR detector.
+    const themRms = systemVad.calculateRms(audio16k);
+    const themZcr = systemVad.calculateZcr(audio16k);
     expect(themRms).toBeGreaterThan(0.02);
     expect(themZcr).toBeGreaterThan(0.01);
     expect(themZcr).toBeLessThan(0.45);
 
-    // 2. Crosstalk suppression test:
-    // When "them" is actively speaking (themHasVoiceActivity = true),
-    // local microphone input must be suppressed (zeroed) to prevent speaker loopback echo
-    const themHasVoiceActivity = true;
-    const rawLocalMic = new Float32Array([0.2, 0.25, 0.18, 0.3]);
-    const processedLocalMic = themHasVoiceActivity ? new Float32Array(rawLocalMic.length).fill(0) : rawLocalMic;
-
-    expect(processedLocalMic.every(v => v === 0)).toBe(true);
-
-    // 3. Encode speech segment to standard 16-bit PCM RIFF WAV
-    const wavBuffer = encodeWAV(them16k, 16000);
-    const wavHeader = Buffer.from(wavBuffer.slice(0, 4)).toString('ascii');
-    expect(wavHeader).toBe('RIFF');
+    const wavBuffer = encodeWAV(audio16k, 1, 16000, 16);
+    expect(Buffer.from(wavBuffer.slice(0, 4)).toString('ascii')).toBe('RIFF');
   });
 
   it('Stage 2: Checks proportional scaling calculations for synthetic display bounds', () => {
