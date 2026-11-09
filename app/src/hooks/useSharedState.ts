@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { SharedState } from '../lib/types';
+import packageMetadata from '../../package.json';
 
 export const FALLBACK_STATE: SharedState = {
-  appVersion: '1.0.1',
+  appVersion: packageMetadata.version,
   isControlWindowLoaded: true,
   isChatWindowLoaded: true,
   isDashboardWindowLoaded: false,
