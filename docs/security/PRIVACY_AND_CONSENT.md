@@ -31,7 +31,7 @@ Cloud providers process the payloads they receive according to their own terms, 
 
 Desktop credentials are encrypted with Electron `safeStorage` using the OS-backed provider. Linux basic-text and unknown backends are rejected. Raw credentials are kept out of renderer shared-state broadcasts.
 
-The audited source revision still uses synchronous `safeStorage` calls. The asynchronous migration and compatibility testing for existing stored credentials remain tracked in [issue #19](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/19). AES test-key encryption is not a production fallback.
+The current source uses Electron's asynchronous `safeStorage` APIs. Vault operations are serialized to prevent concurrent updates from overwriting each other, and encrypted file updates are written to a temporary file before an atomic rename. Existing ciphertext written through the legacy synchronous API is opened with Electron's asynchronous decryptor and can be re-encrypted when Electron requests key rotation. The AES-256-GCM test path requires an explicitly injected 32-byte test key and is not available as a production fallback. This migration was completed in [PR #56](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/pull/56), closing [issue #19](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/19).
 
 ## Retention and deletion
 
