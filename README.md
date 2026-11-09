@@ -201,7 +201,7 @@ flowchart TD
     │   │   ├── state.ts                # Shared state persistence (stripped of sensitive credentials)
     │   │   └── ipc-router.ts           # Strict origin validation, deep schema checks & loopback handler
     │   └── services/
-    │       ├── vault.ts                # safeStorage DPAPI / AES-256-GCM credential vault
+    │       ├── vault.ts                # Async OS-backed safeStorage credential vault
     │       └── session-repository.ts   # Multi-session disk storage with path traversal containment
     ├── src/                            # Sandboxed React Application
     │   ├── App.tsx                     # Route hash dispatcher (#control, #chat, #dashboard)
@@ -220,7 +220,7 @@ flowchart TD
     │       ├── types.ts                # Shared state, SessionRecord, message, and document contracts
     │       ├── vad.ts                  # 48k->16k resampler, RMS+ZCR detector & 16-bit PCM RIFF WAV encoder
     │       ├── providers.ts            # Gemini 2.0 Flash, OpenAI GPT-4o, Claude 3.5 & Groq STT adapters
-    │       └── knowledge.ts            # Synthetic PDF token parser, overlapping chunker & TF-IDF retriever
+    │       └── knowledge.ts            # PDF.js extraction, overlapping chunker & TF-IDF lexical retriever
     └── tests/                          # Automated Verification Test Suite
         ├── audio-vad.test.ts           # Resampling, energy, ZCR, and VAD unit tests (6 tests)
         ├── audio-ownership.test.ts     # Dual-channel audio ownership & stream leak prevention (3 tests)
