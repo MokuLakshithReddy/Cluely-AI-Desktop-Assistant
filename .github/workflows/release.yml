@@ -189,9 +189,12 @@ jobs:
           if ($signature.Status -ne "Valid") { throw "Windows Authenticode signature is not valid: $($signature.Status)" }
           if (-not $signature.SignerCertificate) { throw "Windows executable has no signer certificate." }
           $rawExpected = $env:WINDOWS_EXPECTED_CERT_THUMBPRINT
-          if (-not $rawExpected) { throw "Set WINDOWS_EXPECTED_CERT_THUMBPRINT to the approved 40-character certificate thumbprint." }
-          $expected = ($rawExpected -replace '\s', '').ToUpperInvariant()
-          if ($expected -notmatch '^[0-9A-F]{40}
+          if (-not $rawExpected) { throw "Set WINDOWS_EXPECTED_CERT_THUMBPRINT to the approved certificate thumbprint." }
+          $expected = (($rawExpected -replace '\s', '')).ToUpperInvariant()
+          if ($expected.Length -ne 40 -or $expected -match '[^0-9A-F]') { throw "WINDOWS_EXPECTED_CERT_THUMBPRINT must contain exactly 40 hexadecimal characters." }
+          $actual = (($signature.SignerCertificate.Thumbprint -replace '\s', '')).ToUpperInvariant()
+          if ($actual -ne $expected) { throw "Unexpected Authenticode certificate thumbprint. Actual: $actual; expected: $expected" }
+          Write-Host "Verified expected signed publisher:" $signature.SignerCertificate.Subject
       - name: Verify macOS code signature, expected Team ID, and notarization
         if: matrix.platform == 'macos-dmg'
         shell: bash
