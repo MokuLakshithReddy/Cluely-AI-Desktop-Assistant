@@ -15,7 +15,7 @@ const {
 
 const TESTED_AT = '2026-11-09T09:00:00.000Z';
 
-function buildCampaign() {
+function buildCampaign(): any {
   const platforms = ['windows', 'macos', 'linux'];
   return {
     schemaVersion: 1,
