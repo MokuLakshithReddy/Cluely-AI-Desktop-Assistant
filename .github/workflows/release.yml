@@ -177,15 +177,155 @@ jobs:
       - name: Build signed production distributable
         working-directory: app
         run: npx electron-builder --publish never --config .release-builder.json
-      - name: Verify Windows Authenticode signature
+      - name: Verify Windows Authenticode signature and expected certificate
         if: matrix.platform == 'windows-portable'
         shell: pwsh
+        env:
+          WINDOWS_EXPECTED_CERT_THUMBPRINT: ${{ secrets.WINDOWS_EXPECTED_CERT_THUMBPRINT }}
         run: |
           $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
           if (-not $exe) { throw "Windows release executable was not produced." }
           $signature = Get-AuthenticodeSignature $exe.FullName
           if ($signature.Status -ne "Valid") { throw "Windows Authenticode signature is not valid: $($signature.Status)" }
-          Write-Host "Verified signed publisher:" $signature.SignerCertificate.Subject
+          if (-not $signature.SignerCertificate) { throw "Windows executable has no signer certificate." }
+          $rawExpected = $env:WINDOWS_EXPECTED_CERT_THUMBPRINT
+          if (-not $rawExpected) { throw "Set WINDOWS_EXPECTED_CERT_THUMBPRINT to the approved 40-character certificate thumbprint." }
+          $expected = ($rawExpected -replace '\s', '').ToUpperInvariant()
+          if ($expected -notmatch '^[0-9A-F]{40}
+      - name: Verify macOS code signature, expected Team ID, and notarization
+        if: matrix.platform == 'macos-dmg'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_bundle="$(find app/release -maxdepth 4 -type d -name '*.app' -print -quit)"
+          dmg="$(find app/release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          if [[ -z "$app_bundle" || -z "$dmg" ]]; then
+            echo "Expected signed .app bundle and DMG were not produced."
+            exit 1
+          fi
+          if [[ ! "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "APPLE_TEAM_ID must be the expected 10-character Apple Developer Team ID."
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          signature_details="$(codesign -dv --verbose=4 "$app_bundle" 2>&1)"
+          printf '%s\n' "$signature_details"
+          team_id="$(printf '%s\n' "$signature_details" | sed -n 's/^TeamIdentifier=//p' | head -n 1)"
+          authority="$(printf '%s\n' "$signature_details" | sed -n 's/^Authority=//p' | head -n 1)"
+          if [[ "$team_id" != "$APPLE_TEAM_ID" ]]; then
+            echo "Unexpected macOS signing TeamIdentifier: ${team_id:-missing}; expected $APPLE_TEAM_ID."
+            exit 1
+          fi
+          if [[ "$authority" != "Developer ID Application:"* ]]; then
+            echo "Expected a Developer ID Application signature, got: ${authority:-missing}."
+            exit 1
+          fi
+          xcrun stapler validate "$dmg"
+      - name: Verify expected Linux AppImage
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find app/release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$appimage" ]]; then echo "Linux AppImage was not produced"; exit 1; fi
+          chmod +x "$appimage"
+      - name: Ensure Linux virtual display is available
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+      - name: Launch-test packaged Windows executable
+        if: matrix.platform == 'windows-portable'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
+          node app/tests/packaged-smoke.cjs $exe.FullName
+      - name: Launch-test packaged macOS application
+        if: matrix.platform == 'macos-dmg'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount_dir="$RUNNER_TEMP/cluely-release-dmg"
+          app_copy="$RUNNER_TEMP/Cluely Copilot.app"
+          dmg="$(find app/release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          mkdir -p "$mount_dir"
+          hdiutil attach "$dmg" -nobrowse -quiet -mountpoint "$mount_dir"
+          cleanup() { hdiutil detach "$mount_dir" -quiet || true; }
+          trap cleanup EXIT
+          app_bundle="$(find "$mount_dir" -maxdepth 3 -type d -name '*.app' -print -quit)"
+          if [[ -z "$app_bundle" ]]; then echo "No app bundle found in DMG"; exit 1; fi
+          ditto "$app_bundle" "$app_copy"
+          hdiutil detach "$mount_dir" -quiet
+          trap - EXIT
+          node app/tests/packaged-smoke.cjs "$app_copy/Contents/MacOS/Cluely Copilot"
+      - name: Launch-test packaged Linux AppImage
+        if: matrix.platform == 'linux-appimage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find app/release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          chmod +x "$appimage"
+          node app/tests/packaged-smoke.cjs "$appimage"
+      - name: Upload signed platform artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: app/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub release and signed checksums
+    needs: [validate, verify, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Require all three platform assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          find release-assets -maxdepth 1 -type f -print
+          for ext in exe dmg AppImage; do
+            if ! find release-assets -maxdepth 1 -type f -iname "*.$ext" | grep -q .; then
+              echo "Missing production release artifact: .$ext"
+              exit 1
+            fi
+          done
+      - name: Generate and sign SHA-256 manifest
+        shell: bash
+        env:
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_GPG_PRIVATE_KEY" || -z "$RELEASE_GPG_PASSPHRASE" ]]; then
+            echo "RELEASE_GPG_PRIVATE_KEY and RELEASE_GPG_PASSPHRASE are required to sign the artifact manifest."
+            exit 1
+          fi
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+          cd release-assets
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" --armor --detach-sign --output SHA256SUMS.txt.asc SHA256SUMS.txt
+      - name: Publish versioned GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Cluely Copilot $GITHUB_REF_NAME" --generate-notes --verify-tag
+) { throw "WINDOWS_EXPECTED_CERT_THUMBPRINT must contain exactly 40 hexadecimal characters." }
+          $actual = ($signature.SignerCertificate.Thumbprint -replace '\s', '').ToUpperInvariant()
+          if ($actual -ne $expected) { throw "Unexpected Authenticode certificate thumbprint. Actual: $actual; expected: $expected" }
+          Write-Host "Verified expected signed publisher:" $signature.SignerCertificate.Subject
       - name: Verify macOS code signature and notarization
         if: matrix.platform == 'macos-dmg'
         shell: bash
