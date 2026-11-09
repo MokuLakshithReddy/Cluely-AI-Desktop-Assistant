@@ -26,6 +26,29 @@ jobs:
           cache-dependency-path: 'package-lock.json'
       - name: Install dependencies
         run: npm ci
+      - name: Restore Electron binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/electron-cache
+          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install Electron binary for desktop smoke test
+        working-directory: app
+        shell: bash
+        env:
+          electron_config_cache: ${{ runner.temp }}/electron-cache
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            npx install-electron --no
+            status=$?
+            if [ "$status" -eq 0 ]; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            delay=$((attempt * 15))
+            echo "Electron binary download failed (exit $status); retrying in $delay seconds."
+            sleep "$delay"
+          done
       - name: Capture npm audit report
         shell: bash
         run: npm audit --json > npm-audit.json || true
@@ -97,13 +120,31 @@ jobs:
           cache-dependency-path: 'package-lock.json'
       - name: Install dependencies
         run: npm ci
-      - name: Restore electron-builder tool cache
+      - name: Restore Electron and electron-builder caches
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/electron-builder-cache
-          key: electron-builder-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          path: |
+            ${{ runner.temp }}/electron-cache
+            ${{ runner.temp }}/electron-builder-cache
+          key: electron-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
-            electron-builder-${{ runner.os }}-
+            electron-build-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install Electron runtime for packaging
+        working-directory: app
+        shell: bash
+        env:
+          electron_config_cache: ${{ runner.temp }}/electron-cache
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            npx install-electron --no
+            status=$?
+            if [ "$status" -eq 0 ]; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            delay=$((attempt * 15))
+            echo "Electron binary download failed (exit $status); retrying in $delay seconds."
+            sleep "$delay"
+          done
       - name: Build application
         run: npm run build
       - name: Install macOS-only optional DMG tooling omitted from the Windows-generated lockfile
@@ -122,6 +163,7 @@ jobs:
         env:
           DEBUG: electron-builder
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
+          electron_config_cache: ${{ runner.temp }}/electron-cache
         run: |
           set +e
           for attempt in 1 2 3; do
