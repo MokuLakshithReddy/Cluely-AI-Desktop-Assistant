@@ -46,7 +46,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 * **Multimodal Reasoning**: Visual evidence is transmitted alongside user queries to vision-capable LLMs (Gemini 2.0 Flash, GPT-4o, Claude 3.5 Sonnet) for debugging compiler errors, analyzing slide decks, and reviewing code.
 
 ### 🪟 Floating Assistant Shell & Window Coordination
-* **Frameless Floating Pill**: Compact, translucent overlay (`width: 380, height: 52`, `alwaysOnTop: true`, `type: 'panel'`, `skipTaskbar: true`) with custom drag regions and desktop boundary clamping.
+* **Frameless Floating Control**: Compact, translucent Electron window (490 × 56, frameless and always-on-top) with a separate resizable chat window. The control window is not configured as a native macOS panel, and the project does not currently implement a system tray.
 * **Expandable Docked Chat Card**: Anchored directly to the pill, rendering streaming Markdown, code blocks with syntax highlighting, and follow-up recommendation chips.
 * **Settings & Knowledge Dashboard**: Multi-tab settings panel for API key vault management, document upload, shortcut configuration, and session history export.
 
@@ -65,11 +65,11 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 
 ### 📚 Local Knowledge Base & Document Retrieval (RAG)
 * **Local Ingestion**: Ingest Markdown notes, resumes, API documentation, and PDF files.
-* **Smart Chunking**: Overlapping text windows (500 tokens with 80-token overlap) respecting paragraph boundaries.
-* **In-Memory Retrieval**: High-speed TF-IDF keyword and semantic scoring retrieving relevant background passages with explicit source citations.
+* **Smart Chunking**: Overlapping character-based text windows (500 characters with 80 characters of overlap), with paragraph/header boundary adjustments.
+* **In-Memory Retrieval**: Local TF-IDF lexical ranking over document chunks. This is keyword-based retrieval, not embedding-based semantic or vector search.
 
 ### 🔐 Zero-Leakage Credential Vault & Privacy
-* **OS-Backed Key Storage**: API keys are encrypted via Electron `safeStorage` (Windows DPAPI / macOS Keychain) with an authenticated AES-256-GCM fallback.
+* **OS-Backed Key Storage**: API keys are encrypted using Electron's asynchronous `safeStorage` APIs and supported OS credential backends. Linux rejects the insecure `basic_text` backend. The AES-256-GCM branch is available only to tests with an explicitly injected test key; production has no application-managed encryption fallback.
 * **Renderer Masking**: Decrypted keys exist strictly within the main process memory; renderers receive only boolean presence flags (`hasApiKeys`).
 * **Zero Raw Audio Retention**: Audio chunks are held strictly in ephemeral RAM during VAD processing and purged immediately after transcription. No audio is written to disk.
 * **Multi-Session Archiving**: Sessions are persisted locally in user data with strict path traversal boundary verification (`/^[a-zA-Z0-9_-]+$/`), chronological indexing, and one-click JSON/Markdown export.
@@ -214,7 +214,7 @@ flowchart TD
     │   │   └── Dashboard.tsx           # BYOK vault configuration, document RAG, and session manager
     │   ├── hooks/
     │   │   ├── useSharedState.ts       # Atomic state synchronization & IPC patch dispatcher
-    │   │   ├── useAudioCapture.ts      # Dual-channel mic + loopback capture & crosstalk suppression
+    │   │   ├── useAudioCapture.ts      # Dual-channel mic + loopback capture with independent VAD streams
     │   │   └── useAiAssistant.ts       # Non-destructive streaming context synthesis & token accumulator
     │   └── lib/
     │       ├── types.ts                # Shared state, SessionRecord, message, and document contracts
@@ -261,8 +261,8 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 * **Deep Payload Sanitization**: State patch payloads are checked against a strict whitelist of permissible keys. Transcripts, messages, and knowledge documents are validated against nested schemas, array length limits (5,000 transcript items, 1,000 messages, 500 docs), and character caps (2MB per doc, 500k chars per message).
 
 ### 🔒 Credential Vault Protection
-* **Hardware-Backed OS Encryption**: Stored via Electron `safeStorage` (Windows DPAPI / macOS Keychain).
-* **Fail-Safe Policy (`safeFail`)**: If hardware-backed secure storage is unavailable, key writes are rejected rather than silently written in plaintext to disk.
+* **OS-Backed Credential Encryption**: Stored via Electron `safeStorage`; the selected platform backend determines the OS credential integration.
+* **Fail-Closed Policy**: If a supported OS-backed secure storage provider is unavailable, credential writes are rejected rather than persisted in plaintext or encrypted with an application-managed fallback.
 * **Zero Disk Leakage**: Plaintext credentials are never written to `cluely-shared-state.json` or shared across IPC. Renderers receive only boolean presence flags (`hasApiKeys`).
 * **Ephemeral Web Mode**: In browser preview mode, keys reside purely in transient memory (`inMemoryVaultKeys`) and are **never saved to localStorage**.
 
