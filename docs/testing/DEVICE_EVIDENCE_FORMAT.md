@@ -72,9 +72,13 @@ Create one JSON file per release candidate. The top-level object has:
 
 - `schemaVersion`: integer `1`.
 - `candidate`: `version`, 40-character `commit`, `ciRunUrl`, `electronVersion`,
-  and `nodeVersion`.
-- `runs`: one object per tested hardware / OS configuration. Each run has a unique `id`,
-  `platform` (`windows`, `macos`, or `linux`), `osRelease`, `osBuild`,
+  `nodeVersion`, and `supportedConfigurations`. Declare every OS/build/architecture/device
+  configuration the release claims to support; each scope entry has a unique `id`, a
+  `platform`, and a human-readable `description`.
+- `runs`: one object per tested hardware / OS configuration. Each run has a unique `id`
+  and a `configurationId` matching one declared `candidate.supportedConfigurations` entry.
+  Every declared configuration must have a run. Each run has a `platform` (`windows`,
+  `macos`, or `linux`), `osRelease`, `osBuild`,
   `architecture`, `hardware`, `microphoneDevice`, `audioRoute`,
   `displayConfiguration`, and the exact packaged `artifactName`, `artifactUrl`,
   and 64-character `artifactSha256`.
@@ -96,11 +100,17 @@ before final sign-off):
     "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "ciRunUrl": "https://github.com/OWNER/REPO/actions/runs/123456",
     "electronVersion": "45.2.3",
-    "nodeVersion": "24.22.2"
+    "nodeVersion": "24.22.2",
+    "supportedConfigurations": [
+      { "id": "windows-11-24h2-x64-device-01", "platform": "windows", "description": "Windows 11 24H2 x64 test device" },
+      { "id": "macos-arm64-device-01", "platform": "macos", "description": "Supported macOS arm64 test device" },
+      { "id": "ubuntu-24-04-x64-device-01", "platform": "linux", "description": "Ubuntu 24.04 x64 test device" }
+    ]
   },
   "runs": [
     {
       "id": "windows-11-24h2-x64-device-01",
+      "configurationId": "windows-11-24h2-x64-device-01",
       "platform": "windows",
       "osRelease": "Windows 11 24H2",
       "osBuild": "record-the-exact-build",
