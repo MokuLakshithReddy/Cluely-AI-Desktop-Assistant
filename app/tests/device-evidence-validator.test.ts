@@ -25,9 +25,15 @@ function buildCampaign(): any {
       ciRunUrl: 'https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/123456',
       electronVersion: '45.2.3',
       nodeVersion: '24.22.2',
+      supportedConfigurations: platforms.map((platform) => ({
+        id: platform + '-device-01',
+        platform,
+        description: 'One claimed ' + platform + ' release configuration.',
+      })),
     },
     runs: platforms.map((platform) => ({
       id: platform + '-device-01',
+      configurationId: platform + '-device-01',
       platform,
       osRelease: platform === 'windows' ? 'Windows 11 24H2' : platform === 'macos' ? 'macOS 15' : 'Ubuntu 24.04',
       osBuild: 'test-build-identifier',
@@ -74,6 +80,27 @@ describe('device evidence campaign validator', () => {
     expect(result.errors.some((error) => error.message.includes('linux'))).toBe(true);
   });
 
+  it('rejects a declared supported device configuration with no evidence run', () => {
+    const campaign = buildCampaign();
+    campaign.candidate.supportedConfigurations.push({
+      id: 'windows-10-x64-device-02',
+      platform: 'windows',
+      description: 'A separately claimed Windows 10 configuration.',
+    });
+
+    const result = validateCampaign(campaign);
+
+    expect(result.errors.some((error) => error.message.includes('windows-10-x64-device-02'))).toBe(true);
+  });
+
+  it('rejects a run whose platform conflicts with its declared configuration', () => {
+    const campaign = buildCampaign();
+    campaign.runs[0].platform = 'macos';
+
+    const result = validateCampaign(campaign);
+
+    expect(result.errors.some((error) => error.message.includes('does not match the declared'))).toBe(true);
+  });
   it('rejects a missing test record within a platform run', () => {
     const campaign = buildCampaign();
     campaign.runs[0].records = campaign.runs[0].records.filter((record) => record.testId !== 'D-04');
