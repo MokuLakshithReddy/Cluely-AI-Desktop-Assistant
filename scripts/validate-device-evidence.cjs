@@ -90,6 +90,15 @@ function validateCampaign(campaign, options = {}) {
       }
       checkString(scope.id, scopePath + '.id');
       checkString(scope.description, scopePath + '.description');
+      [
+        'osRelease',
+        'osBuild',
+        'architecture',
+        'hardware',
+        'microphoneDevice',
+        'audioRoute',
+        'displayConfiguration',
+      ].forEach((field) => checkString(scope[field], scopePath + '.' + field));
       if (!REQUIRED_PLATFORMS.includes(scope.platform)) {
         add(scopePath + '.platform', 'must be one of: ' + REQUIRED_PLATFORMS.join(', '));
       } else {
@@ -141,8 +150,16 @@ function validateCampaign(campaign, options = {}) {
         if (!configurationScopes.has(run.configurationId)) {
           add(base + '.configurationId', 'does not match a declared supported configuration');
         } else {
-          if (configurationScopes.get(run.configurationId) !== run.platform) {
+          const declared = campaign.candidate.supportedConfigurations.find((scope) => scope.id === run.configurationId);
+          if (declared && declared.platform !== run.platform) {
             add(base + '.configurationId', 'platform does not match the declared supported configuration');
+          }
+          if (declared) {
+            for (const field of ['osRelease', 'osBuild', 'architecture', 'hardware', 'microphoneDevice', 'audioRoute', 'displayConfiguration']) {
+              if (nonEmptyString(run[field]) && run[field] !== declared[field]) {
+                add(base + '.' + field, 'does not match declared supported configuration ' + run.configurationId);
+              }
+            }
           }
           coveredConfigurations.add(run.configurationId);
         }
