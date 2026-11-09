@@ -26,6 +26,23 @@ describe('State persistence error reporting', () => {
     expect(manager.getState().persistenceError).toBeUndefined();
   });
 
+  it('ignores stale persisted app versions and does not persist runtime version metadata', () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-version-'));
+    const stateFile = path.join(directory, 'state.json');
+    fs.writeFileSync(stateFile, JSON.stringify({
+      appVersion: '1.0.1',
+      showChat: false,
+    }), 'utf8');
+
+    const manager = new StateManager(stateFile, false);
+    expect(manager.getState().appVersion).not.toBe('1.0.1');
+    expect(manager.getState().showChat).toBe(false);
+
+    manager.flushSave();
+    const persistedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    expect(persistedState).not.toHaveProperty('appVersion');
+  });
+
   it('surfaces write failures, propagates critical flush errors, and clears the warning after recovery', () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-persistence-'));
     const stateFile = path.join(directory, 'state.json');
