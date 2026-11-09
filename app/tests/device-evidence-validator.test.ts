@@ -29,6 +29,13 @@ function buildCampaign(): any {
         id: platform + '-device-01',
         platform,
         description: 'One claimed ' + platform + ' release configuration.',
+        osRelease: platform === 'windows' ? 'Windows 11 24H2' : platform === 'macos' ? 'macOS 15' : 'Ubuntu 24.04',
+        osBuild: 'test-build-identifier',
+        architecture: 'x64',
+        hardware: 'Test hardware model',
+        microphoneDevice: 'Test microphone',
+        audioRoute: 'Test audio output and loopback',
+        displayConfiguration: 'Single 1920x1080 display',
       })),
     },
     runs: platforms.map((platform) => ({
@@ -100,6 +107,14 @@ describe('device evidence campaign validator', () => {
     const result = validateCampaign(campaign);
 
     expect(result.errors.some((error) => error.message.includes('does not match the declared'))).toBe(true);
+  });
+  it('rejects device metadata that differs from the declared supported configuration', () => {
+    const campaign = buildCampaign();
+    campaign.runs[0].osBuild = 'a-different-windows-build';
+
+    const result = validateCampaign(campaign);
+
+    expect(result.errors.some((error) => error.message.includes('does not match declared supported configuration'))).toBe(true);
   });
   it('rejects a missing test record within a platform run', () => {
     const campaign = buildCampaign();
