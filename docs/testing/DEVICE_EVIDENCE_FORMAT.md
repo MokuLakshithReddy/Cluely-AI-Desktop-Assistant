@@ -74,7 +74,9 @@ Create one JSON file per release candidate. The top-level object has:
 - `candidate`: `version`, 40-character `commit`, `ciRunUrl`, `electronVersion`,
   `nodeVersion`, and `supportedConfigurations`. Declare every OS/build/architecture/device
   configuration the release claims to support; each scope entry has a unique `id`, a
-  `platform`, and a human-readable `description`.
+  `platform`, a human-readable `description`, and exact `osRelease`, `osBuild`,
+  `architecture`, `hardware`, `microphoneDevice`, `audioRoute`, and
+  `displayConfiguration` values. Each matching run must use those same values.
 - `runs`: one object per tested hardware / OS configuration. Each run has a unique `id`
   and a `configurationId` matching one declared `candidate.supportedConfigurations` entry.
   Every declared configuration must have a run. Each run has a `platform` (`windows`,
@@ -102,9 +104,9 @@ before final sign-off):
     "electronVersion": "45.2.3",
     "nodeVersion": "24.22.2",
     "supportedConfigurations": [
-      { "id": "windows-11-24h2-x64-device-01", "platform": "windows", "description": "Windows 11 24H2 x64 test device" },
-      { "id": "macos-arm64-device-01", "platform": "macos", "description": "Supported macOS arm64 test device" },
-      { "id": "ubuntu-24-04-x64-device-01", "platform": "linux", "description": "Ubuntu 24.04 x64 test device" }
+      { "id": "windows-11-24h2-x64-device-01", "platform": "windows", "description": "Windows 11 24H2 x64 test device", "osRelease": "Windows 11 24H2", "osBuild": "record-the-exact-build", "architecture": "x64", "hardware": "manufacturer and model", "microphoneDevice": "manufacturer and model", "audioRoute": "record the real input/output loopback route", "displayConfiguration": "record monitor count, resolution and scaling" },
+      { "id": "macos-arm64-device-01", "platform": "macos", "description": "Supported macOS arm64 test device", "osRelease": "macOS 15", "osBuild": "record-the-exact-build", "architecture": "arm64", "hardware": "manufacturer and model", "microphoneDevice": "manufacturer and model", "audioRoute": "record the real input/output loopback route", "displayConfiguration": "record monitor count, resolution and scaling" },
+      { "id": "ubuntu-24-04-x64-device-01", "platform": "linux", "description": "Ubuntu 24.04 x64 test device", "osRelease": "Ubuntu 24.04", "osBuild": "record-kernel-and-desktop-build", "architecture": "x64", "hardware": "manufacturer and model", "microphoneDevice": "manufacturer and model", "audioRoute": "record the real input/output loopback route", "displayConfiguration": "record monitor count, resolution and scaling" }
     ]
   },
   "runs": [
