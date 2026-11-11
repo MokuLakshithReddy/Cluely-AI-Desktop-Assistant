@@ -513,6 +513,9 @@ async function runDesktopE2E({ windowCoordinator }) {
         if (!activeState.meHasVoiceActivity || !activeState.themHasVoiceActivity) {
           throw new Error('Synthetic overlapping speech did not activate both independent VAD sources');
         }
+        if (activeState.microphoneCaptureStatus !== 'active' || activeState.systemAudioCaptureStatus !== 'active') {
+          throw new Error('Both capture channels must report active only after their processors are connected');
+        }
 
         const purgeResult = await bridge.purgeAllData();
         await new Promise(resolve => setTimeout(resolve, 150));
@@ -527,6 +530,8 @@ async function runDesktopE2E({ windowCoordinator }) {
           recordingAfterPurge: stateAfterPurge.isRecording,
           micActivityAfterPurge: stateAfterPurge.meHasVoiceActivity,
           systemActivityAfterPurge: stateAfterPurge.themHasVoiceActivity,
+          microphoneStatusAfterPurge: stateAfterPurge.microphoneCaptureStatus,
+          systemAudioStatusAfterPurge: stateAfterPurge.systemAudioCaptureStatus,
           sessionAfterPurge: stateAfterPurge.session,
           knowledgeDocsAfterPurge: stateAfterPurge.knowledgeDocs.length,
         };
@@ -576,6 +581,8 @@ async function runDesktopE2E({ windowCoordinator }) {
     assert.equal(activeCaptureResult.recordingAfterPurge, false, 'Recording must be off after purge');
     assert.equal(activeCaptureResult.micActivityAfterPurge, false, 'Microphone VAD activity must be cleared');
     assert.equal(activeCaptureResult.systemActivityAfterPurge, false, 'System VAD activity must be cleared');
+    assert.equal(activeCaptureResult.microphoneStatusAfterPurge, 'idle', 'Microphone status must reset after purge');
+    assert.equal(activeCaptureResult.systemAudioStatusAfterPurge, 'idle', 'System-audio status must reset after purge');
     assert.equal(activeCaptureResult.sessionAfterPurge, null, 'Buffered speech must not recreate a session during purge');
     assert.equal(activeCaptureResult.knowledgeDocsAfterPurge, 0, 'Purge must leave no knowledge docs');
     evidence.push('Actual control-window useAudioCapture hook opened fake mic + loopback streams, detected overlapping speech in both VAD sources, and stopped/discarded both streams during purge');
