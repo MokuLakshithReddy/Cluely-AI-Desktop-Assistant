@@ -12,49 +12,60 @@ To ensure strict functional equivalence, clean-room integrity, and real-world de
 
 ## 2. Test Suite Matrix
 
+The table describes the current checked-in automated suite. Counts are historical evidence and must be confirmed from a fresh run before every release candidate.
+
 | Test Suite | File | Focus Areas | Automated / Manual |
 |---|---|---|---|
-| **Audio & VAD** | `tests/audio-vad.test.ts` | 48kHz to 16kHz resampling, RMS energy + ZCR speech detection, dynamic noise floor, crosstalk suppression, WAV encoding (6 tests) | Automated (Vitest) |
-| **Audio Ownership** | `tests/audio-ownership.test.ts` | Dual-channel audio ownership & stream leak prevention (3 tests) | Automated (Vitest) |
-| **Screen Capture** | `tests/screen-capture.test.ts` | Aspect-ratio downscaling logic, max-1920 clamp, 4K/ultrawide preservation, PNG buffer validation (5 tests) | Automated (Vitest) |
-| **AI Context Assembly** | `tests/ai-context.test.ts` | Dual-speaker tagging ([You]/[Speaker]), 5 operating mode guidance, RAG grounding, error filtering (7 tests) | Automated (Vitest) |
-| **Knowledge RAG** | `tests/knowledge-rag.test.ts` | PDF text extraction, document ingestion, overlapping chunking, TF-IDF / BM25 ranking relevance (6 tests) | Automated (Vitest) |
-| **IPC & Security** | `tests/ipc-security.test.ts` | Sender frame origin verification, lookalike hostname blocking, dist/index.html substring defense, nested schema & size validation (22 tests) | Automated (Vitest) |
-| **Credential Vault** | `tests/credential-vault.test.ts` | safeStorage OS keyring / AES-256-GCM encryption, fail-safe on missing keyring, write error propagation, boolean key masking (7 tests) | Automated (Vitest) |
-| **Session Archive** | `tests/session-archive.test.ts` | Multi-session persistence, path traversal containment protection, screenshot stripping, 5MB limit (7 tests) | Automated (Vitest) |
-| **AI Streaming** | `tests/ai-streaming.test.ts` | Non-destructive token accumulation, multi-turn history preservation, abort cancellation, immutability (4 tests) | Automated (Vitest) |
-| **Dashboard Routing** | `tests/dashboard-routing.test.ts` | Route hash parsing & sub-tab query routing (4 tests) | Automated (Vitest) |
-| **Provider Models** | `tests/provider-models.test.ts` | Active 2026 model routing, fallback self-healing, multi-turn serialization (6 tests) | Automated (Vitest) |
-| **Web Bridge** | `tests/web-bridge.test.ts` | Web bridge in-memory vault, no-localStorage enforcement, scoped abort (5 tests) | Automated (Vitest) |
-| **E2E Desktop Session** | `tests/e2e-desktop-session.test.ts` | Full consented desktop session lifecycle, audio VAD, screen scaling, RAG, streaming, abort, and zero-leakage purge (6 tests) | Automated (Vitest) |
-| **Desktop Runtime Smoke** | `tests/electron-smoke.cjs` | Verified [APP_READY] signal observation, window coordinator initialization, IPC router registration, clean shutdown with exit code 0 (1 test) | Automated (Electron/Node) |
-| **Total Verified** | **All 14 Subsystems** | **88 Vitest Unit/Integration Tests + 1 Native Electron Smoke Test (100% Pass Rate)** | **89 Automated Tests** |
+| Audio & VAD | `tests/audio-vad.test.ts` | Resampling, RMS/ZCR detection, independent source activity, WAV encoding | Automated (Vitest) |
+| Audio Ownership | `tests/audio-ownership.test.ts` | Capture ownership, pending permission cancellation, independent mic/system VAD | Automated (Vitest) |
+| Screen Capture | `tests/screen-capture.test.ts` | Thumbnail sizing and proportional scaling | Automated (Vitest); real display capture is manual |
+| AI Context Assembly | `tests/ai-context.test.ts` | Prompt construction, transcript speaker labels, operating modes, context filtering | Automated (Vitest) |
+| Knowledge Retrieval | `tests/knowledge-rag.test.ts` | PDF.js extraction, ingestion, chunking, TF-IDF lexical retrieval | Automated (Vitest); not embedding/vector retrieval |
+| IPC & Security | `tests/ipc-security.test.ts` | Sender-frame origin checks, request identity, schema and size validation | Automated (Vitest) |
+| Credential Vault | `tests/credential-vault.test.ts` | Async safeStorage, legacy ciphertext, key rotation, serialization | Automated (Vitest); OS backend coverage is platform-dependent |
+| Session Archive | `tests/session-archive.test.ts` | Persistence, path containment, screenshot stripping, size limits | Automated (Vitest); archive files are currently not encrypted at rest |
+| AI Streaming | `tests/ai-streaming.test.ts` | Token accumulation, history preservation, abort behavior | Automated (Vitest) |
+| Dashboard Routing | `tests/dashboard-routing.test.ts` | Route hash and sub-tab routing | Automated (Vitest) |
+| Provider Models | `tests/provider-models.test.ts` | Provider/model routing and serialization | Automated (Vitest); live provider availability is not established |
+| Web Bridge | `tests/web-bridge.test.ts` | In-memory web credentials and cancellation scoping | Automated (Vitest) |
+| Synthetic Pipeline Integration | `tests/e2e-desktop-session.test.ts` | Synthetic audio, scaling, knowledge retrieval, mocked streaming, session persistence | Automated (Vitest); not a physical-device E2E |
+| Electron UI/IPC Smoke | `tests/electron-e2e.cjs`, `tests/electron-smoke.cjs` | Dashboard, preload, IPC, persistence, purge and controlled shutdown | Automated (Electron) |
+| Packaged App Smoke | `tests/packaged-smoke.cjs` | Launch actual Windows portable, macOS app, and Linux AppImage; renderer/preload/IPC readiness and clean shutdown | Native CI runners; not physical-device capture acceptance |
+| Device Acceptance | `docs/testing/DEVICE_VALIDATION_MATRIX.md` | Microphone, system audio, display permissions, live providers, emergency stop/purge, stability and conferencing compatibility | Manual on physical devices; issue #49 remains open |
 
-For the complete end-to-end execution audit, see [`E2E_VERIFICATION_REPORT.md`](E2E_VERIFICATION_REPORT.md). For empirical benchmarks, see [`docs/benchmarks/QUALITY_MEASUREMENTS.md`](../benchmarks/QUALITY_MEASUREMENTS.md).
+The last documented successful baseline recorded 124 Vitest checks plus one Electron UI/IPC smoke check (125 total) and separately completed native packaged-app smoke. See [TEST_RESULTS.md](TEST_RESULTS.md). This is historical evidence, not a current-head pass. The current `main` CI run failed before any job step executed because GitHub did not allocate a runner; re-run CI before using any count as a release result.
 
----
-
-## 3. Verified Environments Matrix
-
-Testing is validated and tracked across two isolated environments:
-1. **Local Development & Interactive Environment**:
-   - Host: Windows 11 Pro x64 (Build 26200)
-   - Runtime: Node.js v24.19.0, npm v11.x, Vitest v3.2.7, Electron v34.2.0
-   - Artifacts: Direct hardware audio device access, live Electron window coordinator, local report generation (`npm run test:report`)
-2. **Hosted CI Environment**:
-   - Host: Windows Server 2022 (`windows-latest`) on GitHub Actions
-   - Runtime: Node.js v20.x, npm v10.x (`npm ci`)
-   - Artifacts: Headless display emulation, automated Vitest runner, verified Electron smoke test, and continuous build artifact upload
 
 ---
 
-## 4. Acceptance Criteria Checklist (Section 10)
-- [x] **Desktop experience**: The app launches, the floating panel works, shortcuts respond, and sessions can be stopped cleanly.
-- [x] **Real AI responses**: The application calls a configured model (Gemini, GPT-4o, Claude 3.5, Ollama), streams actual responses without token loss, and handles failures and cancellation.
-- [x] **Screen understanding**: A real captured image is sent to a vision-capable service, and the answer reflects its contents.
-- [x] **Live transcription**: Dual-stream audio is captured (mic `me` via getUserMedia, system audio `them` via getDisplayMedia loopback) and converted to real text with incremental updates.
-- [x] **Conversation context**: Responses use relevant recent context, dual-speaker tags, and do not mix unrelated sessions.
-- [x] **Session lifecycle**: Pause, resume, stop, cleanup, and multi-session archive/export behavior work in the running app.
-- [x] **Security**: Credentials are encrypted in an OS-backed vault (`safeStorage` / AES-256-GCM), sensitive keys are stripped from shared state, and strict IPC origin validation is enforced.
-- [x] **Reliability**: Tests cover interruptions, network failures, missing credentials, malformed inputs, and recovery.
-- [x] **Release readiness**: A packaged build compiles successfully (`npm run build`) and passes documented smoke tests.
+## 3. Verification Environments Matrix
+
+Automated CI targets Windows, macOS, and Linux package creation/launch smoke jobs. The exact runner images and runtime versions must be read from the workflow run for each candidate; do not retain old Node.js 20, Electron 34, or Vitest 3 details as current environment claims.
+
+A successful package launch smoke verifies the packaged renderer/preload/IPC path and controlled shutdown. It does not verify physical microphone devices, OS loopback, display permissions, meeting-app compatibility, live cloud-provider behavior, or long-duration stability on end-user hardware.
+
+Physical-device acceptance is recorded separately in [DEVICE_VALIDATION_MATRIX.md](DEVICE_VALIDATION_MATRIX.md). As of November 11, 2026, the matrix still marks device configurations NOT RUN / NOT APPROVED and issue [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) remains open.
+
+
+---
+
+## 4. Acceptance Criteria Checklist
+
+### Automated evidence
+- [x] Unit and integration test suites are checked into the repository.
+- [x] Electron UI/preload/IPC smoke exercises Dashboard, persistence, purge, and controlled shutdown.
+- [x] Native CI package smoke launches Windows, macOS, and Linux artifacts in the documented successful baseline.
+- [ ] Current `main` head has a successful CI run; the latest run failed before runner allocation.
+- [ ] Current PR changes have a successful CI run; their Windows jobs are currently failing before any steps execute.
+
+### Manual release acceptance
+- [ ] Physical microphone grant/denial/revocation/disconnect and reselection tests pass on each claimed OS/device configuration.
+- [ ] System-audio loopback and simultaneous local/remote speech pass on each claimed OS/session type.
+- [ ] Display-capture permission, cancellation, revocation, and multi-monitor tests pass.
+- [ ] Emergency stop and purge pass with real devices and live transcription/provider work.
+- [ ] Live provider credentials, model availability, rate limits, network failure, cancellation, and recovery are verified.
+- [ ] Conference/screen-recorder compatibility and long-session stability are recorded.
+- [ ] Session archives and shared conversation/knowledge state are encrypted at rest with a tested legacy migration; tracked by [issue #73](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/73).
+- [ ] Windows/macOS signing, notarization, GPG tag/checksum verification, and signed v1.0.2 publication are completed.
+
+Do not mark a manual criterion complete based on synthetic media, mocked permissions, package launch smoke, or documentation alone. The repository remains **NO-GO** until the applicable physical-device and signed-release gates are complete.
