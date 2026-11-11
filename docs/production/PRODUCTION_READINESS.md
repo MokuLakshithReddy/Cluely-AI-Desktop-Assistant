@@ -56,7 +56,7 @@ Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/iss
 
 1. **Real-device validation (#49):** the Windows, macOS, and supported Linux device matrix still needs actual physical-device runs and signed-off evidence for microphone permissions, loopback audio, display permissions, device disconnects, emergency stop, purge, and live provider/network behavior. The matrix is a runbook, not completed evidence.
 2. **Local-data encryption (#73):** session archives, active conversation state, and knowledge documents are currently persisted as ordinary JSON. Encrypt them with OS-backed storage, migrate existing records, and test purge/race behavior before general distribution.
-3. **Current-head CI:** obtain a successful CI run for the exact release candidate. The latest main run failed before any job step executed and is not a successful verification.
+3. **Current-head CI (#76):** obtain a successful CI run for the exact release candidate. The latest main and three repair-branch runs failed before any job step executed because GitHub did not allocate runners; no build or test assertions ran.
 4. **Signed production release (#50):** publish v1.0.2 only from the exact verified main commit after the device and data-protection gates pass, Windows Authenticode and Apple signing/notarization credentials are configured, the signed GPG tag and checksum manifest validate, and the release workflow publishes all required platform assets.
 
 The release automation is in [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md). It deliberately blocks publication while release-gate issues remain open or required signing material is missing.
