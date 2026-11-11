@@ -6,7 +6,13 @@
 
 ## Status
 
-**NO-GO for general production release.** The merged source revision passes automated verification and packaged-app launch smoke checks on the three CI platforms. Real-device acceptance, production signing, and publication of the signed v1.0.2 release remain outstanding.
+**NO-GO for general production release.** The prior audited source revision passed automated verification and packaged-app launch smoke checks on the three CI platforms. Real-device acceptance, encryption of locally persisted conversation/knowledge data, production signing, and publication of the signed v1.0.2 release remain outstanding.
+
+## Current-head recheck — 2026-11-11
+
+Current `main` is `f5cc75be07fff683fec1f776b55c046de77fd9bc`. Its latest CI run, [42594735278](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42594735278), failed before the Windows verification job executed any steps; GitHub reported no runner assignment and no downloadable job log. This is an infrastructure/startup failure, not evidence of a failed test assertion, but the current head does not have a successful CI verification result.
+
+The current implementation also persists session archives and shared-state conversation/knowledge content as ordinary JSON. Credential encryption does not cover this data. Track the required encryption and migration work in [issue #73](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/73).
 
 This assessment is scoped to the exact source revision and CI run above. Re-run the release gates against the exact candidate tag before publication.
 
@@ -49,7 +55,9 @@ Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/iss
 ## Release blockers
 
 1. **Real-device validation (#49):** the Windows, macOS, and supported Linux device matrix still needs actual physical-device runs and signed-off evidence for microphone permissions, loopback audio, display permissions, device disconnects, emergency stop, purge, and live provider/network behavior. The matrix is a runbook, not completed evidence.
-2. **Signed production release (#50):** publish v1.0.2 only from the exact verified main commit after required device gates pass, Windows Authenticode and Apple signing/notarization credentials are configured, the signed GPG tag and checksum manifest validate, and the release workflow publishes all required platform assets.
+2. **Local-data encryption (#73):** session archives, active conversation state, and knowledge documents are currently persisted as ordinary JSON. Encrypt them with OS-backed storage, migrate existing records, and test purge/race behavior before general distribution.
+3. **Current-head CI (#76):** obtain a successful CI run for the exact release candidate. The latest main and three repair-branch runs failed before any job step executed because GitHub did not allocate runners; no build or test assertions ran.
+4. **Signed production release (#50):** publish v1.0.2 only from the exact verified main commit after the device and data-protection gates pass, Windows Authenticode and Apple signing/notarization credentials are configured, the signed GPG tag and checksum manifest validate, and the release workflow publishes all required platform assets.
 
 The release automation is in [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md). It deliberately blocks publication while release-gate issues remain open or required signing material is missing.
 

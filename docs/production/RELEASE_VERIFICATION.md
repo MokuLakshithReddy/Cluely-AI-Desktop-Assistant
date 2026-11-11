@@ -8,6 +8,16 @@ The latest recorded main revision is [`a9e2ceced6783ebb083bb003a565881c9a38e417`
 
 Do not use the v1.0.1 release or its historical assets as evidence that v1.0.2 has been built, signed, tested, or published.
 
+## Current-head recheck — November 11, 2026
+
+Current `main` is `f5cc75be07fff683fec1f776b55c046de77fd9bc`. The latest CI run [42594735278](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42594735278) failed before the Windows job executed any steps: GitHub reported runner ID 0, no runner name, and zero steps. This is not evidence of a failed application test, but it is also not a successful current-head verification. The 125-check/package-smoke baseline described above belongs to an earlier source revision.
+
+The same pre-runner failure occurred for the new capture-readiness, documentation, and local-file-permission PR checks. Track the repository-level runner investigation in [issue #76](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/76). Re-run the source verification and platform packaging matrix after GitHub Actions runner allocation is restored. Do not merge or publish based on the historical baseline alone.
+
+## Additional release blocker: local data encryption
+
+Session archives and shared-state conversation/knowledge data are currently persisted as ordinary JSON. API credential encryption with Electron `safeStorage` does not encrypt these separate files. Issue [#73](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/73) tracks OS-backed encryption, plaintext migration, fail-closed behavior, and purge/race tests. The signed-release workflow now includes #73 as a required completed issue.
+
 ## CI validation artifacts are not production releases
 
 The CI workflow generates:
@@ -84,4 +94,4 @@ Compare the SHA-256 output with the checksum published for that exact asset. Req
 
 ## Release decision
 
-The current production-readiness assessment is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md). The project remains **NO-GO** for general production distribution until physical-device validation, production signing/notarization, and the signed v1.0.2 publication gates are complete.
+The current production-readiness assessment is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md). The project remains **NO-GO** for general production distribution until a successful CI run verifies the exact release candidate, physical-device validation is signed off, sensitive local session/conversation/knowledge data is encrypted and migrated, and production signing/notarization and the signed v1.0.2 publication gates are complete.

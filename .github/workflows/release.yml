@@ -29,9 +29,9 @@ jobs:
         run: |
           set -euo pipefail
           # Do not publish while a runtime, credential, packaged-launch,
-          # hardware-validation, documentation, licensing, or dependency
-          # security blocker remains open.
-          for issue in 19 47 48 49 51 52 60; do
+          # hardware-validation, local-data-encryption, CI-runner verification, documentation, licensing,
+          # or dependency-security blocker remains open.
+          for issue in 19 47 48 49 51 52 60 73 76; do
             response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}")"
             state="$(jq -r '.state' <<<"$response")"
             reason="$(jq -r '.state_reason // empty' <<<"$response")"

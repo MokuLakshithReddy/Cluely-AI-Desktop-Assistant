@@ -41,8 +41,11 @@ Do not describe fake-media tests as physical microphone or system-loopback valid
 
 - Session records and local knowledge data are persisted in the application's user-data area.
 - Screenshot payloads are stripped from saved session messages to reduce local retention and storage growth.
+- **Session archives and shared-state persistence are currently ordinary JSON, not encrypted at rest.** The shared-state file may contain active transcripts, messages, and knowledge documents. Only provider credentials are protected by the OS-backed credential vault.
 - Data purge removes application-managed session archives, the credential vault, and associated active state, and requests teardown of active capture/transcription work.
 - Purge is application-level logical deletion. It is not forensic or physical secure erasure; filesystem snapshots, backups, SSD wear-leveling, OS caches, crash dumps, or external provider copies may remain.
+
+The lack of encryption at rest for session and knowledge data is a production blocker tracked in [issue #73](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/73). Do not describe the current application as providing encrypted local conversation storage.
 
 ## Display capture protection
 

@@ -4,6 +4,8 @@
 **Workflow:** [CI Verification Suite — run 42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459)  
 **Recorded summary:** 125 automated checks passed — 124 Vitest unit/integration tests across 16 test files and one Electron UI/IPC smoke check.
 
+**Current-head status (November 11, 2026):** current `main` is `f5cc75be07fff683fec1f776b55c046de77fd9bc`. CI run [42594735278](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42594735278) was marked failed before the Windows verification job executed any steps; GitHub reported no runner assignment and no downloadable job log. The same runner-allocation failure affected repair PR checks [#72](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/pull/72), [#74](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/pull/74), and [#75](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/pull/75). Track the repository-level investigation in [issue #76](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/76). The 125-check result below belongs to the earlier evidence revision, not the current `main` head. A fresh successful CI run is required before using this report as release-candidate evidence.
+
 ## What this CI run proves
 
 The merged-main CI run passed:
