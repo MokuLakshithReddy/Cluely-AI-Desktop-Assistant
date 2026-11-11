@@ -437,7 +437,7 @@ async function runDesktopE2E({ windowCoordinator }) {
           microphoneStatus: degradedState.microphoneCaptureStatus,
           systemAudioStatus: degradedState.systemAudioCaptureStatus,
           warningVisible: typeof degradedState.captureWarning === 'string' &&
-            degradedState.captureWarning.includes('permission was not granted'),
+            degradedState.captureWarning.includes('System-audio loopback is unavailable:'),
           microphoneProcessorCreated: processors.length === degradedProcessorStart + 1,
         };
 
