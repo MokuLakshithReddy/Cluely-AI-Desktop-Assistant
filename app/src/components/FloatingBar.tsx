@@ -100,8 +100,8 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
             <Mic className="w-3.5 h-3.5" />
             {state.captureWarning && <AlertTriangle className="w-3.5 h-3.5 text-amber-300" aria-label="Capture warning" />}
             <span>
-              {state.microphoneCaptureStatus === 'starting'
-                ? 'Starting'
+              {state.microphoneCaptureStatus === 'starting' || state.systemAudioCaptureStatus === 'starting'
+                ? 'Connecting'
                 : state.systemAudioCaptureStatus === 'active'
                   ? 'Listening'
                   : 'Mic only'}
