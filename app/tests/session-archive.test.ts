@@ -8,11 +8,7 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
   const testDir = path.join(process.cwd(), 'test-sessions');
 
   beforeEach(() => {
-    repo = new SessionRepository();
-    (repo as any).getStorageDir = () => {
-      if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
-      return testDir;
-    };
+    repo = new SessionRepository(testDir);
   });
 
   afterEach(() => {
@@ -58,6 +54,26 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
     expect(loaded?.title).toBe('Technical Interview with Mock Corp');
     expect(loaded?.transcript.length).toBe(1);
     expect(loaded?.messages.length).toBe(1);
+  });
+
+  it('restricts session directory and archive file access on POSIX', async () => {
+    if (process.platform === 'win32') return;
+
+    await repo.saveSession({
+      id: 'sess_private_mode',
+      title: 'Private session',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      durationSeconds: 1,
+      mode: 'copilot',
+      audioInputLanguage: 'en',
+      transcript: [],
+      messages: [],
+    });
+
+    const filePath = repo.resolveSessionPath('sess_private_mode');
+    expect(fs.statSync(testDir).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
   });
 
   it('lists past sessions ordered by newest creation date', async () => {
