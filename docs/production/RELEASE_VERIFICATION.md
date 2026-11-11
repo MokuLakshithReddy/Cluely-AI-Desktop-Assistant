@@ -12,7 +12,7 @@ Do not use the v1.0.1 release or its historical assets as evidence that v1.0.2 h
 
 Current `main` is `f5cc75be07fff683fec1f776b55c046de77fd9bc`. The latest CI run [42594735278](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42594735278) failed before the Windows job executed any steps: GitHub reported runner ID 0, no runner name, and zero steps. This is not evidence of a failed application test, but it is also not a successful current-head verification. The 125-check/package-smoke baseline described above belongs to an earlier source revision.
 
-The same pre-runner failure occurred for the new capture-readiness, documentation, and local-file-permission PR checks. Re-run the source verification and platform packaging matrix after GitHub Actions runner allocation is restored. Do not merge or publish based on the historical baseline alone.
+The same pre-runner failure occurred for the new capture-readiness, documentation, and local-file-permission PR checks. Track the repository-level runner investigation in [issue #76](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/76). Re-run the source verification and platform packaging matrix after GitHub Actions runner allocation is restored. Do not merge or publish based on the historical baseline alone.
 
 ## Additional release blocker: local data encryption
 
