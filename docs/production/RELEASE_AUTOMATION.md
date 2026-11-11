@@ -8,7 +8,7 @@ The release workflow is `.github/workflows/release.yml`. It runs only when a ver
 - the tag version matches both root and app package versions;
 - the tag points to the exact current `main` commit;
 - the tag has a valid GPG signature;
-- readiness issues #19, #47, #48, #49, #51, #52, #60, and #73 are closed with the completed reason;
+- readiness issues #19, #47, #48, #49, #51, #52, #60, #73, and #76 are closed with the completed reason;
 - the dependency audit has no critical or high vulnerabilities;
 - source verification passes on Node.js 24.22.2;
 - Windows, macOS, and Linux distributables are generated;
@@ -23,6 +23,7 @@ A CI package artifact is not a release until this workflow completes and attache
 - Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/60) is closed as completed after merged PR #62 added the committed-lockfile audit artifact and blocking high/critical gate. The audit still reports six moderate paths for one `minimatch` build-tooling advisory; the repository owner accepted the documented mitigation and expiry/re-review date of **2026-12-07**. This is a time-limited exception, not a clean audit result.
 - Issue [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) remains open until the Windows, macOS, and supported Linux physical-device validation matrix is executed and signed off.
 - Issue [#73](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/73) is a production blocker: session archives and shared conversation/knowledge state are currently readable JSON, and must be encrypted with an OS-backed mechanism with a tested legacy migration.
+- Issue [#76](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/76) remains open until GitHub Actions allocates runners and the current release candidate completes source verification and the platform package matrix.
 - Issue [#50](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/50) remains open until the signed v1.0.2 workflow publishes the verified release and manifest.
 - The latest recorded main revision is [`a9e2ceced6783ebb083bb003a565881c9a38e417`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/a9e2ceced6783ebb083bb003a565881c9a38e417). CI run [42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459) passed source verification and Windows/macOS/Linux package and launch checks. Its outputs are unsigned CI validation artifacts, not a public production release.
 
