@@ -17,9 +17,6 @@ const BOOLEAN_STATE_KEYS = new Set([
   'chatWindowIsExpanded',
   'isStealthMode',
   'isRecording',
-  'microphoneCaptureStatus',
-  'systemAudioCaptureStatus',
-  'captureWarning',
   'isEmergencyStopping',
   'meHasVoiceActivity',
   'themHasVoiceActivity',
@@ -72,6 +69,9 @@ const VALID_CAPTURE_STATUSES = new Set(['idle', 'starting', 'active', 'unavailab
 
 const ALLOWED_STATE_KEYS = new Set([
   ...BOOLEAN_STATE_KEYS,
+  'microphoneCaptureStatus',
+  'systemAudioCaptureStatus',
+  'captureWarning',
   'activeMode',
   'activeModel',
   'shortcuts',
