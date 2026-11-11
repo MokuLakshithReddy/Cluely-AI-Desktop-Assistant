@@ -17,6 +17,9 @@ const BOOLEAN_STATE_KEYS = new Set([
   'chatWindowIsExpanded',
   'isStealthMode',
   'isRecording',
+  'microphoneCaptureStatus',
+  'systemAudioCaptureStatus',
+  'captureWarning',
   'isEmergencyStopping',
   'meHasVoiceActivity',
   'themHasVoiceActivity',
@@ -65,6 +68,7 @@ const VALID_TRANSCRIPT_ROLES = new Set(['me', 'them']);
 const VALID_TRANSCRIPT_STATUSES = new Set(['transcribing', 'ready', 'error']);
 const VALID_MESSAGE_ROLES = new Set(['user', 'assistant', 'system']);
 const VALID_DOC_SOURCE_TYPES = new Set(['pasted', 'file']);
+const VALID_CAPTURE_STATUSES = new Set(['idle', 'starting', 'active', 'unavailable', 'error']);
 
 const ALLOWED_STATE_KEYS = new Set([
   ...BOOLEAN_STATE_KEYS,
@@ -449,6 +453,22 @@ export class IpcRouter {
           throw new Error(
             `[IpcRouter] Invalid activeMode: "${val}". Must be one of: ${Array.from(ALLOWED_OPERATING_MODES).join(', ')}`
           );
+        }
+        sanitized[key] = val;
+      }
+
+      // Capture status is a small finite state machine, never arbitrary renderer text.
+      else if (key === 'microphoneCaptureStatus' || key === 'systemAudioCaptureStatus') {
+        if (typeof val !== 'string' || !VALID_CAPTURE_STATUSES.has(val)) {
+          throw new Error(`[IpcRouter] Invalid capture status for "${key}"`);
+        }
+        sanitized[key] = val;
+      }
+
+      // Capture warning is user-visible diagnostics, bounded to avoid oversized state patches.
+      else if (key === 'captureWarning') {
+        if (val !== null && (typeof val !== 'string' || val.length > 256)) {
+          throw new Error('[IpcRouter] Invalid capture warning: expected null or a string up to 256 characters');
         }
         sanitized[key] = val;
       }
