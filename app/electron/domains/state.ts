@@ -190,7 +190,10 @@ export class StateManager {
     try {
       const stateFile = this.getStateFilePath();
       const dir = path.dirname(stateFile);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      // Restrict shared-state access on POSIX; this file may contain active transcripts
+      // and knowledge documents until the OS-backed encryption migration is completed.
+      if (process.platform !== 'win32') fs.chmodSync(dir, 0o700);
 
       // Clean serialization copy: ensure no secrets or screenshot payloads are saved to disk
       const toSave: any = { ...this.state };
@@ -213,7 +216,8 @@ export class StateManager {
         };
       }
 
-      fs.writeFileSync(stateFile, JSON.stringify(toSave, null, 2), 'utf8');
+      fs.writeFileSync(stateFile, JSON.stringify(toSave, null, 2), { encoding: 'utf8', mode: 0o600 });
+      if (process.platform !== 'win32') fs.chmodSync(stateFile, 0o600);
       if (this.state.persistenceError) {
         this.state = { ...this.state, persistenceError: null };
         this.notify();

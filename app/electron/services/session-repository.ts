@@ -44,15 +44,30 @@ export interface SessionSummary {
 export class SessionRepository {
   private static readonly SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 
+  constructor(private readonly storageDirOverride?: string) {}
+
   private getStorageDir(): string {
-    let base: string;
-    try {
-      base = app.getPath('userData');
-    } catch {
-      base = process.cwd();
+    let dir: string;
+    if (this.storageDirOverride) {
+      dir = path.resolve(this.storageDirOverride);
+    } else {
+      let base: string;
+      try {
+        base = app.getPath('userData');
+      } catch {
+        base = process.cwd();
+      }
+      dir = path.join(base, 'sessions');
     }
-    const dir = path.join(base, 'sessions');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+    // Session archives contain transcripts and messages. Restrict directory
+    // traversal to the current OS user on POSIX filesystems.
+    if (process.platform !== 'win32') {
+      fs.chmodSync(dir, 0o700);
+    }
     return dir;
   }
 
@@ -114,7 +129,9 @@ export class SessionRepository {
     if (serialized.length > 5 * 1024 * 1024) {
       throw new Error('[SessionRepository] Session exceeds maximum aggregate size limit of 5MB');
     }
-    fs.writeFileSync(filePath, serialized, 'utf8');
+    fs.writeFileSync(filePath, serialized, { encoding: 'utf8', mode: 0o600 });
+    // chmod also tightens permissions when replacing a file created by an older version.
+    if (process.platform !== 'win32') fs.chmodSync(filePath, 0o600);
   }
 
   public async getSession(id: string): Promise<SessionRecord | null> {

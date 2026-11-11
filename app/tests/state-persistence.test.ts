@@ -43,6 +43,20 @@ describe('State persistence error reporting', () => {
     expect(persistedState).not.toHaveProperty('appVersion');
   });
 
+  it('writes shared-state files with user-only POSIX permissions', () => {
+    if (process.platform === 'win32') return;
+
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-permissions-'));
+    const stateFile = path.join(directory, 'state.json');
+    const manager = new StateManager(stateFile, false);
+
+    manager.patchState({ showChat: false });
+    manager.flushSaveOrThrow();
+
+    expect(fs.statSync(directory).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
+  });
+
   it('surfaces write failures, propagates critical flush errors, and clears the warning after recovery', () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-persistence-'));
     const stateFile = path.join(directory, 'state.json');
