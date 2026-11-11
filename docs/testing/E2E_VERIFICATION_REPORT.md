@@ -3,6 +3,8 @@
 **Evidence revision:** `911c61bb62585e256b251aa022b6ecea3ed3d9a5`  
 **Verification workflow:** [CI run 42384194110](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42384194110)
 
+**Historical report note:** this report records the scope at its evidence revision above. It is not a report for current `main`. The later successful baseline [CI run 42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459) added native Windows/macOS/Linux packaged-app launch smoke and reported 125 automated checks. Current `main` has no successful CI verification for its exact head; [run 42594735278](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42594735278) failed before any job step executed because no runner was allocated. See [TEST_RESULTS.md](TEST_RESULTS.md) for the current-head qualification and historical baseline details.
+
 ## Executive summary
 
 The repository has two automated verification layers that must not be conflated:
@@ -14,7 +16,7 @@ A separate active-capture purge E2E flow mounts the production capture hook in t
 
 ## Automated coverage
 
-The cited CI run passed 90 Vitest unit/integration tests and one Electron UI/IPC smoke check. It also produced Windows portable, macOS DMG, and Linux AppImage artifacts. The packaging jobs only check artifact generation; they do not run the packaged binaries.
+At this report's cited historical revision, the run passed 90 Vitest unit/integration tests and one Electron UI/IPC smoke check. It produced Windows portable, macOS DMG, and Linux AppImage artifacts, but the packaging jobs in that specific run only checked artifact generation. Later baseline run 42402797459 added actual packaged-app launch smoke on native Windows, macOS, and Linux runners. Those later checks verify packaged renderer/preload/IPC readiness and controlled shutdown, not real hardware behavior or production signing.
 
 See [TEST_RESULTS.md](TEST_RESULTS.md) for the test-scope table and limitations.
 
