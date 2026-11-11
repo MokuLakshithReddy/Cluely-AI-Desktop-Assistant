@@ -2,7 +2,6 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-125%2F125%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -38,7 +37,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 * **Driver-Free Windows Loopback Capture**: Implements `session.defaultSession.setDisplayMediaRequestHandler` with `audio: "loopback"` in the privileged Electron main process, eliminating the need for virtual audio cables or third-party audio drivers.
 * **Voice Activity Detection (VAD)**: Audio buffers are resampled from 48kHz to 16kHz with dynamic RMS energy tracking, Zero-Crossing Rate (ZCR) human voice discrimination, a 300ms silence redemption window, and a 20-second segment cap.
 * **Independent Dual-Source Capture**: Microphone and system loopback are processed independently, preserving genuine local speech when participants speak simultaneously. Browser/device echo cancellation remains enabled on microphone input; overlapping speech is never intentionally zeroed based on remote VAD activity.
-* **Sub-Second Speech-to-Text (STT)**: Encodes speech segments into standard 16-bit PCM RIFF WAV chunks dispatched to ultra-fast cloud STT (**Groq Whisper Large v3 Turbo** at <300ms latency or OpenAI Whisper), populating a live chronological transcript timeline with speaker labels.
+* **Speech-to-Text (STT)**: Encodes speech segments into standard 16-bit PCM RIFF WAV chunks and dispatches them to the configured cloud STT provider (Groq Whisper Large v3 Turbo or OpenAI Whisper). Actual latency depends on the device, network, provider, and account tier; the application does not guarantee a sub-second response.
 
 ### 🖥️ Real-Time Display Perception & Vision Grounding
 * **Display Bounds Matching**: Utilizes Electron's `desktopCapturer` to dynamically identify and capture the exact display currently hosting the assistant window.
@@ -161,7 +160,10 @@ flowchart TD
 .
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                      # GitHub Actions CI (Windows 2022, Node 20, 62 verified tests)
+│       ├── ci.yml                      # Source verification and Windows/macOS/Linux package smoke
+│       └── release.yml                 # Signed production release gate
+├── package.json                        # Root npm workspace scripts
+├── package-lock.json                   # Root deterministic workspace lockfile
 ├── .gitignore                          # Build, release, test, and credentials exclusion rules
 ├── LICENSE                             # Proprietary / All Rights Reserved notice
 ├── README.md                           # Master project documentation and quickstart
@@ -181,7 +183,7 @@ flowchart TD
 │   └── production/
 │       └── PRODUCTION_READINESS.md     # Operational verification matrix & deployment assessment
 └── app/                                # Clean-room independent desktop application implementation
-    ├── package.json                    # Electron v34, React 18, Vite 6, Tailwind, Vitest 3, electron-builder
+    ├── package.json                    # Electron 45, React 18, Vite 6, Tailwind, Vitest 5, electron-builder 26
     ├── package-lock.json               # Deterministic dependency lockfile
     ├── tsconfig.json                   # TypeScript compiler options for React frontend
     ├── tsconfig.electron.json          # TypeScript compiler options for Electron main process
@@ -266,9 +268,10 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 * **Zero Disk Leakage**: Plaintext credentials are never written to `cluely-shared-state.json` or shared across IPC. Renderers receive only boolean presence flags (`hasApiKeys`).
 * **Ephemeral Web Mode**: In browser preview mode, keys reside purely in transient memory (`inMemoryVaultKeys`) and are **never saved to localStorage**.
 
-### 🗑️ Transient Vision Grounding & Zero-Leakage Purge
-* **Screenshot Stripping on Disk**: In `session-repository.ts`, base64 screenshot blobs are stripped prior to saving session files to disk, preventing disk bloat (~4 KB files) and visual leakage.
-* **One-Click Data Purge**: Removes archived session files and the encrypted `credentials.vault` file from the app's user-data profile, resets active session/knowledge state, and aborts active AI requests. This is application-level deletion, not a guarantee of forensic erasure from SSD or filesystem remnants.
+### 🗑️ Local Data Retention and Purge
+* **Screenshot Stripping**: Base64 screenshot payloads are stripped from archived session messages before they are written to disk.
+* **Credential Purge**: The purge flow removes the encrypted `credentials.vault` file, archived session files, and active session/knowledge state. This is application-level deletion, not forensic erasure.
+* **Important storage limitation**: API credentials use OS-backed `safeStorage`, but session archives and the shared-state file (which can contain transcripts, messages, and knowledge documents) are currently persisted as ordinary JSON. They are not encrypted at rest. [Issue #73](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/73) tracks encryption, legacy migration, and release-gate acceptance.
 
 ### 🕵️ Screen Sharing Display Protection (`setContentProtection`)
 * **Operating Mechanism**: `win.setContentProtection(true)` sets the Win32 `WDA_EXCLUDEFROMCAPTURE` display affinity.
@@ -276,12 +279,13 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (125/125 Passing)
+## 6. Automated Verification & Test Suites
 
-The latest verified CI run recorded **125 passing automated checks**: 124 Vitest tests across 16 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The last fully successful baseline recorded **125 automated checks**: 124 Vitest tests across 16 suites and one Electron UI/preload/IPC smoke test. It also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
-Evidence: [CI run 42388364832](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)  
-Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
+Evidence for that earlier baseline: [CI run 42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459). Its source revision is recorded in [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md).
+
+**Current-head qualification (November 11, 2026):** current `main` is `f5cc75be07fff683fec1f776b55c046de77fd9bc`. Its latest CI run, [42594735278](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42594735278), failed before any job step ran: GitHub reported no runner assignment and no downloadable job logs. This does not establish an application test failure, but it also means the earlier 125-check baseline is not a successful verification of the current head. Re-run CI and record a successful result for the exact release candidate before publication.
 
 | Test Suite | Focus Area | Passed |
 |---|---|---:|
@@ -304,7 +308,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
 | **Total** | **124 Vitest tests + 1 Electron smoke check** | **125** |
 
-The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
+The 125-check result is a count from the cited earlier run. It is not a statement of universal correctness, security certification, physical-device support, or third-party provider availability.
 
 ### Verification Environments
 
@@ -334,59 +338,63 @@ The following summarizes implementation behavior and available automated evidenc
 * **Package Manager**: npm v10+
 
 ### Installation
-Clone the repository and install dependencies using `npm ci`:
+The npm workspace and lockfile live at the repository root. Run installation from that directory:
+
 ```powershell
-cd app
 npm ci
 ```
 
 ### Running Automated Test Suites
+Run these commands from the repository root:
+
 ```powershell
-# Run the 88 Vitest unit & integration tests
-cd app
+npm run lint
 npm test
-
-# Run the verified Native Electron runtime smoke test
-node tests/electron-smoke.cjs
-
-# Generate the automated test results markdown report (89 total verified tests)
+npm run smoke
 npm run test:report
 ```
 
-### Development Mode
-```powershell
-# Terminal 1: Start Vite development server
-cd app
-npm run dev:vite
+The generated report distinguishes unit/integration checks, Electron UI/IPC smoke, packaged-app launch smoke, and physical-device validation. A successful unit-test count does not certify microphone, loopback, display permissions, or live provider behavior.
 
-# Terminal 2: Launch Electron pointing to dev server
+### Development Mode
+From the repository root, use two terminals:
+
+```powershell
+# Terminal 1: Start the Vite development server
+npm run dev:vite
+```
+
+```powershell
+# Terminal 2: Launch Electron against the Vite development server
 cd app
 npx electron .
 ```
 
-### Building for Production
+### Building the Application
+From the repository root:
+
 ```powershell
-cd app
 npm run build
 ```
-Compiles the React frontend into `app/dist/` and the TypeScript Electron code into `app/dist-electron/`.
 
-### Packaging the Windows Standalone Executables
+This compiles the React renderer into `app/dist/` and the Electron TypeScript code into `app/dist-electron/`.
+
+### Packaging Windows Executables
+The normal electron-builder configuration sets `forceCodeSigning: true`. Production packaging therefore requires the appropriate owner-managed signing certificate and credentials.
+
+From the repository root, with the required signing environment configured:
+
 ```powershell
-cd app
-
-# 1. Unpacked standalone directory (fast testing)
 npm run pack
-# Output: app/release/win-unpacked/Cluely Copilot.exe (181MB)
-
-# 2. Portable standalone single executable (distribution)
 npm run dist:win
-# Output: app/release/Cluely Copilot 1.0.2.exe
 ```
 
-### Launching the Packaged Application
+Artifacts are written under `app/release/`. CI validation creates a temporary unsigned configuration for pull-request package smoke tests; that validation configuration is not the production signing configuration and should not be confused with a signed release.
+
+### Launching the Built Application
+After building from the repository root:
+
 ```powershell
-cd app
 npm start
 ```
 
