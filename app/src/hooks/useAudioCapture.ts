@@ -36,22 +36,24 @@ export function useAudioCapture(
 
     if (isPurging || isEmergencyStopping) {
       captureStopRequestedRef.current = true;
-      stopDualCapture(false);
+      stopDualCapture(false, true);
       if (isEmergencyStopping && !isPurging) void patchState({ isEmergencyStopping: false });
       return;
     }
 
     if (!isRecording) {
+      const preserveFailure = captureStopRequestedRef.current;
       captureStopRequestedRef.current = false;
       captureStartSessionRef.current = null;
-      stopDualCapture(true);
+      stopDualCapture(true, !preserveFailure);
       return;
     }
 
     startDualCapture();
 
     return () => {
-      stopDualCapture(!getLatestState().isPurging && !getLatestState().isEmergencyStopping);
+      // Let the next effect decide whether to reset to idle or preserve a failure status.
+      stopDualCapture(!getLatestState().isPurging && !getLatestState().isEmergencyStopping, false);
     };
   }, [isRecording, isAudioOwner, isPurging, isEmergencyStopping]);
 
@@ -192,6 +194,11 @@ export function useAudioCapture(
     if (captureStartSessionRef.current === captureSessionIdRef.current) return;
     const currentSessionId = ++captureSessionIdRef.current;
     captureStartSessionRef.current = currentSessionId;
+    await patchState({
+      microphoneCaptureStatus: 'starting',
+      systemAudioCaptureStatus: 'starting',
+      captureWarning: null,
+    });
 
     // A live capture must not silently continue after an OS/device track ends.
     // The generation check prevents stale "ended" events from a previous session
@@ -204,7 +211,7 @@ export function useAudioCapture(
       const message = `${source} capture ended unexpectedly. Recording was stopped.`;
       console.warn(`[useAudioCapture] ${message}`);
       captureStopRequestedRef.current = true;
-      stopDualCapture(false);
+      stopDualCapture(false, false);
 
       void patchState(prev => {
         if (!prev.isRecording || prev.isPurging || prev.isEmergencyStopping) return {};
@@ -234,6 +241,9 @@ export function useAudioCapture(
           isRecording: false,
           meHasVoiceActivity: false,
           themHasVoiceActivity: false,
+          microphoneCaptureStatus: role === 'me' ? 'error' : 'idle',
+          systemAudioCaptureStatus: role === 'them' ? 'error' : 'idle',
+          captureWarning: message.slice(0, 256),
           session: {
             ...activeSession,
             updatedAt: now,
@@ -256,8 +266,17 @@ export function useAudioCapture(
 
     // 1. Channel A: Start Local Microphone Capture ('me')
     if (!navigator?.mediaDevices?.getUserMedia) {
-      console.warn('[useAudioCapture] Microphone capture is not supported in this environment');
-      await patchState({ isRecording: false, meHasVoiceActivity: false });
+      const message = 'Microphone capture is not supported in this environment.';
+      console.warn('[useAudioCapture] ' + message);
+      captureStopRequestedRef.current = true;
+      stopDualCapture(false, false);
+      await patchState({
+        isRecording: false,
+        meHasVoiceActivity: false,
+        microphoneCaptureStatus: 'unavailable',
+        systemAudioCaptureStatus: 'idle',
+        captureWarning: message,
+      });
       return;
     }
 
@@ -310,14 +329,18 @@ export function useAudioCapture(
 
       micSource.connect(micScriptNode);
       micScriptNode.connect(micAudioCtx.destination);
+      await patchState({ microphoneCaptureStatus: 'active' });
     } catch (err: any) {
       if (captureSessionIdRef.current !== currentSessionId) return;
       console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
       // Release any stream/context created before the failure (for example, if
       // AudioContext construction fails after getUserMedia succeeds).
       captureStopRequestedRef.current = true;
-      stopDualCapture(false);
-      // Gracefully reset recording state
+      stopDualCapture(false, false);
+      const captureError = err?.name === 'NotAllowedError'
+        ? 'Microphone permission was denied.'
+        : `Microphone capture failed: ${err?.message || 'device unavailable'}`;
+      // Gracefully reset recording state while keeping the failure visible until the next attempt.
       await patchState(prev => {
         if (prev.isPurging) return {};
         const activeSession = prev.session || {
@@ -334,6 +357,9 @@ export function useAudioCapture(
         return {
           isRecording: false,
           meHasVoiceActivity: false,
+          microphoneCaptureStatus: 'error',
+          systemAudioCaptureStatus: 'idle',
+          captureWarning: captureError.slice(0, 256),
           session: {
             ...activeSession,
             transcript: [
@@ -344,10 +370,8 @@ export function useAudioCapture(
                 relativeMs: 0,
                 role: 'me',
                 status: 'error',
-                error: err?.name === 'NotAllowedError' ? 'Permission denied' : (err?.message || 'Mic unavailable'),
-                text: err?.name === 'NotAllowedError'
-                  ? '[Microphone permission denied — please allow mic access in your browser]'
-                  : `[Microphone unavailable: ${err?.message || 'Access error'}]`,
+                error: captureError,
+                text: `[${captureError}]`,
               },
             ],
           },
@@ -358,7 +382,16 @@ export function useAudioCapture(
 
     // 2. Channel B: Start Remote System Audio Loopback Capture ('them')
     try {
-      if (navigator.mediaDevices.getDisplayMedia) {
+      if (!navigator.mediaDevices.getDisplayMedia) {
+        const message = 'System-audio loopback is not supported in this environment. Microphone capture is still active.';
+        await patchState({
+          systemAudioCaptureStatus: 'unavailable',
+          captureWarning: message,
+        });
+        return;
+      }
+
+      {
         // In Electron, setDisplayMediaRequestHandler provides screen video + loopback audio
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
@@ -382,7 +415,13 @@ export function useAudioCapture(
         });
 
         const audioTracks = displayStream.getAudioTracks();
-        if (audioTracks.length > 0) {
+        if (audioTracks.length === 0) {
+          const message = 'System-audio loopback was not provided by the operating system. Microphone capture is still active.';
+          await patchState({
+            systemAudioCaptureStatus: 'unavailable',
+            captureWarning: message,
+          });
+        } else {
           systemStreamRef.current = new MediaStream(audioTracks);
           watchAudioTracks(systemStreamRef.current, 'them', 'System-audio loopback');
           if (captureSessionIdRef.current !== currentSessionId) return;
@@ -413,15 +452,29 @@ export function useAudioCapture(
 
           systemSource.connect(systemScriptNode);
           systemScriptNode.connect(systemAudioCtx.destination);
+          await patchState({
+            systemAudioCaptureStatus: 'active',
+            captureWarning: null,
+          });
         }
       }
-    } catch (err) {
-      // Loopback media prompt dismissed or not supported on this platform
-      console.info('[useAudioCapture] System audio loopback not attached:', err);
+    } catch (err: any) {
+      // The OS may deny or decline loopback while leaving microphone capture usable.
+      const message = `System-audio loopback is unavailable: ${err?.message || 'permission was not granted'}. Microphone capture is still active.`;
+      console.info('[useAudioCapture] ' + message);
+      if (captureSessionIdRef.current === currentSessionId && getLatestState().isRecording && !getLatestState().isPurging) {
+        await patchState({
+          systemAudioCaptureStatus: 'unavailable',
+          captureWarning: message.slice(0, 256),
+        });
+      }
     }
   };
 
-  const stopDualCapture = (flushPendingSpeech: boolean = true) => {
+  const stopDualCapture = (
+    flushPendingSpeech: boolean = true,
+    resetCaptureStatus: boolean = true
+  ) => {
     captureSessionIdRef.current++;
 
     // Stop Microphone
@@ -454,6 +507,14 @@ export function useAudioCapture(
       systemVadRef.current = null;
     }
 
-    patchState({ meHasVoiceActivity: false, themHasVoiceActivity: false });
+    patchState({
+      meHasVoiceActivity: false,
+      themHasVoiceActivity: false,
+      ...(resetCaptureStatus ? {
+        microphoneCaptureStatus: 'idle' as const,
+        systemAudioCaptureStatus: 'idle' as const,
+        captureWarning: null,
+      } : {}),
+    });
   };
 }

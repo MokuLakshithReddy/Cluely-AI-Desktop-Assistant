@@ -34,6 +34,9 @@ export const INITIAL_STATE: SharedState = {
   themHasVoiceActivity: false,
   isCapturingScreenshot: false,
   isRecording: false,
+  microphoneCaptureStatus: 'idle',
+  systemAudioCaptureStatus: 'idle',
+  captureWarning: null,
   isPurging: false,
   isEmergencyStopping: false,
   activeMode: 'copilot',
@@ -167,6 +170,9 @@ export class StateManager {
           isChatWindowLoaded: false,
           isDashboardWindowLoaded: false,
           isRecording: false,
+          microphoneCaptureStatus: 'idle',
+          systemAudioCaptureStatus: 'idle',
+          captureWarning: null,
           isPurging: false,
           isEmergencyStopping: false,
           meHasVoiceActivity: false,
@@ -199,6 +205,11 @@ export class StateManager {
       delete toSave.appVersion;
       // Persistence diagnostics are transient UI state and must never be stored in the file.
       delete toSave.persistenceError;
+      // Capture readiness and error notices describe the previous process/device lifecycle.
+      // Never restore them after restart; the renderer will negotiate fresh streams.
+      delete toSave.microphoneCaptureStatus;
+      delete toSave.systemAudioCaptureStatus;
+      delete toSave.captureWarning;
 
       if (toSave.session && Array.isArray(toSave.session.messages)) {
         toSave.session = {

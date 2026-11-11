@@ -1,5 +1,7 @@
 export type Role = 'me' | 'them';
 
+export type CaptureStatus = 'idle' | 'starting' | 'active' | 'unavailable' | 'error';
+
 export interface TranscriptItem {
   id: string;
   createdAt: string;
@@ -71,6 +73,11 @@ export interface SharedState {
   themHasVoiceActivity: boolean;
   isCapturingScreenshot: boolean;
   isRecording: boolean;
+  /** Per-source capture readiness; these values are transient and reset on restart. */
+  microphoneCaptureStatus: CaptureStatus;
+  systemAudioCaptureStatus: CaptureStatus;
+  /** Actionable, non-sensitive explanation when one or more capture sources are unavailable. */
+  captureWarning: string | null;
   /** Main-process-owned barrier that rejects new capture/AI writes during data purge. */
   isPurging: boolean;
   /** One-shot signal asking the audio owner to stop both streams without flushing buffered speech. */

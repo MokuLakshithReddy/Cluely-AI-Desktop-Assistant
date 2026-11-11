@@ -403,7 +403,52 @@ async function runDesktopE2E({ windowCoordinator }) {
           }
         }
 
-        return { scenarios };
+        // A loopback permission denial must not look like a full dual-source session.
+        // The local microphone remains active and the user receives an explicit warning.
+        const degradedMicTrack = makeTrack('microphone');
+        const degradedProcessorStart = processors.length;
+        Object.defineProperty(navigator, 'mediaDevices', {
+          configurable: true,
+          value: {
+            getUserMedia: async () => new FakeMediaStream([degradedMicTrack]),
+            getDisplayMedia: async () => {
+              const error = new Error('Synthetic loopback permission denied');
+              error.name = 'NotAllowedError';
+              throw error;
+            },
+          },
+        });
+
+        await bridge.patchSharedState({ isRecording: true });
+        for (let attempt = 0; attempt < 100 &&
+          processors.length < degradedProcessorStart + 1; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+
+        let degradedState = await bridge.getSharedState();
+        for (let attempt = 0; attempt < 100 &&
+          degradedState.systemAudioCaptureStatus !== 'unavailable'; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+          degradedState = await bridge.getSharedState();
+        }
+
+        const degradedCapture = {
+          recordingContinues: degradedState.isRecording === true,
+          microphoneStatus: degradedState.microphoneCaptureStatus,
+          systemAudioStatus: degradedState.systemAudioCaptureStatus,
+          warningVisible: typeof degradedState.captureWarning === 'string' &&
+            degradedState.captureWarning.includes('System-audio loopback is unavailable:'),
+          microphoneProcessorCreated: processors.length === degradedProcessorStart + 1,
+        };
+
+        await bridge.patchSharedState({ isRecording: false });
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const stoppedAfterDegradedCapture = await bridge.getSharedState();
+        degradedCapture.stoppedStatusReset =
+          stoppedAfterDegradedCapture.microphoneCaptureStatus === 'idle' &&
+          stoppedAfterDegradedCapture.systemAudioCaptureStatus === 'idle';
+
+        return { scenarios, degradedCapture };
       } finally {
         await bridge.patchSharedState({ isRecording: false }).catch(() => {});
         if (originalMediaDevices) Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
@@ -513,6 +558,9 @@ async function runDesktopE2E({ windowCoordinator }) {
         if (!activeState.meHasVoiceActivity || !activeState.themHasVoiceActivity) {
           throw new Error('Synthetic overlapping speech did not activate both independent VAD sources');
         }
+        if (activeState.microphoneCaptureStatus !== 'active' || activeState.systemAudioCaptureStatus !== 'active') {
+          throw new Error('Both capture channels must report active only after their processors are connected');
+        }
 
         const purgeResult = await bridge.purgeAllData();
         await new Promise(resolve => setTimeout(resolve, 150));
@@ -527,6 +575,8 @@ async function runDesktopE2E({ windowCoordinator }) {
           recordingAfterPurge: stateAfterPurge.isRecording,
           micActivityAfterPurge: stateAfterPurge.meHasVoiceActivity,
           systemActivityAfterPurge: stateAfterPurge.themHasVoiceActivity,
+          microphoneStatusAfterPurge: stateAfterPurge.microphoneCaptureStatus,
+          systemAudioStatusAfterPurge: stateAfterPurge.systemAudioCaptureStatus,
           sessionAfterPurge: stateAfterPurge.session,
           knowledgeDocsAfterPurge: stateAfterPurge.knowledgeDocs.length,
         };
@@ -565,6 +615,15 @@ async function runDesktopE2E({ windowCoordinator }) {
     }
     evidence.push('Unexpected microphone and loopback track-ended events both stopped the full capture session, closed audio contexts, cleared VAD state, and recorded an error');
 
+    const degradedCapture = unexpectedTrackEndResult.degradedCapture;
+    assert.equal(degradedCapture.recordingContinues, true, 'Loopback denial must not stop a working microphone stream');
+    assert.equal(degradedCapture.microphoneStatus, 'active', 'Microphone must remain independently reported as active');
+    assert.equal(degradedCapture.systemAudioStatus, 'unavailable', 'Denied loopback must be reported as unavailable');
+    assert.equal(degradedCapture.warningVisible, true, 'Loopback denial must produce a user-visible warning');
+    assert.equal(degradedCapture.microphoneProcessorCreated, true, 'Microphone processor must remain connected after loopback denial');
+    assert.equal(degradedCapture.stoppedStatusReset, true, 'Explicit stop must reset both source statuses');
+    evidence.push('Synthetic loopback permission denial left microphone capture active while exposing an unavailable status and actionable warning');
+
     const activeCaptureResult = await execute(control, activeCapturePurgeWorkflow);
     assert.equal(activeCaptureResult.activeMicrophone, true, 'Microphone VAD should detect overlapping speech');
     assert.equal(activeCaptureResult.activeLoopback, true, 'Loopback VAD should detect overlapping speech');
@@ -576,6 +635,8 @@ async function runDesktopE2E({ windowCoordinator }) {
     assert.equal(activeCaptureResult.recordingAfterPurge, false, 'Recording must be off after purge');
     assert.equal(activeCaptureResult.micActivityAfterPurge, false, 'Microphone VAD activity must be cleared');
     assert.equal(activeCaptureResult.systemActivityAfterPurge, false, 'System VAD activity must be cleared');
+    assert.equal(activeCaptureResult.microphoneStatusAfterPurge, 'idle', 'Microphone status must reset after purge');
+    assert.equal(activeCaptureResult.systemAudioStatusAfterPurge, 'idle', 'System-audio status must reset after purge');
     assert.equal(activeCaptureResult.sessionAfterPurge, null, 'Buffered speech must not recreate a session during purge');
     assert.equal(activeCaptureResult.knowledgeDocsAfterPurge, 0, 'Purge must leave no knowledge docs');
     evidence.push('Actual control-window useAudioCapture hook opened fake mic + loopback streams, detected overlapping speech in both VAD sources, and stopped/discarded both streams during purge');

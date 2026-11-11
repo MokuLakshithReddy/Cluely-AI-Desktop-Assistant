@@ -706,5 +706,23 @@ describe('IPC Security & Origin Validation Subsystem', () => {
       /Session record exceeds maximum aggregate size limit of 5MB/
     );
   });
+  it('validates microphone and system-audio readiness as bounded finite states', () => {
+    const sanitized = router.sanitizePatchState({
+      microphoneCaptureStatus: 'active',
+      systemAudioCaptureStatus: 'unavailable',
+      captureWarning: 'System audio is unavailable; microphone capture remains active.',
+    });
+    expect(sanitized.microphoneCaptureStatus).toBe('active');
+    expect(sanitized.systemAudioCaptureStatus).toBe('unavailable');
+    expect(sanitized.captureWarning).toContain('microphone capture remains active');
+
+    expect(() => router.sanitizePatchState({ microphoneCaptureStatus: 'connected' }))
+      .toThrow(/Invalid capture status/);
+    expect(() => router.sanitizePatchState({ systemAudioCaptureStatus: 1 }))
+      .toThrow(/Invalid capture status/);
+    expect(() => router.sanitizePatchState({ captureWarning: 'x'.repeat(257) }))
+      .toThrow(/Invalid capture warning/);
+  });
+
 });
 

@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Mic,
   MicOff,
+  AlertTriangle,
   Camera,
   Shield,
   ShieldOff,
@@ -63,6 +64,10 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
     patchState({ activeMode: e.target.value as AssistantMode });
   };
 
+  const captureStatusTitle = state.isRecording
+    ? `Microphone: ${state.microphoneCaptureStatus}. System audio: ${state.systemAudioCaptureStatus}.${state.captureWarning ? ` ${state.captureWarning}` : ''} Click to stop.`
+    : state.captureWarning || 'Start Listening to request microphone and system-audio capture.';
+
   return (
     <div className="flex items-center justify-between w-full h-[54px] px-3 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-full shadow-2xl text-slate-200 select-none overflow-hidden box-border">
       {/* Drag Handle */}
@@ -81,7 +86,7 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
             : 'bg-slate-800 text-slate-400 hover:text-slate-200'
         }`}
-        title={state.isRecording ? 'Listening (Click to Stop)' : 'Start Listening (Mic + Audio)'}
+        title={captureStatusTitle}
       >
         {state.isRecording ? (
           <>
@@ -93,12 +98,21 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
               }`}
             />
             <Mic className="w-3.5 h-3.5" />
-            <span>Listening</span>
+            {state.captureWarning && <AlertTriangle className="w-3.5 h-3.5 text-amber-300" aria-label="Capture warning" />}
+            <span>
+              {state.microphoneCaptureStatus === 'starting' || state.systemAudioCaptureStatus === 'starting'
+                ? 'Connecting'
+                : state.systemAudioCaptureStatus === 'active'
+                  ? 'Listening'
+                  : 'Mic only'}
+            </span>
           </>
         ) : (
           <>
-            <MicOff className="w-3.5 h-3.5" />
-            <span>Idle</span>
+            {state.captureWarning
+              ? <AlertTriangle className="w-3.5 h-3.5 text-amber-300" aria-label="Capture unavailable" />
+              : <MicOff className="w-3.5 h-3.5" />}
+            <span>{state.captureWarning ? 'Mic error' : 'Idle'}</span>
           </>
         )}
       </button>
