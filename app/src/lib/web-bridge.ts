@@ -12,6 +12,7 @@ import {
   streamOllama,
   transcribeAudio,
 } from './providers';
+import { inspectAndSanitizeOutboundPayload } from './redaction';
 
 // Sessions storage key (non-secret session summaries & notes)
 const SESSIONS_STORAGE_KEY = 'cluely_past_sessions';
@@ -114,6 +115,13 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
 
     patchSharedState: async (patch: Partial<SharedState>) => {
+      if (patch.enterpriseMode === true || currentState.enterpriseMode) {
+        patch.privacyMode = 'local';
+        patch.telemetryEnabled = false;
+        if (patch.activeModel && patch.activeModel !== 'ollama') {
+          patch.activeModel = 'ollama';
+        }
+      }
       currentState = { ...currentState, ...patch };
       try {
         localStorage.setItem(
@@ -123,6 +131,10 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             activeModel: currentState.activeModel,
             isStealthMode: currentState.isStealthMode,
             knowledgeDocs: currentState.knowledgeDocs,
+            privacyMode: currentState.privacyMode,
+            meetingConsent: currentState.meetingConsent,
+            telemetryEnabled: currentState.telemetryEnabled,
+            enterpriseMode: currentState.enterpriseMode,
           })
         );
       } catch {}
@@ -310,6 +322,42 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
         else if (model.includes('claude') || model.includes('anthropic')) providerName = 'anthropic';
         else if (model.includes('ollama')) providerName = 'ollama';
 
+        // Local-Only Privacy Mode enforcement
+        if (currentState.privacyMode === 'local' && providerName !== 'ollama') {
+          throw new Error(
+            `[Privacy Mode: LOCAL] Cloud AI requests to "${providerName}" are strictly blocked. In local privacy mode, only local inference (Ollama) is permitted.`
+          );
+        }
+
+        // Outbound Data Inspection & Redaction Guard
+        let cleanQuery = query;
+        let cleanTranscript = recentTranscript;
+        let cleanHistory = conversationHistory;
+        let cleanPassages = knowledgePassages;
+
+        if (currentState.redactSensitiveData || currentState.blockOutboundSecrets) {
+          const inspection = inspectAndSanitizeOutboundPayload(
+            {
+              query,
+              recentTranscript,
+              conversationHistory,
+              knowledgePassages,
+            },
+            { blockOnSecrets: currentState.blockOutboundSecrets }
+          );
+
+          if (inspection.blocked) {
+            throw new Error(
+              `[Outbound Security Guard] Request blocked: Outbound prompt payload contains sensitive credentials (${inspection.detections.join(', ')}).`
+            );
+          }
+
+          cleanQuery = inspection.sanitizedPayload.query || cleanQuery;
+          cleanTranscript = inspection.sanitizedPayload.recentTranscript || cleanTranscript;
+          cleanHistory = inspection.sanitizedPayload.conversationHistory || cleanHistory;
+          cleanPassages = inspection.sanitizedPayload.knowledgePassages || cleanPassages;
+        }
+
         const apiKey = inMemoryVaultKeys[providerName];
 
         const onToken = (token: string) => {
@@ -320,8 +368,8 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
           const demoResponse =
             `**Cluely Copilot (${mode.toUpperCase()} Mode)**\n\n` +
             `• **Screen Context**: ${screenshotBase64 ? 'Visible screenshot analyzed' : 'No screen attached'}\n` +
-            `• **Conversation Context**: ${recentTranscript.length} live speech items referenced\n` +
-            `• **Grounded Knowledge**: ${knowledgePassages?.length || 0} reference passages retrieved\n\n` +
+            `• **Conversation Context**: ${cleanTranscript.length} live speech items referenced\n` +
+            `• **Grounded Knowledge**: ${cleanPassages?.length || 0} reference passages retrieved\n\n` +
             `> **Notice**: Configure your **${providerName.toUpperCase()} API Key** in Settings (held in ephemeral session memory) to enable live model reasoning!`;
 
           let streamed = '';
@@ -331,7 +379,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             onToken(char);
             await new Promise(r => setTimeout(r, 10));
           }
-          return { content: streamed, sources: knowledgePassages };
+          return { content: streamed, sources: cleanPassages };
         }
 
         let content = '';
@@ -340,11 +388,11 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             model,
             apiKey,
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: abortController.signal,
             onToken,
           });
@@ -353,11 +401,11 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             model,
             apiKey,
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: abortController.signal,
             onToken,
           });
@@ -366,11 +414,11 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             model,
             apiKey,
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: abortController.signal,
             onToken,
           });
@@ -378,17 +426,17 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
           content = await streamOllama({
             model,
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: abortController.signal,
             onToken,
           });
         }
 
-        return { content, sources: knowledgePassages };
+        return { content, sources: cleanPassages };
       } finally {
         activeWebControllers.delete(reqId);
         await bridge.patchSharedState({ isGenerating: activeWebControllers.size > 0 });
@@ -396,6 +444,12 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
 
     transcribeAudioPayload: async ({ wavBase64, language }) => {
+      if (currentState.privacyMode === 'local') {
+        throw new Error(
+          '[Privacy Mode: LOCAL] Cloud audio transcription is blocked. Audio processing remains strictly on-device.'
+        );
+      }
+
       const groqKey = inMemoryVaultKeys['groq'];
       const openaiKey = inMemoryVaultKeys['openai'];
 
@@ -416,6 +470,10 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
 
     saveSessionRecord: async (session: SessionRecord) => {
+      if (currentState.enterpriseMode) {
+        // In Enterprise Mode, disk/localStorage session history is disabled
+        return;
+      }
       const existing = getStoredSessions();
       // Strip screenshot base64 before saving to prevent megabytes of persistent data
       const sanitizedSession: SessionRecord = {

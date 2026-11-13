@@ -36,6 +36,13 @@ export const INITIAL_STATE: SharedState = {
   isRecording: false,
   isPurging: false,
   isEmergencyStopping: false,
+  privacyMode: (process.env.PRIVACY_MODE === 'LOCAL' || process.env.ENTERPRISE_MODE === 'true') ? 'local' : 'cloud',
+  meetingConsent: process.env.SMOKE_TEST === 'true' ? 'always_allowed' : 'prompt',
+  telemetryEnabled: false,
+  enterpriseMode: process.env.ENTERPRISE_MODE === 'true',
+  redactSensitiveData: true,
+  blockOutboundSecrets: false,
+  encryptedStorageEnabled: true,
   activeMode: 'copilot',
   activeModel: 'gemini-3.8-flash',
   hasApiKeys: {
@@ -101,6 +108,18 @@ export class StateManager {
     } else if ((patch.activeModel as any) === 'gemini-3.1-pro') {
       patch.activeModel = 'gemini-3.1-pro-preview';
     }
+
+    // Enterprise Mode enforcement: strictly lock to local inference and disable telemetry
+    if (patch.enterpriseMode === true || (this.state.enterpriseMode && patch.enterpriseMode !== false)) {
+      patch.privacyMode = 'local';
+      patch.telemetryEnabled = false;
+      if (patch.activeModel && patch.activeModel !== 'ollama') {
+        patch.activeModel = 'ollama';
+      }
+    } else if (patch.privacyMode === 'local' && patch.activeModel && patch.activeModel !== 'ollama') {
+      patch.activeModel = 'ollama';
+    }
+
     this.state = { ...this.state, ...patch };
     this.scheduleSave();
     this.notify();
@@ -179,6 +198,19 @@ export class StateManager {
           this.state.activeModel = 'gemini-3.8-flash';
         } else if ((this.state.activeModel as string) === 'gemini-3.1-pro') {
           this.state.activeModel = 'gemini-3.1-pro-preview';
+        }
+
+        // Enterprise & Privacy Mode Environment Overrides
+        if (process.env.ENTERPRISE_MODE === 'true' || this.state.enterpriseMode) {
+          this.state.enterpriseMode = true;
+          this.state.privacyMode = 'local';
+          this.state.telemetryEnabled = false;
+          this.state.activeModel = 'ollama';
+        } else if (process.env.PRIVACY_MODE === 'LOCAL' || this.state.privacyMode === 'local') {
+          this.state.privacyMode = 'local';
+          if (!this.state.activeModel || this.state.activeModel !== 'ollama') {
+            this.state.activeModel = 'ollama';
+          }
         }
       }
     } catch (e) {

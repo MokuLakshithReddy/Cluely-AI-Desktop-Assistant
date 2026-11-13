@@ -358,6 +358,16 @@ export function useAudioCapture(
 
     // 2. Channel B: Start Remote System Audio Loopback Capture ('them')
     try {
+      const latestState = getLatestState();
+      const hasConsent =
+        latestState.meetingConsent === 'allowed_once' ||
+        latestState.meetingConsent === 'always_allowed';
+
+      if (!hasConsent) {
+        console.log('[useAudioCapture] Meeting transcription consent not granted; system loopback audio capture disabled.');
+        return;
+      }
+
       if (navigator.mediaDevices.getDisplayMedia) {
         // In Electron, setDisplayMediaRequestHandler provides screen video + loopback audio
         const displayStream = await navigator.mediaDevices.getDisplayMedia({

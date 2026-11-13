@@ -160,6 +160,21 @@ if (!gotSingleInstanceLock) {
         windowCoordinator.init();
       }
     });
+
+    // Enforce Network Security: Reject invalid or self-signed TLS certificates for external origins
+    app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+      try {
+        const parsed = new URL(url);
+        const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+        if (!app.isPackaged && isLocal) {
+          callback(true);
+          return;
+        }
+      } catch {}
+      event.preventDefault();
+      console.warn('[NetworkSecurityGuard] Rejected invalid TLS certificate for:', url, error);
+      callback(false);
+    });
   });
 
   app.on('before-quit', () => {

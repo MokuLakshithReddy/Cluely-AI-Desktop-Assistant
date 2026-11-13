@@ -351,7 +351,7 @@ async function runDesktopE2E({ windowCoordinator }) {
           const processorStart = processors.length;
           const contextStart = contexts.length;
           const captureStart = captures.length;
-          await bridge.patchSharedState({ isRecording: true });
+          await bridge.patchSharedState({ isRecording: true, meetingConsent: 'always_allowed' });
 
           for (let attempt = 0; attempt < 100 && processors.length < processorStart + 2; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 25));

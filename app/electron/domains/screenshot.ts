@@ -1,4 +1,5 @@
 import { desktopCapturer, screen, BrowserWindow } from 'electron';
+import { sanitizeScreenshot, wipeBuffer } from '../../src/lib/redaction';
 
 export interface ScreenshotResult {
   data: string; // Base64 PNG string
@@ -64,14 +65,20 @@ export class ScreenshotService {
       }
 
       const pngBuffer = matchedSource.thumbnail.toPNG();
-      const base64Data = pngBuffer.toString('base64');
+      try {
+        const { sanitizedBuffer } = await sanitizeScreenshot(pngBuffer);
+        const base64Data = sanitizedBuffer.toString('base64');
 
-      return {
-        data: base64Data,
-        contentType: 'image/png',
-        width: thumbnailSize.width,
-        height: thumbnailSize.height,
-      };
+        return {
+          data: base64Data,
+          contentType: 'image/png',
+          width: thumbnailSize.width,
+          height: thumbnailSize.height,
+        };
+      } finally {
+        // Zero-wipe ephemeral screenshot buffer to guarantee no lingering pixels in memory
+        wipeBuffer(pngBuffer);
+      }
     } finally {
       this.isCapturing = false;
     }

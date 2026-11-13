@@ -200,7 +200,24 @@ export class CredentialVault {
     const tempPath = `${this.vaultPath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
     try {
       fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-      fs.renameSync(tempPath, this.vaultPath);
+      let renamed = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          fs.renameSync(tempPath, this.vaultPath);
+          renamed = true;
+          break;
+        } catch (renameErr: any) {
+          if (process.platform === 'win32' && (renameErr.code === 'EPERM' || renameErr.code === 'EBUSY') && attempt < 4) {
+            const start = Date.now();
+            while (Date.now() - start < 15) {}
+            continue;
+          }
+          throw renameErr;
+        }
+      }
+      if (!renamed) {
+        fs.renameSync(tempPath, this.vaultPath);
+      }
     } catch (error) {
       try { fs.unlinkSync(tempPath); } catch {}
       throw error;

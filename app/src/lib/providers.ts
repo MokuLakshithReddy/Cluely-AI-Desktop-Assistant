@@ -48,6 +48,38 @@ Summarize the discussion on screen and in the transcript:
 };
 
 /**
+ * Enforces network transport security for outbound API requests.
+ * Rejects insecure http:// endpoints for remote AI services.
+ */
+export function validateNetworkEndpoint(urlStr: string, allowLocalHttp: boolean = true): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    throw new Error(`[Network Security Guard] Invalid endpoint URL: "${urlStr}"`);
+  }
+
+  if (parsed.protocol === 'https:') {
+    return parsed;
+  }
+
+  if (allowLocalHttp && parsed.protocol === 'http:') {
+    const isLocalhost =
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '127.0.0.1' ||
+      parsed.hostname === '::1' ||
+      parsed.hostname === '[::1]';
+    if (isLocalhost) {
+      return parsed;
+    }
+  }
+
+  throw new Error(
+    `[Network Security Guard] Insecure HTTP endpoint rejected: "${urlStr}". Remote cloud AI endpoints must enforce HTTPS with valid certificates.`
+  );
+}
+
+/**
  * Builds the complete prompt payload fusing conversation history, screen context, and knowledge.
  */
 export function buildContextPrompt(
@@ -113,6 +145,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
   }
 
   let endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
+  validateNetworkEndpoint(endpoint);
 
   const contents: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
   if (conversationHistory && conversationHistory.length > 0) {
@@ -204,7 +237,9 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
   }
   messages.push({ role: 'user', content: userContent });
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const endpoint = 'https://api.openai.com/v1/chat/completions';
+  validateNetworkEndpoint(endpoint);
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -282,7 +317,9 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
   }
   messages.push({ role: 'user', content });
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const endpoint = 'https://api.anthropic.com/v1/messages';
+  validateNetworkEndpoint(endpoint);
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -339,6 +376,7 @@ export async function streamOllama(options: GenerationOptions): Promise<string> 
 
   const modelName = options.model && options.model !== 'ollama' ? options.model : (images.length > 0 ? 'llava' : 'llama3.2');
   const endpoint = 'http://localhost:11434/api/generate';
+  validateNetworkEndpoint(endpoint, true);
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -470,6 +508,7 @@ export async function transcribeAudio(
       : 'https://api.openai.com/v1/audio/transcriptions';
 
   const model = provider === 'groq' ? 'whisper-large-v3-turbo' : 'whisper-1';
+  validateNetworkEndpoint(endpoint);
 
   const formData = new FormData();
   const blob = new Blob([wavBuffer], { type: 'audio/wav' });

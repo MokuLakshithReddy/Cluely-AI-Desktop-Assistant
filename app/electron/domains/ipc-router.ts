@@ -10,6 +10,7 @@ import { sessionRepository, SessionRecord } from '../services/session-repository
 import { SharedState } from '../../src/lib/types';
 import { broadcastSharedStateToAppWindows } from './state-broadcast';
 import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio } from '../../src/lib/providers';
+import { inspectAndSanitizeOutboundPayload, containsSensitiveData } from '../../src/lib/redaction';
 
 const BOOLEAN_STATE_KEYS = new Set([
   'showChat',
@@ -21,7 +22,15 @@ const BOOLEAN_STATE_KEYS = new Set([
   'meHasVoiceActivity',
   'themHasVoiceActivity',
   'isCapturingScreenshot',
+  'telemetryEnabled',
+  'enterpriseMode',
+  'redactSensitiveData',
+  'blockOutboundSecrets',
+  'encryptedStorageEnabled',
 ]);
+
+const ALLOWED_PRIVACY_MODES = new Set(['local', 'cloud']);
+const ALLOWED_MEETING_CONSENTS = new Set(['prompt', 'allowed_once', 'always_allowed', 'denied']);
 
 const ALLOWED_OPERATING_MODES = new Set([
   'copilot',
@@ -70,6 +79,8 @@ const ALLOWED_STATE_KEYS = new Set([
   ...BOOLEAN_STATE_KEYS,
   'activeMode',
   'activeModel',
+  'privacyMode',
+  'meetingConsent',
   'shortcuts',
   'session',
   'knowledgeDocs',
@@ -193,6 +204,15 @@ export class IpcRouter {
       const state = stateManager.getState();
       if (!state.isRecording) {
         console.warn('[IpcRouter] Denied display media request: Recording is not active');
+        callback({});
+        return;
+      }
+
+      // 3. Meeting Privacy Guard: Explicit consent required for system audio loopback capture
+      const isConsentGranted =
+        state.meetingConsent === 'allowed_once' || state.meetingConsent === 'always_allowed';
+      if (!isConsentGranted) {
+        console.warn('[IpcRouter] Denied display media loopback request: Explicit meeting consent not granted');
         callback({});
         return;
       }
@@ -459,6 +479,26 @@ export class IpcRouter {
           throw new Error('[IpcRouter] Invalid activeModel: Expected non-empty string under 100 characters');
         }
         sanitized[key] = val.trim();
+      }
+
+      // 3a. Validate privacyMode enum (local vs cloud)
+      else if (key === 'privacyMode') {
+        if (typeof val !== 'string' || !ALLOWED_PRIVACY_MODES.has(val)) {
+          throw new Error(
+            `[IpcRouter] Invalid privacyMode: "${val}". Must be one of: ${Array.from(ALLOWED_PRIVACY_MODES).join(', ')}`
+          );
+        }
+        sanitized[key] = val;
+      }
+
+      // 3b. Validate meetingConsent enum
+      else if (key === 'meetingConsent') {
+        if (typeof val !== 'string' || !ALLOWED_MEETING_CONSENTS.has(val)) {
+          throw new Error(
+            `[IpcRouter] Invalid meetingConsent: "${val}". Must be one of: ${Array.from(ALLOWED_MEETING_CONSENTS).join(', ')}`
+          );
+        }
+        sanitized[key] = val;
       }
 
       // 4. Validate shortcuts mapping
@@ -828,9 +868,46 @@ export class IpcRouter {
         else if (model && (model.includes('claude') || model.includes('anthropic'))) providerName = 'anthropic';
         else if (model && model.includes('ollama')) providerName = 'ollama';
 
+        const currentState = stateManager.getState();
+        // Local-Only Privacy Mode enforcement
+        if (currentState.privacyMode === 'local' && providerName !== 'ollama') {
+          throw new Error(
+            `[Privacy Mode: LOCAL] Cloud AI requests to "${providerName}" are strictly blocked. In local privacy mode, only local inference (Ollama) is permitted.`
+          );
+        }
+
         const apiKey = await credentialVault.getKey(providerName);
         if (!apiKey && providerName !== 'ollama') {
           throw new Error(`No API key configured for ${providerName}. Please add it in Settings.`);
+        }
+
+        // Outbound Data Inspection & Redaction Guard
+        let cleanQuery = query;
+        let cleanTranscript = recentTranscript;
+        let cleanHistory = conversationHistory;
+        let cleanPassages = knowledgePassages;
+
+        if (currentState.redactSensitiveData || currentState.blockOutboundSecrets) {
+          const inspection = inspectAndSanitizeOutboundPayload(
+            {
+              query,
+              recentTranscript,
+              conversationHistory,
+              knowledgePassages,
+            },
+            { blockOnSecrets: currentState.blockOutboundSecrets }
+          );
+
+          if (inspection.blocked) {
+            throw new Error(
+              `[Outbound Security Guard] Request blocked: Outbound prompt payload contains sensitive credentials (${inspection.detections.join(', ')}).`
+            );
+          }
+
+          cleanQuery = inspection.sanitizedPayload.query || cleanQuery;
+          cleanTranscript = inspection.sanitizedPayload.recentTranscript || cleanTranscript;
+          cleanHistory = inspection.sanitizedPayload.conversationHistory || cleanHistory;
+          cleanPassages = inspection.sanitizedPayload.knowledgePassages || cleanPassages;
         }
 
         const onToken = (token: string) => {
@@ -845,11 +922,11 @@ export class IpcRouter {
             model,
             apiKey: apiKey || '',
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: controller.signal,
             onToken,
           });
@@ -858,11 +935,11 @@ export class IpcRouter {
             model,
             apiKey: apiKey || '',
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: controller.signal,
             onToken,
           });
@@ -871,11 +948,11 @@ export class IpcRouter {
             model,
             apiKey: apiKey || '',
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: controller.signal,
             onToken,
           });
@@ -883,17 +960,17 @@ export class IpcRouter {
           resultText = await streamOllama({
             model,
             mode,
-            query,
+            query: cleanQuery,
             screenshotBase64,
-            recentTranscript,
-            knowledgePassages,
-            conversationHistory,
+            recentTranscript: cleanTranscript,
+            knowledgePassages: cleanPassages,
+            conversationHistory: cleanHistory,
             signal: controller.signal,
             onToken,
           });
         }
 
-        return { content: resultText, sources: knowledgePassages };
+        return { content: resultText, sources: cleanPassages };
       } finally {
         this.activeAiControllers.complete(operationId, correlationId);
         this.activeAiTasks.delete(aiTaskSettled);
@@ -984,8 +1061,16 @@ export class IpcRouter {
       const openaiKey = await credentialVault.getKey('openai');
       const activeKey = groqKey || openaiKey;
       const provider = groqKey ? 'groq' : 'openai';
+
+      const state = stateManager.getState();
+      if (state.privacyMode === 'local') {
+        throw new Error(
+          '[Privacy Mode: LOCAL] Cloud audio transcription is blocked. Audio processing remains strictly on-device.'
+        );
+      }
+
       if (!activeKey) throw new Error('No Speech-to-Text key configured. Set Groq or OpenAI key in Settings.');
-      if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
+      if (state.isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
 
       const buf = this.validateSttAudioPayload(wavBase64);
       const audioBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
@@ -1006,7 +1091,12 @@ export class IpcRouter {
     // 11. Multi-Session Repository Handlers
     ipcMain.handle('session-save', async (event, session: any) => {
       this.validateOrigin(event);
-      if (stateManager.getState().isPurging) throw new Error('Data purge is in progress; session writes are blocked.');
+      const state = stateManager.getState();
+      if (state.isPurging) throw new Error('Data purge is in progress; session writes are blocked.');
+      if (state.enterpriseMode) {
+        // In Enterprise Mode, disk transcript and session history storage is disabled
+        return;
+      }
       const cleanSession = this.sanitizeSessionRecord(session);
       await sessionRepository.saveSession(cleanSession);
     });

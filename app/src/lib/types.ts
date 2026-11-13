@@ -90,6 +90,13 @@ export interface SharedState {
     | 'claude-opus-5-5'
     | 'ollama';
   isGenerating?: boolean;
+  privacyMode: 'local' | 'cloud';
+  meetingConsent: 'prompt' | 'allowed_once' | 'always_allowed' | 'denied';
+  telemetryEnabled: boolean;
+  enterpriseMode: boolean;
+  redactSensitiveData: boolean;
+  blockOutboundSecrets: boolean;
+  encryptedStorageEnabled: boolean;
   hasApiKeys: {
     gemini: boolean;
     openai: boolean;

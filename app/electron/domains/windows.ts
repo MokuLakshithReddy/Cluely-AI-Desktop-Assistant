@@ -72,6 +72,7 @@ export class WindowCoordinator {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        webSecurity: true,
       },
     });
 
@@ -137,6 +138,7 @@ export class WindowCoordinator {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        webSecurity: true,
       },
     });
 
@@ -205,6 +207,7 @@ export class WindowCoordinator {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        webSecurity: true,
       },
     });
 

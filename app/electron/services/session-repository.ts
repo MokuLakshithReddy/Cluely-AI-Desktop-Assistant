@@ -1,6 +1,45 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+/**
+ * Encrypts arbitrary session data using AES-256-GCM authenticated encryption.
+ */
+export function encryptLocalSession(data: string | any, encryptionKey: Buffer): string {
+  const plainText = typeof data === 'string' ? data : JSON.stringify(data);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+  let ciphertext = cipher.update(plainText, 'utf8', 'hex');
+  ciphertext += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `enc:v1:${iv.toString('hex')}:${authTag}:${ciphertext}`;
+}
+
+/**
+ * Decrypts AES-256-GCM encrypted session data.
+ * Gracefully falls back to plaintext if the string is unencrypted JSON for backwards compatibility.
+ */
+export function decryptLocalSession(dataStr: string, encryptionKey?: Buffer): string {
+  if (!dataStr.startsWith('enc:v1:')) {
+    return dataStr; // Unencrypted backward compatibility
+  }
+  if (!encryptionKey) {
+    throw new Error('[SessionRepository] Cannot decrypt session: No encryption key provided');
+  }
+  const parts = dataStr.split(':');
+  if (parts.length !== 5) {
+    throw new Error('[SessionRepository] Malformed encrypted session payload');
+  }
+  const iv = Buffer.from(parts[2], 'hex');
+  const authTag = Buffer.from(parts[3], 'hex');
+  const ciphertext = parts[4];
+  const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
 
 export interface SessionRecord {
   id: string;
@@ -43,6 +82,15 @@ export interface SessionSummary {
 
 export class SessionRepository {
   private static readonly SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+  private encryptionKey?: Buffer;
+
+  public setEncryptionKey(key?: Buffer): void {
+    this.encryptionKey = key;
+  }
+
+  public getEncryptionKey(): Buffer | undefined {
+    return this.encryptionKey;
+  }
 
   private getStorageDir(): string {
     let base: string;
@@ -114,7 +162,12 @@ export class SessionRepository {
     if (serialized.length > 5 * 1024 * 1024) {
       throw new Error('[SessionRepository] Session exceeds maximum aggregate size limit of 5MB');
     }
-    fs.writeFileSync(filePath, serialized, 'utf8');
+
+    let payloadToWrite = serialized;
+    if (this.encryptionKey) {
+      payloadToWrite = encryptLocalSession(serialized, this.encryptionKey);
+    }
+    fs.writeFileSync(filePath, payloadToWrite, 'utf8');
   }
 
   public async getSession(id: string): Promise<SessionRecord | null> {
@@ -128,7 +181,8 @@ export class SessionRepository {
     if (!fs.existsSync(filePath)) return null;
     try {
       const raw = fs.readFileSync(filePath, 'utf8');
-      return JSON.parse(raw);
+      const decrypted = decryptLocalSession(raw, this.encryptionKey);
+      return JSON.parse(decrypted);
     } catch (e) {
       console.error(`[SessionRepository] Failed to read session ${id}:`, e);
       return null;
@@ -144,7 +198,8 @@ export class SessionRepository {
       try {
         const fullPath = path.join(dir, file);
         const raw = fs.readFileSync(fullPath, 'utf8');
-        const s: SessionRecord = JSON.parse(raw);
+        const decrypted = decryptLocalSession(raw, this.encryptionKey);
+        const s: SessionRecord = JSON.parse(decrypted);
         summaries.push({
           id: s.id,
           title: s.title || `Session ${new Date(s.createdAt).toLocaleDateString()}`,

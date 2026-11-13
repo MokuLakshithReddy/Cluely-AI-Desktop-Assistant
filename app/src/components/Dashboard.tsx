@@ -18,6 +18,11 @@ import {
   ArrowLeft,
   Monitor,
   Cpu,
+  Shield,
+  Lock,
+  EyeOff,
+  Database,
+  Radio,
 } from 'lucide-react';
 import { SharedState, KnowledgeDoc, SessionSummary, SessionRecord } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
@@ -26,11 +31,11 @@ import { createKnowledgeDoc, parseDocumentFile } from '../lib/knowledge';
 interface DashboardProps {
   state: SharedState;
   patchState: (updater: StateUpdater) => Promise<SharedState>;
-  initialTab?: 'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop';
+  initialTab?: 'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security';
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initialTab }) => {
-  const [activeTab, setActiveTab] = useState<'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop'>(
+  const [activeTab, setActiveTab] = useState<'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security'>(
     initialTab || 'models'
   );
 
@@ -42,14 +47,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
 
   useEffect(() => {
     const unsubscribe = window.desktopBridge?.onDashboardSwitchTab?.(tab => {
-      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop') {
+      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop' || tab === 'security') {
         setActiveTab(tab);
       }
     });
 
     const handleCustomEvent = (e: any) => {
       const tab = e.detail;
-      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop') {
+      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop' || tab === 'security') {
         setActiveTab(tab);
       }
     };
@@ -252,6 +257,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
             >
               <Key className="w-4 h-4" />
               <span>Models & Vault</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                activeTab === 'security'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              <span>Privacy & Security</span>
             </button>
 
             <button
@@ -786,6 +803,274 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
               <p className="text-[11px] text-slate-500">
                 The resulting installer or portable binary will be saved in the <code className="text-slate-300">release/</code> directory ready for sharing and distribution.
               </p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'security' && (
+          <div className="max-w-2xl space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-cyan-400" /> Privacy & Security Governance
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Zero-trust local privacy architecture, outbound credential scrubbing, hardware-bound credential vault, and meeting consent guard.
+              </p>
+            </div>
+
+            {/* Enterprise Mode Master Toggle */}
+            <div className={`p-4 rounded-xl border transition-all ${
+              state.enterpriseMode
+                ? 'bg-amber-500/10 border-amber-500/30'
+                : 'bg-slate-900 border-slate-800'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1 pr-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                      Enterprise Compliance Mode
+                    </span>
+                    {state.enterpriseMode && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 font-semibold px-2 py-0.5 rounded border border-amber-500/40">
+                        ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    When active, locks inference strictly to local Ollama, forces zero cloud egress, suppresses session transcript writes to disk, and disables all telemetry. Recommended for regulated or confidential workflows.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => patchState(prev => ({ enterpriseMode: !prev.enterpriseMode }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all ${
+                    state.enterpriseMode
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-md'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                >
+                  {state.enterpriseMode ? 'Disable Enterprise' : 'Enable Enterprise'}
+                </button>
+              </div>
+            </div>
+
+            {/* Privacy Mode (Local vs Cloud) */}
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                    Inference Privacy Mode
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Controls whether AI queries and transcript tokens stay on-device or use external AI providers.
+                  </p>
+                </div>
+                {state.enterpriseMode && (
+                  <span className="text-[10px] text-amber-400 font-medium bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    Locked to Local by Enterprise Mode
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  disabled={state.enterpriseMode}
+                  onClick={() => patchState({ privacyMode: 'local' })}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    state.privacyMode === 'local'
+                      ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
+                      : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
+                  } ${state.enterpriseMode ? 'cursor-not-allowed opacity-90' : ''}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-slate-200">Strict Local Only</span>
+                    {state.privacyMode === 'local' && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Zero cloud transmission. Prompts route directly to local Ollama (localhost:11434). Zero external network calls.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={state.enterpriseMode}
+                  onClick={() => patchState({ privacyMode: 'cloud' })}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    state.privacyMode === 'cloud'
+                      ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
+                      : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
+                  } ${state.enterpriseMode ? 'cursor-not-allowed opacity-40' : ''}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-slate-200">Cloud AI Providers</span>
+                    {state.privacyMode === 'cloud' && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Uses Gemini, OpenAI, Claude, or Groq with client-side credential scrubbing and TLS 1.3 encryption.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Sensitive-Content Redaction & Outbound Guard */}
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
+              <div>
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-cyan-400" /> Outbound Data Inspection & Redaction
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Client-side filters automatically sanitize text and screenshots before transmission.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.redactSensitiveData}
+                    onChange={e => patchState({ redactSensitiveData: e.target.checked })}
+                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-900"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-slate-200">
+                      Automated Sensitive-Content Redaction
+                    </span>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      Automatically masks passwords, API keys (sk-..., AKIA..., AIzaSy...), private keys, JWTs, credit card numbers, and MFA codes from prompt context and OCR text with <code className="text-cyan-300">[REDACTED_API_KEY]</code>, <code className="text-cyan-300">[REDACTED_CREDIT_CARD]</code>, etc.
+                    </p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.blockOutboundSecrets}
+                    onChange={e => patchState({ blockOutboundSecrets: e.target.checked })}
+                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-900"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-slate-200">
+                      Block Requests Containing Secrets (Zero Egress Hard-Stop)
+                    </span>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      If unredacted sensitive tokens, credentials, or private keys are detected in the payload, immediately abort and reject the request before touching the network.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Meeting Privacy Guard */}
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <EyeOff className="w-3.5 h-3.5 text-cyan-400" /> Meeting Privacy Guard & Audio Consent
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  System audio loopback captures remote participants. Select consent policy to prevent unauthorized recording.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { key: 'prompt', label: 'Prompt Every Time', desc: 'Ask for explicit confirmation before every session' },
+                  { key: 'allowed_once', label: 'Allow Once', desc: 'Permit loopback for this session only' },
+                  { key: 'always_allowed', label: 'Always Allow', desc: 'Permit loopback capture automatically' },
+                  { key: 'denied', label: 'Deny Loopback', desc: 'Strictly block remote audio capture' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => patchState({ meetingConsent: opt.key as any })}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      state.meetingConsent === opt.key
+                        ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
+                        : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                      <span>{opt.label}</span>
+                      {state.meetingConsent === opt.key && <Check className="w-3 h-3 text-cyan-400" />}
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Local Data Storage & Screenshot Ephemerality */}
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-cyan-400" /> Local Data Storage & Cryptography
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Cryptographic protection for local transcripts and screenshot memory lifecycle.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.encryptedStorageEnabled}
+                    onChange={e => patchState({ encryptedStorageEnabled: e.target.checked })}
+                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-900"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-slate-200">
+                      AES-256-GCM Session Archive Encryption
+                    </span>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      Stored sessions and meeting transcripts are encrypted on disk with authenticated AES-256-GCM. Plaintext JSON files are never written directly to the file system.
+                    </p>
+                  </div>
+                </label>
+
+                <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
+                  <div className="flex items-center gap-1.5 text-cyan-400 font-semibold text-xs">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" /> Ephemeral-Only Screenshot Memory
+                  </div>
+                  <p className="text-[10px] leading-tight text-slate-500">
+                    Desktop screenshots are kept strictly in volatile RAM, processed through OCR/vision, and immediately wiped with zeros (<code className="text-slate-400">buf.fill(0)</code>). Persistent screenshot image storage on disk is permanently disabled.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Telemetry Opt-in */}
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                    Telemetry & Usage Diagnostics
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Cluely operates under a strict privacy-first default: telemetry is completely OFF.
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-3 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  disabled={state.enterpriseMode}
+                  checked={state.telemetryEnabled}
+                  onChange={e => patchState({ telemetryEnabled: e.target.checked })}
+                  className="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-900"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-slate-200">
+                    Help improve the app by sharing anonymous usage data
+                  </span>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    {state.enterpriseMode
+                      ? 'Disabled and blocked by Enterprise Mode.'
+                      : 'Disabled by default. When enabled, transmits only anonymous performance metrics and error stack traces. No audio, transcripts, images, or API keys are ever collected.'}
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
         )}
