@@ -14,6 +14,36 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 
 ---
 
+## Visual workflow: desktop context to grounded assistance
+
+```mermaid
+flowchart TD
+    A["Microphone audio"] --> D["Session context"]
+    B["System audio loopback"] --> D
+    C["User-approved screen capture"] --> D
+    E["Knowledge files and conversation history"] --> D
+    D --> F["Speech transcription and context retrieval"]
+    F --> G["Model/provider adapter"]
+    G --> H["Streaming assistant response and desktop overlay"]
+```
+
+### Measured speech-to-text evidence
+
+The published report evaluates 150 utterances across quiet, crosstalk, and background-noise conditions on a specified Windows workstation.
+
+| Groq Whisper Large v3 Turbo | WER | Mean segment latency |
+|---|---:|---:|
+| Quiet room | **1.88%** | 282 ms |
+| Speaker crosstalk, gate enabled | **2.14%** | 295 ms |
+| Speaker crosstalk, gate disabled (ablation) | 18.62% | 310 ms |
+| Moderate background noise | **3.35%** | 304 ms |
+
+The crosstalk result is an ablation on the report's test setup, not a universal accuracy guarantee. Additional provider, streaming, retrieval, cancellation, and resource measurements are documented in [Quality Measurements](docs/benchmarks/QUALITY_MEASUREMENTS.md).
+
+**Why it matters:** combines screen and conversation context so the assistant can respond to the work happening on the desktop, rather than only the last typed prompt.
+
+---
+
 ## Table of Contents
 
 1. [Key Capabilities & Subsystems](#1-key-capabilities--subsystems)
