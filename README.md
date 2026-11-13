@@ -1,5 +1,8 @@
 # Cluely Copilot: Reverse-Engineered Desktop AI Assistant
 
+[![Stars](https://img.shields.io/github/stars/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/stargazers) [![Forks](https://img.shields.io/github/forks/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/forks) [![Open Issues](https://img.shields.io/github/issues/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues) [![Last Commit](https://img.shields.io/github/last-commit/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commits/main)
+
+
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
 [![Tests Passing](https://img.shields.io/badge/CI%20checks-125%2F125%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)
