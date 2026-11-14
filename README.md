@@ -1,5 +1,8 @@
 # Cluely Copilot: Reverse-Engineered Desktop AI Assistant
 
+[![Stars](https://img.shields.io/github/stars/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/stargazers) [![Forks](https://img.shields.io/github/forks/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/forks) [![Open Issues](https://img.shields.io/github/issues/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues) [![Last Commit](https://img.shields.io/github/last-commit/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commits/main)
+
+
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
 [![Tests Passing](https://img.shields.io/badge/CI%20checks-125%2F125%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)
@@ -11,6 +14,36 @@
 An evidence-driven, clean-room desktop AI assistant reverse-engineered from **Cluely** using **REA (Reverse Engineer Anything)**. Engineered with **TypeScript**, **Electron**, **React**, and **Tailwind CSS**, it operates alongside daily desktop workflows (video meetings, coding sessions, technical interviews, sales calls, and presentations).
 
 Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously perceives both **what is happening on your screen** and **what is being spoken in live conversations**, fusing these inputs with instructions, personal knowledge documents, and conversation history to provide real-time, context-grounded AI guidance.
+
+---
+
+## Visual workflow: desktop context to grounded assistance
+
+```mermaid
+flowchart TD
+    A["Microphone audio"] --> D["Session context"]
+    B["System audio loopback"] --> D
+    C["User-approved screen capture"] --> D
+    E["Knowledge files and conversation history"] --> D
+    D --> F["Speech transcription and context retrieval"]
+    F --> G["Model/provider adapter"]
+    G --> H["Streaming assistant response and desktop overlay"]
+```
+
+### Measured speech-to-text evidence
+
+The published report evaluates 150 utterances across quiet, crosstalk, and background-noise conditions on a specified Windows workstation.
+
+| Groq Whisper Large v3 Turbo | WER | Mean segment latency |
+|---|---:|---:|
+| Quiet room | **1.88%** | 282 ms |
+| Speaker crosstalk, gate enabled | **2.14%** | 295 ms |
+| Speaker crosstalk, gate disabled (ablation) | 18.62% | 310 ms |
+| Moderate background noise | **3.35%** | 304 ms |
+
+The crosstalk result is an ablation on the report's test setup, not a universal accuracy guarantee. Additional provider, streaming, retrieval, cancellation, and resource measurements are documented in [Quality Measurements](docs/benchmarks/QUALITY_MEASUREMENTS.md).
+
+**Why it matters:** combines screen and conversation context so the assistant can respond to the work happening on the desktop, rather than only the last typed prompt.
 
 ---
 
