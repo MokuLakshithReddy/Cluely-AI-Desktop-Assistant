@@ -35,6 +35,9 @@ export const INITIAL_STATE: SharedState = {
   themHasVoiceActivity: false,
   isCapturingScreenshot: false,
   isRecording: false,
+  microphoneCaptureStatus: 'idle',
+  systemAudioCaptureStatus: 'idle',
+  captureWarning: null,
   isPurging: false,
   isEmergencyStopping: false,
   micActive: false,
@@ -190,6 +193,9 @@ export class StateManager {
           isChatWindowLoaded: false,
           isDashboardWindowLoaded: false,
           isRecording: false,
+          microphoneCaptureStatus: 'idle',
+          systemAudioCaptureStatus: 'idle',
+          captureWarning: null,
           isPurging: false,
           isEmergencyStopping: false,
           micActive: false,
@@ -228,7 +234,8 @@ export class StateManager {
     try {
       const stateFile = this.getStateFilePath();
       const dir = path.dirname(stateFile);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      if (process.platform !== 'win32') fs.chmodSync(dir, 0o700);
 
       // Clean serialization copy: ensure no secrets or screenshot payloads are saved to disk
       const toSave: any = { ...this.state };
@@ -237,6 +244,11 @@ export class StateManager {
       delete toSave.appVersion;
       // Persistence diagnostics are transient UI state and must never be stored in the file.
       delete toSave.persistenceError;
+      // Capture readiness and error notices describe the previous process/device lifecycle.
+      // Never restore them after restart; the renderer will negotiate fresh streams.
+      delete toSave.microphoneCaptureStatus;
+      delete toSave.systemAudioCaptureStatus;
+      delete toSave.captureWarning;
 
       // Enterprise Mode disk suppression: active transcripts, messages, and knowledge docs must NEVER touch disk
       if (this.state.enterpriseMode) {
@@ -261,7 +273,8 @@ export class StateManager {
         payloadToWrite = encryptStoragePayload(serialized);
       }
 
-      fs.writeFileSync(stateFile, payloadToWrite, 'utf8');
+      fs.writeFileSync(stateFile, payloadToWrite, { encoding: 'utf8', mode: 0o600 });
+      if (process.platform !== 'win32') fs.chmodSync(stateFile, 0o600);
       if (this.state.persistenceError) {
         this.state = { ...this.state, persistenceError: null };
         this.notify();

@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Mic,
   MicOff,
+  AlertTriangle,
   Camera,
   Shield,
   ShieldOff,
@@ -83,8 +84,12 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
     patchState({ activeMode: e.target.value as AssistantMode });
   };
 
+  const captureStatusTitle = state.isRecording
+    ? `Microphone: ${state.microphoneCaptureStatus}. System audio: ${state.systemAudioCaptureStatus}.${state.captureWarning ? ` ${state.captureWarning}` : ''} Click to stop.`
+    : state.captureWarning || 'Start Listening to request microphone and system-audio capture.';
+
   return (
-    <div className="flex items-center justify-between w-full h-[54px] px-3 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-full shadow-2xl text-slate-200 select-none overflow-hidden box-border">
+    <div className="flex items-center justify-between w-full h-[50px] px-3 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-full shadow-2xl text-slate-200 select-none overflow-hidden box-border">
       {showConsentModal ? (
         <div className="flex items-center justify-between w-full h-full px-1 text-xs animate-in fade-in">
           <div className="flex items-center gap-1.5 text-cyan-300 font-medium truncate">
@@ -130,17 +135,7 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
                 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                 : 'bg-slate-800 text-slate-400 hover:text-slate-200'
             }`}
-            title={
-              state.isRecording
-                ? state.micActive && state.systemAudioActive
-                  ? 'Dual Audio Active (Microphone + Meeting Loopback) — Click to Stop'
-                  : state.micActive
-                  ? 'Microphone Active (Meeting Loopback Inactive) — Click to Stop'
-                  : state.systemAudioActive
-                  ? 'System Audio Active (Microphone Inactive) — Click to Stop'
-                  : 'Audio Recording Active — Click to Stop'
-                : 'Start Listening (Mic + Meeting Audio)'
-            }
+            title={captureStatusTitle}
           >
             {state.isRecording ? (
               <>
@@ -153,19 +148,27 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
                 />
                 <Mic className="w-3.5 h-3.5" />
                 <span>
-                  {state.micActive && state.systemAudioActive
+                  {state.microphoneCaptureStatus === 'starting' || state.systemAudioCaptureStatus === 'starting'
+                    ? 'Connecting...'
+                    : state.microphoneCaptureStatus === 'active' && state.systemAudioCaptureStatus === 'active'
                     ? 'Dual Audio'
-                    : state.micActive
+                    : state.microphoneCaptureStatus === 'active'
                     ? 'Mic Only'
-                    : state.systemAudioActive
+                    : state.systemAudioCaptureStatus === 'active'
                     ? 'System Audio'
                     : 'Recording'}
                 </span>
+                {state.captureWarning && (
+                  <AlertTriangle className="w-3 h-3 text-amber-400 ml-0.5 flex-shrink-0" />
+                )}
               </>
             ) : (
               <>
                 <MicOff className="w-3.5 h-3.5" />
                 <span>Idle</span>
+                {state.captureWarning && (
+                  <AlertTriangle className="w-3 h-3 text-amber-400 ml-0.5 flex-shrink-0" />
+                )}
               </>
             )}
           </button>

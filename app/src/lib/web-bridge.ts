@@ -12,7 +12,10 @@ import {
   streamOllama,
   transcribeAudio,
 } from './providers';
-import { inspectAndSanitizeOutboundPayload } from './redaction';
+import {
+  inspectAndSanitizeOutboundPayload,
+  sanitizeScreenshot,
+} from './redaction';
 
 // Sessions storage key (non-secret session summaries & notes)
 const SESSIONS_STORAGE_KEY = 'cluely_past_sessions';
@@ -344,10 +347,25 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             );
           }
 
+          // Strict Outbound Redaction: when redactSensitiveData is active and transmitting to cloud AI,
+          // visually redact sensitive screen coordinates before transmitting image payload
+          if (currentState.redactSensitiveData && screenshotBase64 && providerName !== 'ollama') {
+            try {
+              const base64Data = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
+              const imgBuf = Buffer.from(base64Data, 'base64');
+              const { sanitizedBuffer, isRedacted } = await sanitizeScreenshot(imgBuf);
+              if (isRedacted && sanitizedBuffer) {
+                cleanScreenshot = `data:image/png;base64,${sanitizedBuffer.toString('base64')}`;
+              }
+            } catch (err) {
+              console.warn('[WebBridge] Failed to visually redact screenshot:', err);
+            }
+          }
+
           const inspection = inspectAndSanitizeOutboundPayload(
             {
               query,
-              screenshotBase64,
+              screenshotBase64: cleanScreenshot,
               recentTranscript,
               conversationHistory,
               knowledgePassages,
@@ -365,7 +383,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
           cleanTranscript = inspection.sanitizedPayload.recentTranscript || cleanTranscript;
           cleanHistory = inspection.sanitizedPayload.conversationHistory || cleanHistory;
           cleanPassages = inspection.sanitizedPayload.knowledgePassages || cleanPassages;
-          cleanScreenshot = inspection.sanitizedPayload.screenshotBase64;
+          cleanScreenshot = inspection.sanitizedPayload.screenshotBase64 || cleanScreenshot;
         }
 
         const apiKey = inMemoryVaultKeys[providerName];

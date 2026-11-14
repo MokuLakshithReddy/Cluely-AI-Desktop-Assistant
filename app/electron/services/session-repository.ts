@@ -67,6 +67,8 @@ export class SessionRepository {
   private static readonly SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
   private encryptionKey?: Buffer;
 
+  constructor(private readonly storageDirOverride?: string) {}
+
   public setEncryptionKey(key?: Buffer): void {
     this.encryptionKey = key;
   }
@@ -76,14 +78,27 @@ export class SessionRepository {
   }
 
   private getStorageDir(): string {
-    let base: string;
-    try {
-      base = app.getPath('userData');
-    } catch {
-      base = process.cwd();
+    let dir: string;
+    if (this.storageDirOverride) {
+      dir = path.resolve(this.storageDirOverride);
+    } else {
+      let base: string;
+      try {
+        base = app.getPath('userData');
+      } catch {
+        base = process.cwd();
+      }
+      dir = path.join(base, 'sessions');
     }
-    const dir = path.join(base, 'sessions');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+    // Session archives contain transcripts and messages. Restrict directory
+    // traversal to the current OS user on POSIX filesystems.
+    if (process.platform !== 'win32') {
+      fs.chmodSync(dir, 0o700);
+    }
     return dir;
   }
 
@@ -148,7 +163,10 @@ export class SessionRepository {
 
     // Always encrypt session archives at rest with OS-backed safeStorage AES-256-GCM
     const payloadToWrite = encryptLocalSession(serialized, this.encryptionKey);
-    fs.writeFileSync(filePath, payloadToWrite, 'utf8');
+    fs.writeFileSync(filePath, payloadToWrite, { encoding: 'utf8', mode: 0o600 });
+    if (process.platform !== 'win32') {
+      fs.chmodSync(filePath, 0o600);
+    }
   }
 
   public async getSession(id: string): Promise<SessionRecord | null> {
@@ -167,7 +185,10 @@ export class SessionRepository {
       // Safe migration: re-encrypt legacy plaintext JSON files on access
       if (!raw.startsWith('enc:v1:')) {
         try {
-          fs.writeFileSync(filePath, encryptLocalSession(decrypted, this.encryptionKey), 'utf8');
+          fs.writeFileSync(filePath, encryptLocalSession(decrypted, this.encryptionKey), { encoding: 'utf8', mode: 0o600 });
+          if (process.platform !== 'win32') {
+            fs.chmodSync(filePath, 0o600);
+          }
         } catch (migErr) {
           console.warn(`[SessionRepository] Failed to migrate legacy session ${id} to encrypted format:`, migErr);
         }
@@ -194,7 +215,10 @@ export class SessionRepository {
         // Safe migration: re-encrypt legacy plaintext JSON files when listed
         if (!raw.startsWith('enc:v1:')) {
           try {
-            fs.writeFileSync(fullPath, encryptLocalSession(decrypted, this.encryptionKey), 'utf8');
+            fs.writeFileSync(fullPath, encryptLocalSession(decrypted, this.encryptionKey), { encoding: 'utf8', mode: 0o600 });
+            if (process.platform !== 'win32') {
+              fs.chmodSync(fullPath, 0o600);
+            }
           } catch (migErr) {
             console.warn(`[SessionRepository] Failed to migrate legacy session file ${file} to encrypted format:`, migErr);
           }

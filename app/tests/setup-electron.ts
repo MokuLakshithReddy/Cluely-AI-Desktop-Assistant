@@ -84,6 +84,7 @@ vi.mock('electron', () => {
   };
 
   const safeStorage = {
+    isEncryptionAvailable: vi.fn(() => false),
     isAsyncEncryptionAvailable: vi.fn(async () => false),
     getSelectedStorageBackend: vi.fn(() => 'basic_text'),
     encryptStringAsync: vi.fn(async () => { throw new Error('OS-backed test storage is unavailable'); }),

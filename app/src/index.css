@@ -7,9 +7,17 @@ html, body, #root {
   width: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
   user-select: none;
-  background-color: transparent;
+  background-color: transparent !important;
+}
+
+html::-webkit-scrollbar, body::-webkit-scrollbar, #root::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Modern sleek custom scrollbars for inner scrollable panels (Chat & Dashboard) */

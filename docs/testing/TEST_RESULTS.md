@@ -3,9 +3,9 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 172/172 Passing (100% Pass Rate)  
+**Test Status**: 177/177 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `ea9705b8c2bb587572b6fcd1aff4f9b17bb053fa`  
+**Source revision**: `da529c4c8c45950bb2cb6115bcfe25f0432ea37d`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-14  
 
@@ -20,21 +20,21 @@
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 14 | 14 | 0 | **PASSED** |
 | `device-evidence-validator.test.ts` | device evidence campaign validator | 13 | 13 | 0 | **PASSED** |
 | `e2e-desktop-session.test.ts` | Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs) | 6 | 6 | 0 | **PASSED** |
-| `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 32 | 32 | 0 | **PASSED** |
+| `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 33 | 33 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 7 | 7 | 0 | **PASSED** |
-| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 30 | 30 | 0 | **PASSED** |
-| `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 9 | 9 | 0 | **PASSED** |
+| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 32 | 32 | 0 | **PASSED** |
+| `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 10 | 10 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
-| `state-persistence.test.ts` | State persistence error reporting | 5 | 5 | 0 | **PASSED** |
+| `state-persistence.test.ts` | State persistence error reporting | 6 | 6 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 3 | 3 | 0 | **PASSED** |
-| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 7 | 7 | 0 | **PASSED** |
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
-| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
+| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 7 | 7 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
+| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **172** | **172** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **177** | **177** | **0** | **100% PASS** |
 
 ---
 
@@ -140,6 +140,7 @@
 ✓ enforces nested schema validation on session chat messages
 ✓ enforces size limits and schema validation on knowledge documents
 ✓ sanitizeSessionRecord strips screenshot payloads and enforces a 5MB aggregate size ceiling
+✓ validates microphone and system-audio readiness as bounded finite states
 ```
 
 ### 7. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
@@ -186,11 +187,13 @@
 ✓ inspectAndSanitizeOutboundPayload sanitizes deeply nested payloads
 ✓ inspectAndSanitizeOutboundPayload blocks request when blockOnSecrets is true
 ✓ wipes sensitive memory buffers with zeroes
-✓ sanitizeScreenshot processes image buffers in memory without disk writes
+✓ sanitizeScreenshot processes image buffers in memory without disk writes and masks sensitive regions
 ✓ encrypts session records into authenticated AES-256-GCM envelope
 ✓ decrypts encrypted session records accurately
 ✓ detects tampering and rejects corrupted ciphertext via GCM auth tag
 ✓ maintains backward compatibility with unencrypted legacy JSON
+✓ enforces Linux backend allowlist and rejects insecure basic_text
+✓ fails closed in production if secure OS-backed storage is unavailable
 ✓ accepts HTTPS production endpoints
 ✓ accepts local loopback HTTP for Ollama offline inference
 ✓ rejects external insecure HTTP endpoints
@@ -206,6 +209,7 @@
 ### 10. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
 ```text
 ✓ saves and reads a full session record with transcripts and messages
+✓ restricts session directory and archive file access on POSIX
 ✓ automatically migrates legacy unencrypted session archives to encrypted format on access
 ✓ lists past sessions ordered by newest creation date
 ✓ deletes an individual session by identifier
@@ -226,6 +230,7 @@
 ```text
 ✓ does not restore stale transient persistence warnings from older state files
 ✓ ignores stale persisted app versions and does not persist runtime version metadata
+✓ writes shared-state files with user-only POSIX permissions
 ✓ surfaces write failures, propagates critical flush errors, and clears the warning after recovery
 ✓ encrypts shared state at rest with AES-256-GCM envelope when encryptedStorageEnabled is active
 ✓ suppresses active session and knowledge documents from disk when enterpriseMode is active
@@ -238,7 +243,15 @@
 ✓ returns null for destroyed windows even before their closed event is delivered
 ```
 
-### 14. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
+### 14. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+```text
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
+```
+
+### 15. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
 ```text
 ✓ builds context prompt including speaker-attributed transcripts
 ✓ filters out error and incomplete transcript segments from prompt context
@@ -249,29 +262,21 @@
 ✓ formats user request cleanly when query contains multiline strings
 ```
 
-### 15. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
-```
-
-### 16. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
-```text
-✓ parses empty or missing hash as default "all" view
-✓ parses direct routes without query parameters
-✓ correctly extracts route and tab query parameters from complex hashes
-✓ handles leading slash with query parameters
-```
-
-### 17. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 16. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
 ✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
 ✓ preserves aspect ratio when height is greater than width (portrait display)
 ✓ handles boundary 1x1 minimal screen dimension safely
+```
+
+### 17. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+```text
+✓ parses empty or missing hash as default "all" view
+✓ parses direct routes without query parameters
+✓ correctly extracts route and tab query parameters from complex hashes
+✓ handles leading slash with query parameters
 ```
 
 ### 18. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)

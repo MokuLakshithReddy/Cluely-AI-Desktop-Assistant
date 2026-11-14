@@ -6,6 +6,23 @@ import crypto from 'crypto';
 let activeMasterKey: Buffer | null = null;
 
 /**
+ * Returns whether Electron selected a genuinely OS-backed credential/key provider.
+ * Enforces the Linux backend allowlist (rejects insecure basic_text backend).
+ */
+export function isSecureStorageBackendAvailable(
+  platform: string = process.platform,
+  encryptionAvailable: boolean = typeof safeStorage !== 'undefined' && typeof safeStorage.isEncryptionAvailable === 'function' ? safeStorage.isEncryptionAvailable() : false,
+  selectedBackend?: string | null
+): boolean {
+  if (!encryptionAvailable) return false;
+  if (platform === 'linux') {
+    const supportedBackends = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']);
+    return Boolean(selectedBackend && supportedBackends.has(selectedBackend));
+  }
+  return platform === 'win32' || platform === 'darwin';
+}
+
+/**
  * Sets an explicit 32-byte master encryption key (primarily for unit tests).
  */
 export function setMasterEncryptionKey(key: Buffer | null): void {
@@ -17,11 +34,15 @@ export function setMasterEncryptionKey(key: Buffer | null): void {
  */
 export function isSafeStorageAvailable(): boolean {
   try {
-    return Boolean(
-      typeof safeStorage !== 'undefined' &&
-      typeof safeStorage.isEncryptionAvailable === 'function' &&
-      safeStorage.isEncryptionAvailable()
-    );
+    if (typeof safeStorage === 'undefined' || typeof safeStorage.isEncryptionAvailable !== 'function') {
+      return false;
+    }
+    const available = safeStorage.isEncryptionAvailable();
+    let backend: string | undefined;
+    if (process.platform === 'linux' && typeof (safeStorage as any).getSelectedStorageBackend === 'function') {
+      backend = (safeStorage as any).getSelectedStorageBackend();
+    }
+    return isSecureStorageBackendAvailable(process.platform, available, backend);
   } catch {
     return false;
   }
@@ -29,6 +50,7 @@ export function isSafeStorageAvailable(): boolean {
 
 /**
  * Retrieves or initializes the 256-bit AES master key protected at rest by OS safeStorage.
+ * Fails closed in production environments if secure OS-backed storage is unavailable.
  */
 export function getMasterEncryptionKey(): Buffer {
   if (activeMasterKey && activeMasterKey.length === 32) {
@@ -53,22 +75,37 @@ export function getMasterEncryptionKey(): Buffer {
       const newKey = crypto.randomBytes(32);
       const encryptedKey = safeStorage.encryptString(newKey.toString('hex'));
       fs.writeFileSync(keyFile, encryptedKey, { mode: 0o600 });
+      if (process.platform !== 'win32') {
+        fs.chmodSync(keyFile, 0o600);
+      }
       activeMasterKey = newKey;
       return activeMasterKey;
     } catch (err) {
-      console.warn('[StorageEncryption] Failed to initialize safeStorage master key, checking test fallbacks:', err);
+      console.error('[StorageEncryption] Failed to initialize safeStorage master key:', err);
     }
   }
 
-  // 2. Test environment / headless fallback
-  if (process.env.SESSION_ENCRYPTION_KEY) {
-    activeMasterKey = crypto.createHash('sha256').update(process.env.SESSION_ENCRYPTION_KEY).digest();
+  // 2. Headless unit test runner fallback: strictly restricted to test environments
+  const isTestEnvironment =
+    process.env.NODE_ENV === 'test' ||
+    process.env.VITEST === 'true' ||
+    Boolean(process.env.TEST) ||
+    Boolean(process.env.SESSION_ENCRYPTION_KEY);
+
+  if (isTestEnvironment) {
+    if (process.env.SESSION_ENCRYPTION_KEY) {
+      activeMasterKey = crypto.createHash('sha256').update(process.env.SESSION_ENCRYPTION_KEY).digest();
+      return activeMasterKey;
+    }
+    activeMasterKey = crypto.createHash('sha256').update('cluely-local-storage-test-key').digest();
     return activeMasterKey;
   }
 
-  // 3. Deterministic headless fallback for Vitest runners
-  activeMasterKey = crypto.createHash('sha256').update('cluely-local-storage-test-key').digest();
-  return activeMasterKey;
+  // 3. FAIL CLOSED: In production, never fallback to a predictable static key
+  throw new Error(
+    '[StorageEncryption] Secure OS-backed storage is unavailable. ' +
+    'Production persistence requires a supported hardware/OS key store (DPAPI on Windows, Keychain on macOS, or Secret Service/libsecret/KWallet on Linux). Fail-closed policy active.'
+  );
 }
 
 /**

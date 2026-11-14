@@ -11,12 +11,19 @@
     <meta property="og:description" content="Evidence-driven desktop & web AI copilot with real-time screen and audio understanding" />
     <!-- Drag behavior annotations for Electron with fallback for Web -->
     <style>
-      html, body {
+      html, body, #root {
         margin: 0;
         padding: 0;
         overflow: hidden !important;
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
         background-color: transparent !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      html::-webkit-scrollbar, body::-webkit-scrollbar, #root::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
       }
       .drag-region {
         -webkit-app-region: drag;

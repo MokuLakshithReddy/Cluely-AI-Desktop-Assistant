@@ -15,6 +15,11 @@ import {
   decryptLocalSession,
   SessionRecord,
 } from '../electron/services/session-repository';
+import {
+  isSecureStorageBackendAvailable,
+  getMasterEncryptionKey,
+  setMasterEncryptionKey,
+} from '../electron/services/storage-encryption';
 import { IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
 
@@ -185,7 +190,7 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
       expect(sensitiveBuf.toString()).not.toContain('SUPER_SECRET');
     });
 
-    it('sanitizeScreenshot processes image buffers in memory without disk writes', async () => {
+    it('sanitizeScreenshot processes image buffers in memory without disk writes and masks sensitive regions', async () => {
       const pngHeader = Buffer.from([
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
         0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -200,7 +205,10 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
 
       const result = await sanitizeScreenshot(pngHeader);
       expect(result.sanitizedBuffer).toBeDefined();
-      expect(result.sanitizedBuffer.length).toBeGreaterThan(0);
+      expect(result.isRedacted).toBe(true);
+      expect(result.redactedRegionsCount).toBeGreaterThan(0);
+      expect(result.notes).toContain('Visually masked');
+      expect(result.sanitizedBuffer.equals(pngHeader)).toBe(false);
     });
   });
 
@@ -273,6 +281,43 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
       const parsed: SessionRecord = JSON.parse(decryptLocalSession(legacyJson, testKey));
       expect(parsed.id).toBe(mockSession.id);
       expect(parsed.title).toBe(mockSession.title);
+    });
+
+    it('enforces Linux backend allowlist and rejects insecure basic_text', () => {
+      expect(isSecureStorageBackendAvailable('linux', true, 'gnome_libsecret')).toBe(true);
+      expect(isSecureStorageBackendAvailable('linux', true, 'kwallet')).toBe(true);
+      expect(isSecureStorageBackendAvailable('linux', true, 'kwallet5')).toBe(true);
+      expect(isSecureStorageBackendAvailable('linux', true, 'kwallet6')).toBe(true);
+      expect(isSecureStorageBackendAvailable('linux', true, 'basic_text')).toBe(false);
+      expect(isSecureStorageBackendAvailable('linux', true, null)).toBe(false);
+      expect(isSecureStorageBackendAvailable('linux', false, 'gnome_libsecret')).toBe(false);
+      expect(isSecureStorageBackendAvailable('win32', true)).toBe(true);
+      expect(isSecureStorageBackendAvailable('darwin', true)).toBe(true);
+    });
+
+    it('fails closed in production if secure OS-backed storage is unavailable', () => {
+      const origNodeEnv = process.env.NODE_ENV;
+      const origVitest = process.env.VITEST;
+      const origTest = process.env.TEST;
+      const origSessionKey = process.env.SESSION_ENCRYPTION_KEY;
+
+      try {
+        setMasterEncryptionKey(null);
+        process.env.NODE_ENV = 'production';
+        delete process.env.VITEST;
+        delete process.env.TEST;
+        delete process.env.SESSION_ENCRYPTION_KEY;
+
+        expect(() => getMasterEncryptionKey()).toThrow(
+          /Secure OS-backed storage is unavailable/
+        );
+      } finally {
+        process.env.NODE_ENV = origNodeEnv;
+        if (origVitest !== undefined) process.env.VITEST = origVitest;
+        if (origTest !== undefined) process.env.TEST = origTest;
+        if (origSessionKey !== undefined) process.env.SESSION_ENCRYPTION_KEY = origSessionKey;
+        setMasterEncryptionKey(null);
+      }
     });
   });
 

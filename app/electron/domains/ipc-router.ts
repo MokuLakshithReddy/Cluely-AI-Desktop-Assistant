@@ -10,7 +10,7 @@ import { sessionRepository, SessionRecord } from '../services/session-repository
 import { SharedState } from '../../src/lib/types';
 import { broadcastSharedStateToAppWindows } from './state-broadcast';
 import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio } from '../../src/lib/providers';
-import { inspectAndSanitizeOutboundPayload, containsSensitiveData } from '../../src/lib/redaction';
+import { inspectAndSanitizeOutboundPayload, containsSensitiveData, sanitizeScreenshot } from '../../src/lib/redaction';
 
 const BOOLEAN_STATE_KEYS = new Set([
   'showChat',
@@ -76,9 +76,13 @@ const VALID_TRANSCRIPT_ROLES = new Set(['me', 'them']);
 const VALID_TRANSCRIPT_STATUSES = new Set(['transcribing', 'ready', 'error']);
 const VALID_MESSAGE_ROLES = new Set(['user', 'assistant', 'system']);
 const VALID_DOC_SOURCE_TYPES = new Set(['pasted', 'file']);
+const VALID_CAPTURE_STATUSES = new Set(['idle', 'starting', 'active', 'unavailable', 'error']);
 
 const ALLOWED_STATE_KEYS = new Set([
   ...BOOLEAN_STATE_KEYS,
+  'microphoneCaptureStatus',
+  'systemAudioCaptureStatus',
+  'captureWarning',
   'activeMode',
   'activeModel',
   'privacyMode',
@@ -178,6 +182,9 @@ export class IpcRouter {
       isGenerating: false,
       micActive: false,
       systemAudioActive: false,
+      microphoneCaptureStatus: 'idle',
+      systemAudioCaptureStatus: 'idle',
+      captureWarning: null,
       meHasVoiceActivity: false,
       themHasVoiceActivity: false,
       meetingConsent: currentState.meetingConsent === 'allowed_once' ? 'prompt' : currentState.meetingConsent,
@@ -468,6 +475,22 @@ export class IpcRouter {
         sanitized[key] = val;
       }
 
+      // Capture status is a small finite state machine, never arbitrary renderer text.
+      else if (key === 'microphoneCaptureStatus' || key === 'systemAudioCaptureStatus') {
+        if (typeof val !== 'string' || !VALID_CAPTURE_STATUSES.has(val)) {
+          throw new Error(`[IpcRouter] Invalid capture status for "${key}"`);
+        }
+        sanitized[key] = val;
+      }
+
+      // Capture warning is user-visible diagnostics, bounded to avoid oversized state patches.
+      else if (key === 'captureWarning') {
+        if (val !== null && (typeof val !== 'string' || val.length > 256)) {
+          throw new Error('[IpcRouter] Invalid capture warning: expected null or a string up to 256 characters');
+        }
+        sanitized[key] = val;
+      }
+
       // 2. Validate operating mode enum
       else if (key === 'activeMode') {
         if (typeof val !== 'string' || !ALLOWED_OPERATING_MODES.has(val)) {
@@ -595,10 +618,13 @@ export class IpcRouter {
     }
 
     // Main-process audio consent & channel enforcement:
-    // If recording stops, reset channel active states and revoke one-time meeting consent.
+    // If recording stops, reset channel active states, readiness, warnings, and revoke one-time meeting consent.
     if (sanitized.isRecording === false) {
       sanitized.micActive = false;
       sanitized.systemAudioActive = false;
+      sanitized.microphoneCaptureStatus = 'idle';
+      sanitized.systemAudioCaptureStatus = 'idle';
+      sanitized.captureWarning = null;
       sanitized.meHasVoiceActivity = false;
       sanitized.themHasVoiceActivity = false;
       const currentMeetingConsent = stateManager.getState().meetingConsent;
@@ -914,10 +940,25 @@ export class IpcRouter {
             );
           }
 
+          // Strict Outbound Redaction: when redactSensitiveData is active and transmitting to cloud AI,
+          // visually redact sensitive screen coordinates before transmitting image payload
+          if (currentState.redactSensitiveData && screenshotBase64 && providerName !== 'ollama') {
+            try {
+              const base64Data = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
+              const imgBuf = Buffer.from(base64Data, 'base64');
+              const { sanitizedBuffer, isRedacted } = await sanitizeScreenshot(imgBuf);
+              if (isRedacted && sanitizedBuffer) {
+                cleanScreenshot = `data:image/png;base64,${sanitizedBuffer.toString('base64')}`;
+              }
+            } catch (err) {
+              console.warn('[IpcRouter] Failed to visually redact screenshot:', err);
+            }
+          }
+
           const inspection = inspectAndSanitizeOutboundPayload(
             {
               query,
-              screenshotBase64,
+              screenshotBase64: cleanScreenshot,
               recentTranscript,
               conversationHistory,
               knowledgePassages,
@@ -935,7 +976,7 @@ export class IpcRouter {
           cleanTranscript = inspection.sanitizedPayload.recentTranscript || cleanTranscript;
           cleanHistory = inspection.sanitizedPayload.conversationHistory || cleanHistory;
           cleanPassages = inspection.sanitizedPayload.knowledgePassages || cleanPassages;
-          cleanScreenshot = inspection.sanitizedPayload.screenshotBase64;
+          cleanScreenshot = inspection.sanitizedPayload.screenshotBase64 || cleanScreenshot;
         }
 
         const onToken = (token: string) => {
