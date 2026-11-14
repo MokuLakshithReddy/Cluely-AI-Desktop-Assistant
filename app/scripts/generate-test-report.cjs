@@ -254,6 +254,22 @@ if (fs.existsSync(readmePath)) {
     `Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)`
   );
 
+  // Synchronize top verification badge and actions URL
+  readme = readme.replace(
+    /badge\/CI%20checks-\d+%2F\d+%20passing-success/g,
+    `badge/CI%20checks-${grandPassedTests}%2F${grandTotalTests}%20passing-success`
+  );
+  readme = readme.replace(
+    /https:\/\/github\.com\/MokuLakshithReddy\/Cluely-AI-Desktop-Assistant\/actions\/runs\/\d+/g,
+    'https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml'
+  );
+
+  // Synchronize Table of Contents anchor
+  readme = readme.replace(
+    /\[Automated Verification & Test Suites \(\d+\/\d+ Passing\)\]\(#6-automated-verification--test-suites-\d+-passing\)/g,
+    `[Automated Verification & Test Suites (${grandPassedTests}/${grandTotalTests} Passing)](#6-automated-verification--test-suites-${grandPassedTests}${grandTotalTests}-passing)`
+  );
+
   // Keep the narrative count aligned when the README uses the current summary
   // paragraph; older layouts may not contain this paragraph.
   const latestSummary = /The latest verified CI run recorded \*\*\d+ passing automated checks\*\*: \d+ Vitest tests across \d+ suites and one Electron UI\/preload\/IPC smoke test\./;

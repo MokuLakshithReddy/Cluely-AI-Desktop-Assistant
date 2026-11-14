@@ -2,7 +2,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-125%2F125%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-181%2F181%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -21,7 +21,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (177/177 Passing)](#6-automated-verification--test-suites-125125-passing)
+6. [Automated Verification & Test Suites (181/181 Passing)](#6-automated-verification--test-suites-181181-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -38,7 +38,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 * **Driver-Free Windows Loopback Capture**: Implements `session.defaultSession.setDisplayMediaRequestHandler` with `audio: "loopback"` in the privileged Electron main process, eliminating the need for virtual audio cables or third-party audio drivers.
 * **Voice Activity Detection (VAD)**: Audio buffers are resampled from 48kHz to 16kHz with dynamic RMS energy tracking, Zero-Crossing Rate (ZCR) human voice discrimination, a 300ms silence redemption window, and a 20-second segment cap.
 * **Independent Dual-Source Capture**: Microphone and system loopback are processed independently, preserving genuine local speech when participants speak simultaneously. Browser/device echo cancellation remains enabled on microphone input; overlapping speech is never intentionally zeroed based on remote VAD activity.
-* **Sub-Second Speech-to-Text (STT)**: Encodes speech segments into standard 16-bit PCM RIFF WAV chunks dispatched to ultra-fast cloud STT (**Groq Whisper Large v3 Turbo** at <300ms latency or OpenAI Whisper), populating a live chronological transcript timeline with speaker labels.
+* **Sub-Second Speech-to-Text (STT)**: Encodes speech segments into standard 16-bit PCM RIFF WAV chunks dispatched to cloud STT (**Groq Whisper Large v3 Turbo** with measured sub-second cloud transcription or OpenAI Whisper), populating a live chronological transcript timeline with speaker labels.
 
 ### 🖥️ Real-Time Display Perception & Vision Grounding
 * **Display Bounds Matching**: Utilizes Electron's `desktopCapturer` to dynamically identify and capture the exact display currently hosting the assistant window.
@@ -46,7 +46,7 @@ Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously percei
 * **Multimodal Reasoning**: Visual evidence is transmitted alongside user queries to the configured Gemini, OpenAI, or Anthropic model adapters for debugging compiler errors, analyzing slide decks, and reviewing code. Local Ollama text/vision models are also supported when installed.
 
 ### 🪟 Floating Assistant Shell & Window Coordination
-* **Frameless Floating Control**: Compact, translucent Electron window (490 × 56, frameless and always-on-top) with a separate resizable chat window. The control window is not configured as a native macOS panel, and the project does not currently implement a system tray.
+* **Frameless Floating Control**: Compact, translucent Electron window (620 × 58, frameless and always-on-top) with dedicated minimize, close, audio status, mode selection, and Ask AI controls, alongside an expandable resizable chat window.
 * **Expandable Docked Chat Card**: Anchored directly to the pill, rendering streaming Markdown, code blocks with syntax highlighting, and follow-up recommendation chips.
 * **Settings & Knowledge Dashboard**: Multi-tab settings panel for API key vault management, document upload, shortcut configuration, and session history export.
 
@@ -274,11 +274,11 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (177/177 Passing)
+## 6. Automated Verification & Test Suites (181/181 Passing)
 
-The latest verified CI run recorded **177 passing automated checks**: 176 Vitest tests across 18 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The latest verified CI run recorded **181 passing automated checks**: 180 Vitest tests across 18 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
-Evidence: [CI run 42388364832](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42388364832)  
+Evidence: [CI run 42388364832](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |
@@ -291,18 +291,18 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `ipc-security.test.ts` | Sender validation, request identity and payload limits | 33 |
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
 | `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 7 |
-| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 32 |
+| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 36 |
 | `session-archive.test.ts` | Session archive persistence and path containment | 10 |
 | `state-broadcast.test.ts` | Shared-state renderer updates | 2 |
 | `state-persistence.test.ts` | Persistence error reporting and recovery | 6 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 3 |
-| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `ai-context.test.ts` | AI context assembly and operating modes | 7 |
-| `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
+| `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
+| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **18 Vitest suites + 1 Electron smoke check** | **177** |
+| **Total** | **18 Vitest suites + 1 Electron smoke check** | **181** |
 
 The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
@@ -342,14 +342,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 176 Vitest unit & integration tests
+# Run the 180 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (177 total verified checks)
+# Generate the automated test results markdown report (181 total verified checks)
 npm run test:report
 ```
 

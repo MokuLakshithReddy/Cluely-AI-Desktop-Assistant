@@ -941,17 +941,31 @@ export class IpcRouter {
           }
 
           // Strict Outbound Redaction: when redactSensitiveData is active and transmitting to cloud AI,
-          // visually redact sensitive screen coordinates before transmitting image payload
+          // visually redact sensitive screen coordinates before transmitting image payload.
+          // FAIL-CLOSED: If redaction fails or cannot be verified, never transmit the original unredacted screenshot.
           if (currentState.redactSensitiveData && screenshotBase64 && providerName !== 'ollama') {
+            let redactionConfirmed = false;
             try {
               const base64Data = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
               const imgBuf = Buffer.from(base64Data, 'base64');
               const { sanitizedBuffer, isRedacted } = await sanitizeScreenshot(imgBuf);
-              if (isRedacted && sanitizedBuffer) {
+              if (isRedacted && sanitizedBuffer && sanitizedBuffer.length > 0) {
                 cleanScreenshot = `data:image/png;base64,${sanitizedBuffer.toString('base64')}`;
+                redactionConfirmed = true;
               }
             } catch (err) {
               console.warn('[IpcRouter] Failed to visually redact screenshot:', err);
+            }
+
+            // FAIL CLOSED: If visual redaction could not be confirmed, drop unredacted screenshot.
+            // If blockOutboundSecrets is enabled, block the request entirely.
+            if (!redactionConfirmed) {
+              cleanScreenshot = undefined;
+              if (currentState.blockOutboundSecrets) {
+                throw new Error(
+                  '[Outbound Security Guard] Screenshot redaction could not be confirmed; outbound cloud transmission blocked under fail-closed privacy policy.'
+                );
+              }
             }
           }
 

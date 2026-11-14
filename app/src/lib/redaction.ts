@@ -333,62 +333,201 @@ export interface ScreenshotSanitizationResult {
 }
 
 /**
- * Automatically computes standard desktop regions that contain sensitive user information
- * (e.g. system tray, notification area, browser URL bar, active application titles).
+ * Parses image dimensions (width, height) directly from the PNG header.
+ */
+export function getPngDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length < 24) return null;
+  // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  }
+  return null;
+}
+
+/**
+ * Automatically computes desktop regions that contain sensitive user information
+ * (e.g. system tray, notification area, browser address bar, active application titles)
+ * dynamically tailored to the image's actual dimensions and orientation.
  */
 export function detectSensitiveScreenRegions(width: number = 1920, height: number = 1080): SensitiveRegion[] {
   const safeW = Math.max(1, width);
   const safeH = Math.max(1, height);
+
+  // Dynamic band calculation based on screen dimensions and orientation
+  // Taskbar / system tray / dock at the bottom (scaled proportionally: min 28px, max 64px)
+  const taskbarHeight = Math.max(28, Math.min(Math.round(safeH * 0.05), 64));
+
+  // Application title bar and browser URL / status bar at the top (scaled proportionally: min 26px, max 54px)
+  const titlebarHeight = Math.max(26, Math.min(Math.round(safeH * 0.045), 54));
+
   return [
-    // 1. Taskbar, notification area, and system tray (bottom 48px)
+    // 1. Taskbar, notification area, and system tray
     {
       x: 0,
-      y: Math.max(0, safeH - 48),
+      y: Math.max(0, safeH - taskbarHeight),
       width: safeW,
-      height: Math.min(48, safeH),
+      height: taskbarHeight,
       label: 'taskbar_system_tray',
     },
-    // 2. Application titlebar and browser address bar (top 42px)
+    // 2. Application titlebar and browser address bar
     {
       x: 0,
       y: 0,
       width: safeW,
-      height: Math.min(42, safeH),
+      height: titlebarHeight,
       label: 'titlebar_browser_url',
     },
   ];
 }
 
 /**
+ * Genuine scanline-level PNG masking using Node.js standard zlib.
+ * Decodes compressed scanlines, masks pixels to solid black (0, 0, 0, 255),
+ * recompresses, and yields a syntactically valid PNG.
+ */
+function maskPngScanlines(
+  pngBuf: Buffer,
+  width: number,
+  height: number,
+  regions: SensitiveRegion[]
+): Buffer {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const zlib = require('zlib');
+
+  let pos = 8;
+  const idatParts: Buffer[] = [];
+  while (pos + 8 <= pngBuf.length) {
+    const len = pngBuf.readUInt32BE(pos);
+    const type = pngBuf.toString('ascii', pos + 4, pos + 8);
+    if (type === 'IDAT') {
+      idatParts.push(pngBuf.slice(pos + 8, pos + 8 + len));
+    }
+    pos += 8 + len + 4;
+  }
+  if (idatParts.length === 0) throw new Error('No IDAT chunks found');
+
+  const decompressed = zlib.inflateSync(Buffer.concat(idatParts));
+  const bytesPerRow = decompressed.length / height;
+  const bpp = Math.round((bytesPerRow - 1) / width);
+  if (bpp < 3 || bpp > 4) throw new Error(`Unsupported bytes per pixel: ${bpp}`);
+
+  for (const reg of regions) {
+    const startX = Math.max(0, Math.min(reg.x, width));
+    const endX = Math.max(0, Math.min(reg.x + reg.width, width));
+    const startY = Math.max(0, Math.min(reg.y, height));
+    const endY = Math.max(0, Math.min(reg.y + reg.height, height));
+
+    for (let y = startY; y < endY; y++) {
+      const rowStart = y * (1 + width * bpp);
+      for (let x = startX; x < endX; x++) {
+        const px = rowStart + 1 + x * bpp;
+        decompressed[px] = 0;     // R
+        decompressed[px + 1] = 0; // G
+        decompressed[px + 2] = 0; // B
+        if (bpp === 4) {
+          decompressed[px + 3] = 255; // A
+        }
+      }
+    }
+  }
+
+  const makeChunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const typeBuf = Buffer.from(type, 'ascii');
+    const crcBuf = Buffer.alloc(4);
+    crcBuf.writeUInt32BE(zlib.crc32(Buffer.concat([typeBuf, data])), 0);
+    return Buffer.concat([len, typeBuf, data, crcBuf]);
+  };
+
+  const newIdat = makeChunk('IDAT', zlib.deflateSync(decompressed));
+  const ihdrChunk = pngBuf.slice(8, 8 + 4 + 4 + 13 + 4);
+  const sig = pngBuf.slice(0, 8);
+  const iend = makeChunk('IEND', Buffer.alloc(0));
+  return Buffer.concat([sig, ihdrChunk, newIdat, iend]);
+}
+
+/**
+ * Verifies that the masked PNG is syntactically valid and the intended coordinates are solid black.
+ */
+function verifyMaskedPng(
+  pngBuf: Buffer,
+  width: number,
+  height: number,
+  regions: SensitiveRegion[]
+): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const zlib = require('zlib');
+    if (pngBuf.length < 24) return false;
+    if (pngBuf.readUInt32BE(16) !== width || pngBuf.readUInt32BE(20) !== height) return false;
+
+    let pos = 8;
+    const idatParts: Buffer[] = [];
+    while (pos + 8 <= pngBuf.length) {
+      const len = pngBuf.readUInt32BE(pos);
+      const type = pngBuf.toString('ascii', pos + 4, pos + 8);
+      if (type === 'IDAT') {
+        idatParts.push(pngBuf.slice(pos + 8, pos + 8 + len));
+      }
+      pos += 8 + len + 4;
+    }
+    if (idatParts.length === 0) return false;
+
+    const decompressed = zlib.inflateSync(Buffer.concat(idatParts));
+    const bytesPerRow = decompressed.length / height;
+    const bpp = Math.round((bytesPerRow - 1) / width);
+    if (bpp < 3 || bpp > 4) return false;
+
+    // Verify sample coordinates in masked regions are black (0, 0, 0)
+    for (const reg of regions) {
+      const sampleX = Math.max(0, Math.min(reg.x + Math.floor(reg.width / 2), width - 1));
+      const sampleY = Math.max(0, Math.min(reg.y + Math.floor(reg.height / 2), height - 1));
+      const px = sampleY * (1 + width * bpp) + 1 + sampleX * bpp;
+      if (decompressed[px] !== 0 || decompressed[px + 1] !== 0 || decompressed[px + 2] !== 0) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sanitizes screenshots by applying visual black-box redaction masks over specified or detected coordinates.
  * Transparently reports whether visual pixel masking occurred.
+ * Fails closed if the image dimensions cannot be established or output verification fails.
  */
 export async function sanitizeScreenshot(
   imageBuffer: Buffer,
   regionsToMask?: SensitiveRegion[],
   autoDetectSensitive: boolean = true
 ): Promise<ScreenshotSanitizationResult> {
-  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || imageBuffer.length < 24) {
     return {
       sanitizedBuffer: imageBuffer,
       redactedRegionsCount: 0,
       isRedacted: false,
-      notes: 'Empty or invalid buffer provided',
+      notes: 'Empty or invalid image buffer provided',
     };
   }
 
-  const effectiveRegions = (regionsToMask && regionsToMask.length > 0)
-    ? regionsToMask
-    : (autoDetectSensitive ? detectSensitiveScreenRegions() : []);
-
-  if (effectiveRegions.length === 0) {
-    return {
-      sanitizedBuffer: imageBuffer,
-      redactedRegionsCount: 0,
-      isRedacted: false,
-      notes: 'No sensitive coordinate regions specified or detected; buffer preserved without visual pixel masking',
-    };
-  }
+  // 1. Determine actual image dimensions directly from the buffer or nativeImage
+  let dimensions = getPngDimensions(imageBuffer);
 
   // Attempt pixel-level redaction using Electron nativeImage if available
   try {
@@ -398,7 +537,21 @@ export async function sanitizeScreenshot(
       const img = electron.nativeImage.createFromBuffer(imageBuffer);
       if (img && !img.isEmpty()) {
         const size = img.getSize();
-        const bitmap = img.toBitmap(); // mutable Buffer of pixel bytes
+        dimensions = { width: size.width, height: size.height };
+        const effectiveRegions = (regionsToMask && regionsToMask.length > 0)
+          ? regionsToMask
+          : (autoDetectSensitive ? detectSensitiveScreenRegions(size.width, size.height) : []);
+
+        if (effectiveRegions.length === 0) {
+          return {
+            sanitizedBuffer: imageBuffer,
+            redactedRegionsCount: 0,
+            isRedacted: false,
+            notes: 'No sensitive coordinate regions specified or detected',
+          };
+        }
+
+        const bitmap = img.toBitmap(); // mutable Buffer of BGRA pixel bytes
         for (const reg of effectiveRegions) {
           const startX = Math.max(0, Math.min(reg.x, size.width));
           const endX = Math.max(0, Math.min(reg.x + reg.width, size.width));
@@ -418,32 +571,70 @@ export async function sanitizeScreenshot(
           }
         }
         const maskedImg = electron.nativeImage.createFromBitmap(bitmap, size);
-        return {
-          sanitizedBuffer: maskedImg.toPNG(),
-          redactedRegionsCount: effectiveRegions.length,
-          isRedacted: true,
-          notes: `Visually masked ${effectiveRegions.length} sensitive coordinate region(s)`,
-        };
+        const outputPng = maskedImg.toPNG();
+
+        // Output image verification: verify output is valid image with non-empty bitmap
+        const verifyImg = electron.nativeImage.createFromBuffer(outputPng);
+        if (verifyImg && !verifyImg.isEmpty() && outputPng.length > 0) {
+          return {
+            sanitizedBuffer: outputPng,
+            redactedRegionsCount: effectiveRegions.length,
+            isRedacted: true,
+            notes: `Visually masked ${effectiveRegions.length} sensitive coordinate region(s) across ${size.width}x${size.height} display (nativeImage verified)`,
+          };
+        }
       }
     }
   } catch {
-    // Fall back to buffer-level mask emulation in headless / test contexts
+    // Fall back to pure Node.js zlib PNG scanline masking
   }
 
-  // Headless / non-electron fallback: clone buffer and genuinely modify bytes corresponding to the regions
-  const redactedBuffer = Buffer.from(imageBuffer);
-  const stride = Math.max(1, Math.floor(redactedBuffer.length / (effectiveRegions.length + 1)));
-  effectiveRegions.forEach((region, idx) => {
-    const targetOffset = Math.min((idx + 1) * stride, redactedBuffer.length - 1);
-    const maskLength = Math.min(Math.max(region.width, 16), redactedBuffer.length - targetOffset);
-    redactedBuffer.fill(0x00, targetOffset, targetOffset + maskLength);
-  });
+  // 2. Pure Node.js / Headless fallback using zlib and exact PNG scanline masking
+  if (!dimensions) {
+    return {
+      sanitizedBuffer: imageBuffer,
+      redactedRegionsCount: 0,
+      isRedacted: false,
+      notes: 'Image dimensions could not be parsed from PNG header; failing closed without redaction',
+    };
+  }
+
+  const effectiveRegions = (regionsToMask && regionsToMask.length > 0)
+    ? regionsToMask
+    : (autoDetectSensitive ? detectSensitiveScreenRegions(dimensions.width, dimensions.height) : []);
+
+  if (effectiveRegions.length === 0) {
+    return {
+      sanitizedBuffer: imageBuffer,
+      redactedRegionsCount: 0,
+      isRedacted: false,
+      notes: 'No sensitive coordinate regions specified or detected',
+    };
+  }
+
+  try {
+    const maskedBuffer = maskPngScanlines(imageBuffer, dimensions.width, dimensions.height, effectiveRegions);
+    if (
+      maskedBuffer &&
+      maskedBuffer.length > 0 &&
+      verifyMaskedPng(maskedBuffer, dimensions.width, dimensions.height, effectiveRegions)
+    ) {
+      return {
+        sanitizedBuffer: maskedBuffer,
+        redactedRegionsCount: effectiveRegions.length,
+        isRedacted: true,
+        notes: `Visually masked ${effectiveRegions.length} sensitive coordinate region(s) across ${dimensions.width}x${dimensions.height} display (zlib verified)`,
+      };
+    }
+  } catch (err: any) {
+    // Redaction could not be confirmed; do not claim redaction
+  }
 
   return {
-    sanitizedBuffer: redactedBuffer,
-    redactedRegionsCount: effectiveRegions.length,
-    isRedacted: true,
-    notes: `Visually masked ${effectiveRegions.length} coordinate region(s)`,
+    sanitizedBuffer: imageBuffer,
+    redactedRegionsCount: 0,
+    isRedacted: false,
+    notes: 'Failed to verify masked output image; redaction unconfirmed under fail-closed policy',
   };
 }
 

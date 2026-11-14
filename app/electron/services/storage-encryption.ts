@@ -23,9 +23,14 @@ export function isSecureStorageBackendAvailable(
 }
 
 /**
- * Sets an explicit 32-byte master encryption key (primarily for unit tests).
+ * Sets an explicit 32-byte master encryption key (strictly for unit test environments).
+ * Fails closed if called inside a packaged production application.
  */
 export function setMasterEncryptionKey(key: Buffer | null): void {
+  const isPackaged = typeof app !== 'undefined' && typeof app.isPackaged === 'boolean' ? app.isPackaged : false;
+  if (isPackaged && key !== null) {
+    throw new Error('[StorageEncryption] Cannot inject arbitrary master keys in a packaged production application');
+  }
   activeMasterKey = key;
 }
 
@@ -85,26 +90,25 @@ export function getMasterEncryptionKey(): Buffer {
     }
   }
 
-  // 2. Headless unit test runner fallback: strictly restricted to test environments
-  const isTestEnvironment =
-    process.env.NODE_ENV === 'test' ||
-    process.env.VITEST === 'true' ||
-    Boolean(process.env.TEST) ||
-    Boolean(process.env.SESSION_ENCRYPTION_KEY);
+  // 2. Headless unit test runner fallback: strictly restricted to unpackaged automated test environments
+  // A packaged production app or production process setting TEST=1 must NEVER use the deterministic test key
+  const isPackaged = typeof app !== 'undefined' && typeof app.isPackaged === 'boolean' ? app.isPackaged : false;
+  const isExplicitUnitTestRunner =
+    !isPackaged &&
+    (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
 
-  if (isTestEnvironment) {
-    if (process.env.SESSION_ENCRYPTION_KEY) {
-      activeMasterKey = crypto.createHash('sha256').update(process.env.SESSION_ENCRYPTION_KEY).digest();
-      return activeMasterKey;
-    }
+  if (isExplicitUnitTestRunner) {
     activeMasterKey = crypto.createHash('sha256').update('cluely-local-storage-test-key').digest();
     return activeMasterKey;
   }
 
-  // 3. FAIL CLOSED: In production, never fallback to a predictable static key
+  // 3. FAIL CLOSED: In packaged applications and standard production environments,
+  // never fallback to a predictable static key even if TEST or SESSION_ENCRYPTION_KEY environment variables are present.
   throw new Error(
     '[StorageEncryption] Secure OS-backed storage is unavailable. ' +
-    'Production persistence requires a supported hardware/OS key store (DPAPI on Windows, Keychain on macOS, or Secret Service/libsecret/KWallet on Linux). Fail-closed policy active.'
+    (isPackaged
+      ? 'Packaged application persistence requires a supported hardware/OS key store (DPAPI on Windows, Keychain on macOS, or Secret Service/libsecret/KWallet on Linux). Fail-closed policy active.'
+      : 'Production persistence requires a supported hardware/OS key store (DPAPI on Windows, Keychain on macOS, or Secret Service/libsecret/KWallet on Linux). Fail-closed policy active.')
   );
 }
 

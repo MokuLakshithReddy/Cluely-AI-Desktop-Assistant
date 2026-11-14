@@ -1,12 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
 import path from 'path';
+import zlib from 'zlib';
+import { app } from 'electron';
 import {
   redactSensitiveText,
   containsSensitiveData,
   detectSensitiveData,
   inspectAndSanitizeOutboundPayload,
   sanitizeScreenshot,
+  getPngDimensions,
+  detectSensitiveScreenRegions,
   wipeBuffer,
 } from '../src/lib/redaction';
 import { validateNetworkEndpoint } from '../src/lib/providers';
@@ -22,6 +26,60 @@ import {
 } from '../electron/services/storage-encryption';
 import { IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
+
+function createSyntheticPng(width: number, height: number, fillColor = { r: 180, g: 180, b: 180, a: 255 }): Buffer {
+  const sig = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(width, 0);
+  ihdrData.writeUInt32BE(height, 4);
+  ihdrData[8] = 8;  // bit depth
+  ihdrData[9] = 6;  // RGBA
+  ihdrData[10] = 0; // deflate
+  ihdrData[11] = 0; // filter
+  ihdrData[12] = 0; // non-interlaced
+
+  const makeChunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const typeBuf = Buffer.from(type, 'ascii');
+    const crcBuf = Buffer.alloc(4);
+    crcBuf.writeUInt32BE(zlib.crc32(Buffer.concat([typeBuf, data])), 0);
+    return Buffer.concat([len, typeBuf, data, crcBuf]);
+  };
+
+  const rawScanlines = Buffer.alloc(height * (1 + width * 4));
+  for (let y = 0; y < height; y++) {
+    const rowOffset = y * (1 + width * 4);
+    rawScanlines[rowOffset] = 0; // Filter: None
+    for (let x = 0; x < width; x++) {
+      const px = rowOffset + 1 + x * 4;
+      rawScanlines[px] = fillColor.r;
+      rawScanlines[px + 1] = fillColor.g;
+      rawScanlines[px + 2] = fillColor.b;
+      rawScanlines[px + 3] = fillColor.a;
+    }
+  }
+
+  const ihdrChunk = makeChunk('IHDR', ihdrData);
+  const idatChunk = makeChunk('IDAT', zlib.deflateSync(rawScanlines));
+  const iendChunk = makeChunk('IEND', Buffer.alloc(0));
+  return Buffer.concat([sig, ihdrChunk, idatChunk, iendChunk]);
+}
+
+function extractPngScanlines(pngBuf: Buffer): { width: number; height: number; scanlines: Buffer } {
+  const width = pngBuf.readUInt32BE(16);
+  const height = pngBuf.readUInt32BE(20);
+  let pos = 8;
+  const idatParts: Buffer[] = [];
+  while (pos + 8 <= pngBuf.length) {
+    const len = pngBuf.readUInt32BE(pos);
+    const type = pngBuf.toString('ascii', pos + 4, pos + 8);
+    if (type === 'IDAT') idatParts.push(pngBuf.slice(pos + 8, pos + 8 + len));
+    pos += 8 + len + 4;
+  }
+  const scanlines = zlib.inflateSync(Buffer.concat(idatParts));
+  return { width, height, scanlines };
+}
 
 describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
   const trustedHtml = path.resolve(__dirname, '..', 'dist', 'index.html');
@@ -190,25 +248,83 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
       expect(sensitiveBuf.toString()).not.toContain('SUPER_SECRET');
     });
 
-    it('sanitizeScreenshot processes image buffers in memory without disk writes and masks sensitive regions', async () => {
-      const pngHeader = Buffer.from([
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-        0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-        0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-        0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
-        0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
-        0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
-        0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
-        0x42, 0x60, 0x82,
-      ]);
+    it('parses actual dimensions and masks coordinates dynamically for landscape and portrait images', async () => {
+      // Landscape 100x60
+      const landscapePng = createSyntheticPng(100, 60, { r: 180, g: 180, b: 180, a: 255 });
+      const landscapeDim = getPngDimensions(landscapePng);
+      expect(landscapeDim).toEqual({ width: 100, height: 60 });
 
-      const result = await sanitizeScreenshot(pngHeader);
-      expect(result.sanitizedBuffer).toBeDefined();
+      const landscapeRegions = detectSensitiveScreenRegions(100, 60);
+      expect(landscapeRegions.length).toBe(2);
+      expect(landscapeRegions[0].width).toBe(100);
+      expect(landscapeRegions[1].width).toBe(100);
+      expect(landscapeRegions[0].y).toBeGreaterThan(0); // Taskbar at bottom
+      expect(landscapeRegions[1].y).toBe(0); // Titlebar at top
+
+      const landscapeResult = await sanitizeScreenshot(landscapePng);
+      expect(landscapeResult.isRedacted).toBe(true);
+      expect(landscapeResult.redactedRegionsCount).toBe(2);
+
+      // Portrait 60x120
+      const portraitPng = createSyntheticPng(60, 120, { r: 200, g: 200, b: 200, a: 255 });
+      const portraitDim = getPngDimensions(portraitPng);
+      expect(portraitDim).toEqual({ width: 60, height: 120 });
+
+      const portraitRegions = detectSensitiveScreenRegions(60, 120);
+      expect(portraitRegions.length).toBe(2);
+      expect(portraitRegions[0].width).toBe(60);
+      expect(portraitRegions[0].y).toBe(120 - portraitRegions[0].height);
+
+      const portraitResult = await sanitizeScreenshot(portraitPng);
+      expect(portraitResult.isRedacted).toBe(true);
+      expect(portraitResult.redactedRegionsCount).toBe(2);
+    });
+
+    it('genuinely masks target pixels to solid black while preserving unmasked pixel values', async () => {
+      const originalPng = createSyntheticPng(40, 40, { r: 180, g: 180, b: 180, a: 255 });
+      const customRegion = { x: 5, y: 5, width: 10, height: 10, label: 'custom_secret_box' };
+
+      const result = await sanitizeScreenshot(originalPng, [customRegion]);
       expect(result.isRedacted).toBe(true);
-      expect(result.redactedRegionsCount).toBeGreaterThan(0);
-      expect(result.notes).toContain('Visually masked');
-      expect(result.sanitizedBuffer.equals(pngHeader)).toBe(false);
+      expect(result.sanitizedBuffer).toBeDefined();
+
+      const { width, height, scanlines } = extractPngScanlines(result.sanitizedBuffer);
+      expect(width).toBe(40);
+      expect(height).toBe(40);
+
+      const bpp = 4;
+      const stride = 1 + width * bpp;
+
+      // Inside masked region: (7, 7) must be solid black (0, 0, 0, 255)
+      const maskedPxOffset = 7 * stride + 1 + 7 * bpp;
+      expect(scanlines[maskedPxOffset]).toBe(0);     // R
+      expect(scanlines[maskedPxOffset + 1]).toBe(0); // G
+      expect(scanlines[maskedPxOffset + 2]).toBe(0); // B
+      expect(scanlines[maskedPxOffset + 3]).toBe(255); // A
+
+      // Outside masked region: (30, 30) must retain original color (180, 180, 180, 255)
+      const unmaskedPxOffset = 30 * stride + 1 + 30 * bpp;
+      expect(scanlines[unmaskedPxOffset]).toBe(180);     // R
+      expect(scanlines[unmaskedPxOffset + 1]).toBe(180); // G
+      expect(scanlines[unmaskedPxOffset + 2]).toBe(180); // B
+      expect(scanlines[unmaskedPxOffset + 3]).toBe(255); // A
+    });
+
+    it('fails closed when image buffer is corrupted, empty, or truncated', async () => {
+      const emptyResult = await sanitizeScreenshot(Buffer.alloc(0));
+      expect(emptyResult.isRedacted).toBe(false);
+      expect(emptyResult.notes).toContain('Empty or invalid');
+
+      const truncatedBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+      const truncResult = await sanitizeScreenshot(truncatedBuf);
+      expect(truncResult.isRedacted).toBe(false);
+
+      const corruptedPng = Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Buffer.from('not-a-valid-ihdr-chunk-data-stream-here'),
+      ]);
+      const corruptResult = await sanitizeScreenshot(corruptedPng);
+      expect(corruptResult.isRedacted).toBe(false);
     });
   });
 
@@ -316,6 +432,54 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
         if (origVitest !== undefined) process.env.VITEST = origVitest;
         if (origTest !== undefined) process.env.TEST = origTest;
         if (origSessionKey !== undefined) process.env.SESSION_ENCRYPTION_KEY = origSessionKey;
+        setMasterEncryptionKey(null);
+      }
+    });
+
+    it('strictly rejects test key fallback in production even if TEST or SESSION_ENCRYPTION_KEY is set', () => {
+      const origNodeEnv = process.env.NODE_ENV;
+      const origVitest = process.env.VITEST;
+      const origTest = process.env.TEST;
+      const origSessionKey = process.env.SESSION_ENCRYPTION_KEY;
+
+      try {
+        setMasterEncryptionKey(null);
+        process.env.NODE_ENV = 'production';
+        delete process.env.VITEST;
+        process.env.TEST = '1';
+        process.env.SESSION_ENCRYPTION_KEY = 'insecure-test-attempt';
+
+        expect(() => getMasterEncryptionKey()).toThrow(
+          /Secure OS-backed storage is unavailable/
+        );
+      } finally {
+        process.env.NODE_ENV = origNodeEnv;
+        if (origVitest !== undefined) process.env.VITEST = origVitest;
+        if (origTest !== undefined) process.env.TEST = origTest;
+        else delete process.env.TEST;
+        if (origSessionKey !== undefined) process.env.SESSION_ENCRYPTION_KEY = origSessionKey;
+        else delete process.env.SESSION_ENCRYPTION_KEY;
+        setMasterEncryptionKey(null);
+      }
+    });
+
+    it('strictly rejects test key fallback and custom keys when app.isPackaged is true', () => {
+      const origPackaged = (app as any).isPackaged;
+      try {
+        setMasterEncryptionKey(null);
+        (app as any).isPackaged = true;
+
+        // Even with test environment flags set, packaged mode must strictly fail closed
+        expect(() => getMasterEncryptionKey()).toThrow(
+          /Packaged application persistence requires a supported hardware\/OS key store/
+        );
+
+        // Attempting to inject a custom test key in packaged app must throw
+        expect(() => setMasterEncryptionKey(Buffer.alloc(32, 1))).toThrow(
+          /Cannot inject arbitrary master keys in a packaged production application/
+        );
+      } finally {
+        (app as any).isPackaged = origPackaged;
         setMasterEncryptionKey(null);
       }
     });
