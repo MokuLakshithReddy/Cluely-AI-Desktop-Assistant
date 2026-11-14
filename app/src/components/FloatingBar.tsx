@@ -130,19 +130,37 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
                 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                 : 'bg-slate-800 text-slate-400 hover:text-slate-200'
             }`}
-            title={state.isRecording ? '🎙 Audio Recording Active (Click to Stop)' : 'Start Listening (Mic + Meeting Audio)'}
+            title={
+              state.isRecording
+                ? state.micActive && state.systemAudioActive
+                  ? 'Dual Audio Active (Microphone + Meeting Loopback) — Click to Stop'
+                  : state.micActive
+                  ? 'Microphone Active (Meeting Loopback Inactive) — Click to Stop'
+                  : state.systemAudioActive
+                  ? 'System Audio Active (Microphone Inactive) — Click to Stop'
+                  : 'Audio Recording Active — Click to Stop'
+                : 'Start Listening (Mic + Meeting Audio)'
+            }
           >
             {state.isRecording ? (
               <>
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    state.meHasVoiceActivity
+                    state.meHasVoiceActivity || state.themHasVoiceActivity
                       ? 'bg-rose-500 animate-ping'
                       : 'bg-rose-500 animate-pulse'
                   }`}
                 />
                 <Mic className="w-3.5 h-3.5" />
-                <span>🎙 Audio Recording Active</span>
+                <span>
+                  {state.micActive && state.systemAudioActive
+                    ? 'Dual Audio'
+                    : state.micActive
+                    ? 'Mic Only'
+                    : state.systemAudioActive
+                    ? 'System Audio'
+                    : 'Recording'}
+                </span>
               </>
             ) : (
               <>

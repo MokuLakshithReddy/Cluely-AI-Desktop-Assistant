@@ -90,6 +90,8 @@ export interface SharedState {
     | 'claude-opus-5-5'
     | 'ollama';
   isGenerating?: boolean;
+  micActive?: boolean;
+  systemAudioActive?: boolean;
   privacyMode: 'local' | 'cloud';
   meetingConsent: 'prompt' | 'allowed_once' | 'always_allowed' | 'denied';
   telemetryEnabled: boolean;

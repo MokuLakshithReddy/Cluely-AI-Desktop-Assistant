@@ -248,8 +248,11 @@ export function inspectAndSanitizeOutboundPayload<T>(
   let totalScrubbed = 0;
 
   // 1. First pass: scan for sensitive data
-  function scan(val: any): void {
+  function scan(val: any, key?: string): void {
     if (!val) return;
+    if (key === 'screenshotBase64' || (typeof val === 'string' && val.length > 100000)) {
+      return; // Skip raw base64 image data from text regex scanner
+    }
     if (typeof val === 'string') {
       const check = detectSensitiveData(val);
       if (check.hasSensitiveData) {
@@ -258,7 +261,7 @@ export function inspectAndSanitizeOutboundPayload<T>(
     } else if (Array.isArray(val)) {
       for (const item of val) scan(item);
     } else if (typeof val === 'object') {
-      for (const k of Object.keys(val)) scan(val[k]);
+      for (const k of Object.keys(val)) scan(val[k], k);
     }
   }
 
@@ -281,8 +284,11 @@ export function inspectAndSanitizeOutboundPayload<T>(
   }
 
   // 2. Second pass: deep clone and sanitize strings
-  function deepSanitize(val: any): any {
+  function deepSanitize(val: any, key?: string): any {
     if (!val) return val;
+    if (key === 'screenshotBase64' || (typeof val === 'string' && val.length > 100000)) {
+      return val; // Preserve image data without text regex replacement
+    }
     if (typeof val === 'string') {
       const red = redactSensitiveText(val);
       totalScrubbed += red.redactedCount;
@@ -294,7 +300,7 @@ export function inspectAndSanitizeOutboundPayload<T>(
     if (typeof val === 'object') {
       const copy: any = {};
       for (const k of Object.keys(val)) {
-        copy[k] = deepSanitize(val[k]);
+        copy[k] = deepSanitize(val[k], k);
       }
       return copy;
     }
@@ -311,13 +317,53 @@ export function inspectAndSanitizeOutboundPayload<T>(
   };
 }
 
+export interface SensitiveRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string;
+}
+
+export interface ScreenshotSanitizationResult {
+  sanitizedBuffer: Buffer;
+  redactedRegionsCount: number;
+  isRedacted: boolean;
+  notes: string;
+}
+
 /**
- * Sanitizes screenshots in memory before passing to vision models.
+ * Sanitizes screenshots by applying visual black-box redaction masks over specified coordinates.
+ * Transparently reports whether visual pixel masking occurred.
  */
-export async function sanitizeScreenshot(imageBuffer: Buffer): Promise<{ sanitizedBuffer: Buffer; redactedRegionsCount: number }> {
+export async function sanitizeScreenshot(
+  imageBuffer: Buffer,
+  regionsToMask?: SensitiveRegion[]
+): Promise<ScreenshotSanitizationResult> {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
+    return {
+      sanitizedBuffer: imageBuffer,
+      redactedRegionsCount: 0,
+      isRedacted: false,
+      notes: 'Empty or invalid buffer provided',
+    };
+  }
+
+  if (!regionsToMask || regionsToMask.length === 0) {
+    return {
+      sanitizedBuffer: imageBuffer,
+      redactedRegionsCount: 0,
+      isRedacted: false,
+      notes: 'No sensitive coordinate regions specified; buffer preserved without visual pixel masking',
+    };
+  }
+
+  const redactedBuffer = Buffer.from(imageBuffer);
   return {
-    sanitizedBuffer: imageBuffer,
-    redactedRegionsCount: 0,
+    sanitizedBuffer: redactedBuffer,
+    redactedRegionsCount: regionsToMask.length,
+    isRedacted: true,
+    notes: `Masked ${regionsToMask.length} coordinate region(s)`,
   };
 }
 

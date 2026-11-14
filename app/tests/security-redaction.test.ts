@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
 import path from 'path';
 import {
@@ -348,6 +348,56 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
 
       // Cleanup
       stateManager.patchState({ enterpriseMode: false });
+    });
+
+    it('enforces audio channel reset and revokes allowed_once consent when recording stops in main process', () => {
+      stateManager.patchState({
+        meetingConsent: 'allowed_once',
+        isRecording: true,
+        micActive: true,
+        systemAudioActive: true,
+      });
+
+      const sanitized = router.sanitizePatchState({ isRecording: false });
+      expect(sanitized.isRecording).toBe(false);
+      expect(sanitized.micActive).toBe(false);
+      expect(sanitized.systemAudioActive).toBe(false);
+      expect(sanitized.meetingConsent).toBe('prompt');
+
+      stateManager.patchState(sanitized);
+      expect(stateManager.getState().meetingConsent).toBe('prompt');
+      expect(stateManager.getState().micActive).toBe(false);
+      expect(stateManager.getState().systemAudioActive).toBe(false);
+    });
+
+    it('blocks unredacted screenshots to external cloud providers when blockOutboundSecrets is active', async () => {
+      stateManager.patchState({ blockOutboundSecrets: true });
+
+      const fakeWebContents = {
+        send: vi.fn(),
+      };
+      const fakeEvent = {
+        sender: fakeWebContents,
+        senderFrame: { url: `file://${trustedHtml}` },
+      };
+
+      const handleAiStream = (router as any).handlers?.get?.('ai-stream-request');
+      if (handleAiStream) {
+        await expect(
+          handleAiStream(fakeEvent, {
+            providerName: 'openai',
+            model: 'gpt-4o-mini',
+            mode: 'copilot',
+            query: 'Analyze this screen',
+            screenshotBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+            recentTranscript: [],
+            knowledgePassages: [],
+            conversationHistory: [],
+          })
+        ).rejects.toThrow(/Transmitting unredacted desktop screen captures to cloud AI provider "openai" is prohibited/);
+      }
+
+      stateManager.patchState({ blockOutboundSecrets: false });
     });
   });
 });

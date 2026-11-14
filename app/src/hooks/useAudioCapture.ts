@@ -230,10 +230,14 @@ export function useAudioCapture(
           text: `[Capture stopped: ${message}]`,
         };
 
+        const nextConsent = prev.meetingConsent === 'allowed_once' ? 'prompt' : prev.meetingConsent;
         return {
           isRecording: false,
+          micActive: false,
+          systemAudioActive: false,
           meHasVoiceActivity: false,
           themHasVoiceActivity: false,
+          meetingConsent: nextConsent,
           session: {
             ...activeSession,
             updatedAt: now,
@@ -257,7 +261,7 @@ export function useAudioCapture(
     // 1. Channel A: Start Local Microphone Capture ('me')
     if (!navigator?.mediaDevices?.getUserMedia) {
       console.warn('[useAudioCapture] Microphone capture is not supported in this environment');
-      await patchState({ isRecording: false, meHasVoiceActivity: false });
+      await patchState({ isRecording: false, micActive: false, systemAudioActive: false, meHasVoiceActivity: false });
       return;
     }
 
@@ -310,6 +314,7 @@ export function useAudioCapture(
 
       micSource.connect(micScriptNode);
       micScriptNode.connect(micAudioCtx.destination);
+      await patchState({ micActive: true });
     } catch (err: any) {
       if (captureSessionIdRef.current !== currentSessionId) return;
       console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
@@ -331,9 +336,13 @@ export function useAudioCapture(
           transcript: [],
           messages: [],
         };
+        const nextConsent = prev.meetingConsent === 'allowed_once' ? 'prompt' : prev.meetingConsent;
         return {
           isRecording: false,
+          micActive: false,
+          systemAudioActive: false,
           meHasVoiceActivity: false,
+          meetingConsent: nextConsent,
           session: {
             ...activeSession,
             transcript: [
@@ -365,6 +374,7 @@ export function useAudioCapture(
 
       if (!hasConsent) {
         console.log('[useAudioCapture] Meeting transcription consent not granted; system loopback audio capture disabled.');
+        await patchState({ systemAudioActive: false });
         return;
       }
 
@@ -423,11 +433,16 @@ export function useAudioCapture(
 
           systemSource.connect(systemScriptNode);
           systemScriptNode.connect(systemAudioCtx.destination);
+          await patchState({ systemAudioActive: true });
+        } else {
+          console.warn('[useAudioCapture] System loopback stream contained no audio tracks');
+          await patchState({ systemAudioActive: false });
         }
       }
     } catch (err) {
       // Loopback media prompt dismissed or not supported on this platform
       console.info('[useAudioCapture] System audio loopback not attached:', err);
+      await patchState({ systemAudioActive: false });
     }
   };
 
@@ -464,6 +479,14 @@ export function useAudioCapture(
       systemVadRef.current = null;
     }
 
-    patchState({ meHasVoiceActivity: false, themHasVoiceActivity: false });
+    const latest = getLatestState();
+    const nextConsent = latest.meetingConsent === 'allowed_once' ? 'prompt' : latest.meetingConsent;
+    patchState({
+      micActive: false,
+      systemAudioActive: false,
+      meHasVoiceActivity: false,
+      themHasVoiceActivity: false,
+      meetingConsent: nextConsent,
+    });
   };
 }

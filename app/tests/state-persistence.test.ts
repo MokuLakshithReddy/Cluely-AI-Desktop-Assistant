@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { StateManager } from '../electron/domains/state';
+import { decryptStoragePayload } from '../electron/services/storage-encryption';
 
 describe('State persistence error reporting', () => {
   let directory: string | null = null;
@@ -39,7 +40,8 @@ describe('State persistence error reporting', () => {
     expect(manager.getState().showChat).toBe(false);
 
     manager.flushSave();
-    const persistedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    const raw = fs.readFileSync(stateFile, 'utf8');
+    const persistedState = JSON.parse(decryptStoragePayload(raw));
     expect(persistedState).not.toHaveProperty('appVersion');
   });
 
@@ -60,9 +62,73 @@ describe('State persistence error reporting', () => {
     writeSpy.mockRestore();
     manager.flushSaveOrThrow();
     expect(manager.getState().persistenceError).toBeNull();
-    expect(JSON.parse(fs.readFileSync(stateFile, 'utf8')).showChat).toBe(false);
+    const raw = fs.readFileSync(stateFile, 'utf8');
+    expect(JSON.parse(decryptStoragePayload(raw)).showChat).toBe(false);
     expect(fs.existsSync(stateFile)).toBe(true);
-    const persistedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    const persistedState = JSON.parse(decryptStoragePayload(raw));
     expect(persistedState).not.toHaveProperty('persistenceError');
+  });
+
+  it('encrypts shared state at rest with AES-256-GCM envelope when encryptedStorageEnabled is active', () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-encrypt-'));
+    const stateFile = path.join(directory, 'state.json');
+    const manager = new StateManager(stateFile, false);
+
+    manager.patchState({ showChat: true, activeMode: 'interview', encryptedStorageEnabled: true });
+    manager.flushSave();
+
+    const raw = fs.readFileSync(stateFile, 'utf8');
+    expect(raw.startsWith('enc:v1:')).toBe(true);
+
+    const decrypted = JSON.parse(decryptStoragePayload(raw));
+    expect(decrypted.showChat).toBe(true);
+    expect(decrypted.activeMode).toBe('interview');
+  });
+
+  it('suppresses active session and knowledge documents from disk when enterpriseMode is active', () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-enterprise-'));
+    const stateFile = path.join(directory, 'state.json');
+    const manager = new StateManager(stateFile, false);
+
+    manager.patchState({
+      enterpriseMode: true,
+      session: {
+        id: 'sess_confidential_99',
+        title: 'Confidential Enterprise Strategy',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        durationSeconds: 10,
+        mode: 'executive',
+        audioInputLanguage: 'en',
+        transcript: [
+          {
+            id: 't1',
+            createdAt: new Date().toISOString(),
+            relativeMs: 1000,
+            role: 'me',
+            status: 'ready',
+            text: 'Projected Q4 revenue targets',
+          },
+        ],
+        messages: [],
+      },
+      knowledgeDocs: [
+        {
+          id: 'doc_1',
+          name: 'internal_secret.pdf',
+          size: 1024,
+          createdAt: new Date().toISOString(),
+          status: 'ready',
+          passages: [],
+        },
+      ],
+    });
+    manager.flushSave();
+
+    const raw = fs.readFileSync(stateFile, 'utf8');
+    const decrypted = JSON.parse(decryptStoragePayload(raw));
+    expect(decrypted.enterpriseMode).toBe(true);
+    expect(decrypted.session).toBeNull();
+    expect(decrypted.knowledgeDocs).toEqual([]);
   });
 });

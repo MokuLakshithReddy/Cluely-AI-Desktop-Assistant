@@ -49,7 +49,7 @@ export class WindowCoordinator {
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workArea;
 
     // Center horizontally, placed near the top
-    const winWidth = 490;
+    const winWidth = 560;
     const winHeight = 56;
     const initialX = Math.round((screenWidth - winWidth) / 2);
     const initialY = 24;
@@ -112,8 +112,8 @@ export class WindowCoordinator {
   public createChatWindow(): BrowserWindow {
     if (this.chatWin && !this.chatWin.isDestroyed()) return this.chatWin;
 
-    const controlBounds = this.controlWin ? this.controlWin.getBounds() : { x: 500, y: 24, width: 490, height: 56 };
-    const chatWidth = 490;
+    const controlBounds = this.controlWin ? this.controlWin.getBounds() : { x: 500, y: 24, width: 560, height: 56 };
+    const chatWidth = 560;
     const chatHeight = 520;
     const chatX = Math.round(controlBounds.x + (controlBounds.width - chatWidth) / 2);
     const chatY = controlBounds.y + controlBounds.height + 8;

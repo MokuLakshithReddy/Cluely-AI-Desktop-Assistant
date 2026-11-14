@@ -3,9 +3,9 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 167/167 Passing (100% Pass Rate)  
+**Test Status**: 172/172 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `fbeb80eda98308243705007fbd96024debc45c65`  
+**Source revision**: `ea9705b8c2bb587572b6fcd1aff4f9b17bb053fa`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-14  
 
@@ -23,18 +23,18 @@
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 32 | 32 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 7 | 7 | 0 | **PASSED** |
-| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 28 | 28 | 0 | **PASSED** |
-| `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 8 | 8 | 0 | **PASSED** |
+| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 30 | 30 | 0 | **PASSED** |
+| `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 9 | 9 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
-| `state-persistence.test.ts` | State persistence error reporting | 3 | 3 | 0 | **PASSED** |
+| `state-persistence.test.ts` | State persistence error reporting | 5 | 5 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 3 | 3 | 0 | **PASSED** |
-| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 7 | 7 | 0 | **PASSED** |
-| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
+| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
+| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **167** | **167** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **172** | **172** | **0** | **100% PASS** |
 
 ---
 
@@ -199,11 +199,14 @@
 ✓ validates allowed meeting consent modes
 ✓ validates boolean security configuration keys
 ✓ enforces Enterprise Mode restrictions on state patch
+✓ enforces audio channel reset and revokes allowed_once consent when recording stops in main process
+✓ blocks unredacted screenshots to external cloud providers when blockOutboundSecrets is active
 ```
 
 ### 10. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
 ```text
 ✓ saves and reads a full session record with transcripts and messages
+✓ automatically migrates legacy unencrypted session archives to encrypted format on access
 ✓ lists past sessions ordered by newest creation date
 ✓ deletes an individual session by identifier
 ✓ purges all archived sessions cleanly
@@ -224,6 +227,8 @@
 ✓ does not restore stale transient persistence warnings from older state files
 ✓ ignores stale persisted app versions and does not persist runtime version metadata
 ✓ surfaces write failures, propagates critical flush errors, and clears the warning after recovery
+✓ encrypts shared state at rest with AES-256-GCM envelope when encryptedStorageEnabled is active
+✓ suppresses active session and knowledge documents from disk when enterpriseMode is active
 ```
 
 ### 13. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
@@ -233,15 +238,7 @@
 ✓ returns null for destroyed windows even before their closed event is delivered
 ```
 
-### 14. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
-```
-
-### 15. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
+### 14. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
 ```text
 ✓ builds context prompt including speaker-attributed transcripts
 ✓ filters out error and incomplete transcript segments from prompt context
@@ -252,16 +249,15 @@
 ✓ formats user request cleanly when query contains multiline strings
 ```
 
-### 16. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+### 15. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
 ```text
-✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
-✓ purgeAllData wipes in-memory vault keys and stored session archives
-✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
-✓ abortAiStream returns false for unknown requestId without aborting other requests
-✓ exposes window lifecycle controls minimizeApp and quitApp safely
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
 ```
 
-### 17. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+### 16. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
 ```text
 ✓ parses empty or missing hash as default "all" view
 ✓ parses direct routes without query parameters
@@ -269,13 +265,22 @@
 ✓ handles leading slash with query parameters
 ```
 
-### 18. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 17. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
 ✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
 ✓ preserves aspect ratio when height is greater than width (portrait display)
 ✓ handles boundary 1x1 minimal screen dimension safely
+```
+
+### 18. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+```text
+✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
+✓ purgeAllData wipes in-memory vault keys and stored session archives
+✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
+✓ abortAiStream returns false for unknown requestId without aborting other requests
+✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
 ### 19. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)

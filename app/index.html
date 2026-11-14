@@ -11,10 +11,11 @@
     <meta property="og:description" content="Evidence-driven desktop & web AI copilot with real-time screen and audio understanding" />
     <!-- Drag behavior annotations for Electron with fallback for Web -->
     <style>
-      body {
+      html, body {
         margin: 0;
         padding: 0;
-        background-color: #020617;
+        overflow: hidden !important;
+        background-color: transparent !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       }
       .drag-region {
@@ -25,7 +26,7 @@
       }
     </style>
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased min-h-screen">
+  <body class="text-slate-100 antialiased select-none overflow-hidden bg-transparent">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

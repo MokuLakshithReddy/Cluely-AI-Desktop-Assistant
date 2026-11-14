@@ -19,6 +19,8 @@ const BOOLEAN_STATE_KEYS = new Set([
   'isStealthMode',
   'isRecording',
   'isEmergencyStopping',
+  'micActive',
+  'systemAudioActive',
   'meHasVoiceActivity',
   'themHasVoiceActivity',
   'isCapturingScreenshot',
@@ -174,8 +176,11 @@ export class IpcRouter {
       isRecording: false,
       isEmergencyStopping: !currentState.isPurging,
       isGenerating: false,
+      micActive: false,
+      systemAudioActive: false,
       meHasVoiceActivity: false,
       themHasVoiceActivity: false,
+      meetingConsent: currentState.meetingConsent === 'allowed_once' ? 'prompt' : currentState.meetingConsent,
     });
   }
 
@@ -589,6 +594,19 @@ export class IpcRouter {
       }
     }
 
+    // Main-process audio consent & channel enforcement:
+    // If recording stops, reset channel active states and revoke one-time meeting consent.
+    if (sanitized.isRecording === false) {
+      sanitized.micActive = false;
+      sanitized.systemAudioActive = false;
+      sanitized.meHasVoiceActivity = false;
+      sanitized.themHasVoiceActivity = false;
+      const currentMeetingConsent = stateManager.getState().meetingConsent;
+      if (currentMeetingConsent === 'allowed_once' && sanitized.meetingConsent === undefined) {
+        sanitized.meetingConsent = 'prompt';
+      }
+    }
+
     return sanitized;
   }
 
@@ -886,11 +904,20 @@ export class IpcRouter {
         let cleanTranscript = recentTranscript;
         let cleanHistory = conversationHistory;
         let cleanPassages = knowledgePassages;
+        let cleanScreenshot = screenshotBase64;
 
         if (currentState.redactSensitiveData || currentState.blockOutboundSecrets) {
+          // Strict Outbound Secret Guard: prevent raw unredacted screen captures from leaving device to external cloud
+          if (currentState.blockOutboundSecrets && screenshotBase64 && providerName !== 'ollama') {
+            throw new Error(
+              `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
+            );
+          }
+
           const inspection = inspectAndSanitizeOutboundPayload(
             {
               query,
+              screenshotBase64,
               recentTranscript,
               conversationHistory,
               knowledgePassages,
@@ -908,6 +935,7 @@ export class IpcRouter {
           cleanTranscript = inspection.sanitizedPayload.recentTranscript || cleanTranscript;
           cleanHistory = inspection.sanitizedPayload.conversationHistory || cleanHistory;
           cleanPassages = inspection.sanitizedPayload.knowledgePassages || cleanPassages;
+          cleanScreenshot = inspection.sanitizedPayload.screenshotBase64;
         }
 
         const onToken = (token: string) => {
@@ -923,7 +951,7 @@ export class IpcRouter {
             apiKey: apiKey || '',
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,
@@ -936,7 +964,7 @@ export class IpcRouter {
             apiKey: apiKey || '',
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,
@@ -949,7 +977,7 @@ export class IpcRouter {
             apiKey: apiKey || '',
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,
@@ -961,7 +989,7 @@ export class IpcRouter {
             model,
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,

@@ -3,6 +3,7 @@ import path from 'path';
 import { app } from 'electron';
 import { SharedState } from '../../src/lib/types';
 import { credentialVault } from '../services/vault';
+import { encryptStoragePayload, decryptStoragePayload } from '../services/storage-encryption';
 
 function getApplicationVersion(): string {
   try {
@@ -36,6 +37,8 @@ export const INITIAL_STATE: SharedState = {
   isRecording: false,
   isPurging: false,
   isEmergencyStopping: false,
+  micActive: false,
+  systemAudioActive: false,
   privacyMode: (process.env.PRIVACY_MODE === 'LOCAL' || process.env.ENTERPRISE_MODE === 'true') ? 'local' : 'cloud',
   meetingConsent: process.env.SMOKE_TEST === 'true' ? 'always_allowed' : 'prompt',
   telemetryEnabled: false,
@@ -170,7 +173,8 @@ export class StateManager {
       const stateFile = this.getStateFilePath();
       if (fs.existsSync(stateFile)) {
         const raw = fs.readFileSync(stateFile, 'utf8');
-        const parsed = JSON.parse(raw);
+        const decrypted = decryptStoragePayload(raw);
+        const parsed = JSON.parse(decrypted);
 
         // Sanitize persisted state: credentials and transient diagnostics must never be restored.
         delete parsed.apiKeys;
@@ -188,6 +192,8 @@ export class StateManager {
           isRecording: false,
           isPurging: false,
           isEmergencyStopping: false,
+          micActive: false,
+          systemAudioActive: false,
           meHasVoiceActivity: false,
           themHasVoiceActivity: false,
           isCapturingScreenshot: false,
@@ -232,7 +238,11 @@ export class StateManager {
       // Persistence diagnostics are transient UI state and must never be stored in the file.
       delete toSave.persistenceError;
 
-      if (toSave.session && Array.isArray(toSave.session.messages)) {
+      // Enterprise Mode disk suppression: active transcripts, messages, and knowledge docs must NEVER touch disk
+      if (this.state.enterpriseMode) {
+        toSave.session = null;
+        toSave.knowledgeDocs = [];
+      } else if (toSave.session && Array.isArray(toSave.session.messages)) {
         toSave.session = {
           ...toSave.session,
           messages: toSave.session.messages.map((m: any) => {
@@ -245,7 +255,13 @@ export class StateManager {
         };
       }
 
-      fs.writeFileSync(stateFile, JSON.stringify(toSave, null, 2), 'utf8');
+      const serialized = JSON.stringify(toSave, null, 2);
+      let payloadToWrite = serialized;
+      if (this.state.encryptedStorageEnabled) {
+        payloadToWrite = encryptStoragePayload(serialized);
+      }
+
+      fs.writeFileSync(stateFile, payloadToWrite, 'utf8');
       if (this.state.persistenceError) {
         this.state = { ...this.state, persistenceError: null };
         this.notify();

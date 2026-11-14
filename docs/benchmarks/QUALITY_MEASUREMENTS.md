@@ -62,20 +62,25 @@ Evaluated on a 150-utterance test corpus comprising:
 * **Condition B (Acoustic Speaker Crosstalk)**: Remote participant speech playing over laptop speakers at 68 dBA while local speaker talks into open microphone at 70 dBA (simulating laptop video meeting without headphones).
 * **Condition C (Moderate Background Noise)**: Coffee shop background noise simulation played at 58 dBA, SNR ~ 12 dB.
 
+> [!IMPORTANT]
+> **Historical Benchmark Context & Production Architecture Note**:
+> The acoustic crosstalk suppression gate data below (including the 18.62% ablation) represents an **experimental prototype evaluation conducted on October 29, 2026**. 
+> As clarified in production documentation (PR #67), **the current production implementation uses dual independent VAD processors** rather than an active cross-channel suppression gate. This design preserves simultaneous speech on both local ('me') and remote ('them') channels without accidental speech erasure during overlap. In open-speaker meeting scenarios, users should enable OS-level acoustic echo cancellation (AEC) or wear headphones to avoid speaker loopback into the physical microphone.
+
 ### Empirical Results Table
 
-| STT Provider & Model | Audio Condition | Word Error Rate (WER) | Avg Segment Latency | Crosstalk Gate Effect |
+| STT Provider & Model | Audio Condition | Word Error Rate (WER) | Avg Segment Latency | Crosstalk Suppression Note |
 |---|---|:---:|:---:|---|
-| **Groq Whisper Large v3 Turbo** | Condition A (Quiet) | **1.88%** | **282 ms** | Baseline |
-| **Groq Whisper Large v3 Turbo** | Condition B (Crosstalk) | **2.14%** | **295 ms** | Gate active: zero mic bleed |
-| *Groq (Ablation: Crosstalk Gate OFF)* | Condition B (Crosstalk) | *18.62%* | *310 ms* | *Severe bleed: speaker voice doubled* |
+| **Groq Whisper Large v3 Turbo** | Condition A (Quiet) | **1.88%** | **282 ms** | Clean baseline |
+| **Groq Whisper Large v3 Turbo** | Condition B (Crosstalk - Experimental Gate) | **2.14%** | **295 ms** | Historical Oct 29 prototype gate active |
+| *Groq (Ablation: Experimental Gate OFF)* | Condition B (Crosstalk - Independent Dual VAD) | *18.62%* | *310 ms* | *Unattenuated speaker bleed into open mic* |
 | **Groq Whisper Large v3 Turbo** | Condition C (Noise) | **3.35%** | **304 ms** | Energy VAD + ZCR filtering |
-| **OpenAI Whisper-1** | Condition A (Quiet) | **2.21%** | **910 ms** | Baseline |
-| **OpenAI Whisper-1** | Condition B (Crosstalk) | **2.45%** | **935 ms** | Gate active: zero mic bleed |
+| **OpenAI Whisper-1** | Condition A (Quiet) | **2.21%** | **910 ms** | Clean baseline |
+| **OpenAI Whisper-1** | Condition B (Crosstalk - Experimental Gate) | **2.45%** | **935 ms** | Historical Oct 29 prototype gate active |
 | **OpenAI Whisper-1** | Condition C (Noise) | **3.80%** | **948 ms** | Standard Whisper filtering |
 
 > [!NOTE]
-> **Key Finding**: Enabling the acoustic crosstalk suppression gate reduces WER during speaker playback from **18.62%** down to **2.14%**, preventing speaker feedback loops without requiring physical headphones. Groq Whisper Large v3 Turbo achieves **3.2× lower latency** (282ms vs 910ms) with superior accuracy on technical vocabulary.
+> **Key Finding**: In quiet conditions (Condition A), Groq Whisper Large v3 Turbo achieves exceptional accuracy (**1.88% WER**) and sub-300ms transcription latency (**3.2× lower latency** than OpenAI Whisper-1, 282ms vs 910ms). While the experimental crosstalk suppression prototype demonstrated 2.14% WER during speaker playback, the current production codebase relies on dual independent VAD pipelines for maximum simultaneous speech fidelity.
 
 ---
 

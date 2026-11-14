@@ -51,6 +51,10 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
     };
 
     await repo.saveSession(session);
+    // Verify file at rest is encrypted with AES-256-GCM
+    const rawFile = fs.readFileSync(path.join(testDir, 'sess_test_101.json'), 'utf8');
+    expect(rawFile.startsWith('enc:v1:')).toBe(true);
+
     const loaded = await repo.getSession('sess_test_101');
 
     expect(loaded).not.toBeNull();
@@ -58,6 +62,37 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
     expect(loaded?.title).toBe('Technical Interview with Mock Corp');
     expect(loaded?.transcript.length).toBe(1);
     expect(loaded?.messages.length).toBe(1);
+  });
+
+  it('automatically migrates legacy unencrypted session archives to encrypted format on access', async () => {
+    const legacySession: SessionRecord = {
+      id: 'sess_legacy_999',
+      title: 'Legacy Plaintext Session',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      durationSeconds: 45,
+      mode: 'coding',
+      audioInputLanguage: 'en',
+      transcript: [],
+      messages: [],
+    };
+
+    // Ensure directory exists and write raw unencrypted plaintext JSON directly to disk
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+    const legacyFilePath = path.join(testDir, 'sess_legacy_999.json');
+    fs.writeFileSync(legacyFilePath, JSON.stringify(legacySession, null, 2), 'utf8');
+
+    // Verify written file is unencrypted
+    const beforeRead = fs.readFileSync(legacyFilePath, 'utf8');
+    expect(beforeRead.startsWith('enc:v1:')).toBe(false);
+
+    // Read through repository getSession
+    const loaded = await repo.getSession('sess_legacy_999');
+    expect(loaded?.title).toBe('Legacy Plaintext Session');
+
+    // Verify it was migrated to encrypted AES-256-GCM format
+    const afterRead = fs.readFileSync(legacyFilePath, 'utf8');
+    expect(afterRead.startsWith('enc:v1:')).toBe(true);
   });
 
   it('lists past sessions ordered by newest creation date', async () => {

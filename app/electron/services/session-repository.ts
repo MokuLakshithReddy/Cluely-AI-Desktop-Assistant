@@ -2,18 +2,18 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import {
+  encryptStoragePayload,
+  decryptStoragePayload,
+  getMasterEncryptionKey,
+  setMasterEncryptionKey,
+} from './storage-encryption';
 
 /**
  * Encrypts arbitrary session data using AES-256-GCM authenticated encryption.
  */
-export function encryptLocalSession(data: string | any, encryptionKey: Buffer): string {
-  const plainText = typeof data === 'string' ? data : JSON.stringify(data);
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
-  let ciphertext = cipher.update(plainText, 'utf8', 'hex');
-  ciphertext += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `enc:v1:${iv.toString('hex')}:${authTag}:${ciphertext}`;
+export function encryptLocalSession(data: string | any, encryptionKey?: Buffer): string {
+  return encryptStoragePayload(data, encryptionKey);
 }
 
 /**
@@ -21,24 +21,7 @@ export function encryptLocalSession(data: string | any, encryptionKey: Buffer): 
  * Gracefully falls back to plaintext if the string is unencrypted JSON for backwards compatibility.
  */
 export function decryptLocalSession(dataStr: string, encryptionKey?: Buffer): string {
-  if (!dataStr.startsWith('enc:v1:')) {
-    return dataStr; // Unencrypted backward compatibility
-  }
-  if (!encryptionKey) {
-    throw new Error('[SessionRepository] Cannot decrypt session: No encryption key provided');
-  }
-  const parts = dataStr.split(':');
-  if (parts.length !== 5) {
-    throw new Error('[SessionRepository] Malformed encrypted session payload');
-  }
-  const iv = Buffer.from(parts[2], 'hex');
-  const authTag = Buffer.from(parts[3], 'hex');
-  const ciphertext = parts[4];
-  const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, iv);
-  decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+  return decryptStoragePayload(dataStr, encryptionKey);
 }
 
 export interface SessionRecord {
@@ -163,10 +146,8 @@ export class SessionRepository {
       throw new Error('[SessionRepository] Session exceeds maximum aggregate size limit of 5MB');
     }
 
-    let payloadToWrite = serialized;
-    if (this.encryptionKey) {
-      payloadToWrite = encryptLocalSession(serialized, this.encryptionKey);
-    }
+    // Always encrypt session archives at rest with OS-backed safeStorage AES-256-GCM
+    const payloadToWrite = encryptLocalSession(serialized, this.encryptionKey);
     fs.writeFileSync(filePath, payloadToWrite, 'utf8');
   }
 
@@ -182,6 +163,16 @@ export class SessionRepository {
     try {
       const raw = fs.readFileSync(filePath, 'utf8');
       const decrypted = decryptLocalSession(raw, this.encryptionKey);
+
+      // Safe migration: re-encrypt legacy plaintext JSON files on access
+      if (!raw.startsWith('enc:v1:')) {
+        try {
+          fs.writeFileSync(filePath, encryptLocalSession(decrypted, this.encryptionKey), 'utf8');
+        } catch (migErr) {
+          console.warn(`[SessionRepository] Failed to migrate legacy session ${id} to encrypted format:`, migErr);
+        }
+      }
+
       return JSON.parse(decrypted);
     } catch (e) {
       console.error(`[SessionRepository] Failed to read session ${id}:`, e);
@@ -199,6 +190,16 @@ export class SessionRepository {
         const fullPath = path.join(dir, file);
         const raw = fs.readFileSync(fullPath, 'utf8');
         const decrypted = decryptLocalSession(raw, this.encryptionKey);
+
+        // Safe migration: re-encrypt legacy plaintext JSON files when listed
+        if (!raw.startsWith('enc:v1:')) {
+          try {
+            fs.writeFileSync(fullPath, encryptLocalSession(decrypted, this.encryptionKey), 'utf8');
+          } catch (migErr) {
+            console.warn(`[SessionRepository] Failed to migrate legacy session file ${file} to encrypted format:`, migErr);
+          }
+        }
+
         const s: SessionRecord = JSON.parse(decrypted);
         summaries.push({
           id: s.id,

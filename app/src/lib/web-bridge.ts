@@ -334,11 +334,20 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
         let cleanTranscript = recentTranscript;
         let cleanHistory = conversationHistory;
         let cleanPassages = knowledgePassages;
+        let cleanScreenshot = screenshotBase64;
 
         if (currentState.redactSensitiveData || currentState.blockOutboundSecrets) {
+          // Strict Outbound Secret Guard: prevent raw unredacted screen captures from leaving device to external cloud
+          if (currentState.blockOutboundSecrets && screenshotBase64 && providerName !== 'ollama') {
+            throw new Error(
+              `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
+            );
+          }
+
           const inspection = inspectAndSanitizeOutboundPayload(
             {
               query,
+              screenshotBase64,
               recentTranscript,
               conversationHistory,
               knowledgePassages,
@@ -356,6 +365,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
           cleanTranscript = inspection.sanitizedPayload.recentTranscript || cleanTranscript;
           cleanHistory = inspection.sanitizedPayload.conversationHistory || cleanHistory;
           cleanPassages = inspection.sanitizedPayload.knowledgePassages || cleanPassages;
+          cleanScreenshot = inspection.sanitizedPayload.screenshotBase64;
         }
 
         const apiKey = inMemoryVaultKeys[providerName];
@@ -367,7 +377,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
         if (!apiKey && providerName !== 'ollama') {
           const demoResponse =
             `**Cluely Copilot (${mode.toUpperCase()} Mode)**\n\n` +
-            `• **Screen Context**: ${screenshotBase64 ? 'Visible screenshot analyzed' : 'No screen attached'}\n` +
+            `• **Screen Context**: ${cleanScreenshot ? 'Visible screenshot analyzed' : 'No screen attached'}\n` +
             `• **Conversation Context**: ${cleanTranscript.length} live speech items referenced\n` +
             `• **Grounded Knowledge**: ${cleanPassages?.length || 0} reference passages retrieved\n\n` +
             `> **Notice**: Configure your **${providerName.toUpperCase()} API Key** in Settings (held in ephemeral session memory) to enable live model reasoning!`;
@@ -389,7 +399,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             apiKey,
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,
@@ -402,7 +412,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             apiKey,
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,
@@ -415,7 +425,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             apiKey,
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,
@@ -427,7 +437,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
             model,
             mode,
             query: cleanQuery,
-            screenshotBase64,
+            screenshotBase64: cleanScreenshot,
             recentTranscript: cleanTranscript,
             knowledgePassages: cleanPassages,
             conversationHistory: cleanHistory,
