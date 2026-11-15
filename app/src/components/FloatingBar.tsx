@@ -127,7 +127,7 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
             <GripHorizontal className="w-4 h-4" />
           </div>
 
-          {/* Mic Status & Toggle (Permission Transparency) */}
+          {/* Mic Status & Toggle (Permission Transparency & Capture Readiness) */}
           <button
             onClick={toggleRecording}
             className={`no-drag relative flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap ${
@@ -147,28 +147,23 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
                   }`}
                 />
                 <Mic className="w-3.5 h-3.5" />
+                {state.captureWarning && <AlertTriangle className="w-3.5 h-3.5 text-amber-300" aria-label="Capture warning" />}
                 <span>
                   {state.microphoneCaptureStatus === 'starting' || state.systemAudioCaptureStatus === 'starting'
-                    ? 'Connecting...'
-                    : state.microphoneCaptureStatus === 'active' && state.systemAudioCaptureStatus === 'active'
-                    ? 'Dual Audio'
-                    : state.microphoneCaptureStatus === 'active'
-                    ? 'Mic Only'
+                    ? 'Connecting'
                     : state.systemAudioCaptureStatus === 'active'
-                    ? 'System Audio'
-                    : 'Recording'}
+                    ? 'Listening'
+                    : 'Mic only'}
                 </span>
-                {state.captureWarning && (
-                  <AlertTriangle className="w-3 h-3 text-amber-400 ml-0.5 flex-shrink-0" />
-                )}
               </>
             ) : (
               <>
-                <MicOff className="w-3.5 h-3.5" />
-                <span>Idle</span>
-                {state.captureWarning && (
-                  <AlertTriangle className="w-3 h-3 text-amber-400 ml-0.5 flex-shrink-0" />
+                {state.captureWarning ? (
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-300" aria-label="Capture unavailable" />
+                ) : (
+                  <MicOff className="w-3.5 h-3.5" />
                 )}
+                <span>{state.captureWarning ? 'Mic error' : 'Idle'}</span>
               </>
             )}
           </button>

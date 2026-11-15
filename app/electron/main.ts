@@ -73,7 +73,7 @@ async function waitForPackagedWindowBridge(
         };
       })()`);
       if (result && result.route === expectedRoute &&
-          result.bridgeReady === true && result.ipcReady === true) {
+        result.bridgeReady === true && result.ipcReady === true) {
         return result;
       }
     } catch (error) {
@@ -161,13 +161,13 @@ if (!gotSingleInstanceLock) {
           ? suppliedTrigger
           : path.join(app.getAppPath(), '.smoke-shutdown.trigger');
       if (fs.existsSync(shutdownTrigger)) {
-        try { fs.unlinkSync(shutdownTrigger); } catch {}
+        try { fs.unlinkSync(shutdownTrigger); } catch { }
       }
 
       const checkInterval = setInterval(() => {
         if (fs.existsSync(shutdownTrigger)) {
           clearInterval(checkInterval);
-          try { fs.unlinkSync(shutdownTrigger); } catch {}
+          try { fs.unlinkSync(shutdownTrigger); } catch { }
           writePackagedSmokeStatus({ cleanShutdown: true });
           console.log('[APP_CLEAN_SHUTDOWN] Graceful shutdown command received via trigger.');
           isQuitting = true;
@@ -191,7 +191,7 @@ if (!gotSingleInstanceLock) {
           callback(true);
           return;
         }
-      } catch {}
+      } catch { }
       event.preventDefault();
       console.warn('[NetworkSecurityGuard] Rejected invalid TLS certificate for:', url, error);
       callback(false);

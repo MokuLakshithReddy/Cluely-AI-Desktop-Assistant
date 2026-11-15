@@ -501,6 +501,22 @@ export class IpcRouter {
         sanitized[key] = val;
       }
 
+      // Capture status is a small finite state machine, never arbitrary renderer text.
+      else if (key === 'microphoneCaptureStatus' || key === 'systemAudioCaptureStatus') {
+        if (typeof val !== 'string' || !VALID_CAPTURE_STATUSES.has(val)) {
+          throw new Error(`[IpcRouter] Invalid capture status for "${key}"`);
+        }
+        sanitized[key] = val;
+      }
+
+      // Capture warning is user-visible diagnostics, bounded to avoid oversized state patches.
+      else if (key === 'captureWarning') {
+        if (val !== null && (typeof val !== 'string' || val.length > 256)) {
+          throw new Error('[IpcRouter] Invalid capture warning: expected null or a string up to 256 characters');
+        }
+        sanitized[key] = val;
+      }
+
       // 3. Validate active model name
       else if (key === 'activeModel') {
         if (typeof val !== 'string' || val.trim().length === 0 || val.length > 100) {
