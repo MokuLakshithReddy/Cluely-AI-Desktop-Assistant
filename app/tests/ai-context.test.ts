@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildContextPrompt, MODE_SYSTEM_PROMPTS } from '../src/lib/providers';
+import { buildContextPrompt, cleanAssistantSolution, MODE_SYSTEM_PROMPTS } from '../src/lib/providers';
 import { TranscriptItem } from '../src/lib/types';
 
 describe('AI Context Synthesis & Multimodal Provider Subsystem', () => {
@@ -98,5 +98,45 @@ describe('AI Context Synthesis & Multimodal Provider Subsystem', () => {
     const multiline = 'Line 1\nLine 2\nLine 3';
     const prompt = buildContextPrompt(multiline, 'copilot', []);
     expect(prompt).toContain('### USER REQUEST\nLine 1\nLine 2\nLine 3');
+  });
+
+  describe('cleanAssistantSolution preamble stripping', () => {
+    it('strips Context description and Draft Response headers to return only direct solutions', () => {
+      const verboseResponse =
+        'Context: The visible screen shows a writing assignment ("Question 2") about economic regulation, asking how governments should balance public protection with economic flexibility.\n' +
+        'Draft Response:\n' +
+        'Governments must establish baseline rules to protect public health and safety while designing flexible frameworks that support innovation.';
+
+      const cleaned = cleanAssistantSolution(verboseResponse);
+      expect(cleaned).toBe(
+        'Governments must establish baseline rules to protect public health and safety while designing flexible frameworks that support innovation.'
+      );
+      expect(cleaned).not.toContain('Context:');
+      expect(cleaned).not.toContain('Draft Response:');
+    });
+
+    it('strips markdown **Context:** blocks and returns the direct answer', () => {
+      const markdownContext = '**Context:** The screen shows a math problem 2 + 2.\n\n4';
+      const cleaned = cleanAssistantSolution(markdownContext);
+      expect(cleaned).toBe('4');
+    });
+
+    it('leaves direct solutions completely untouched', () => {
+      const direct = 'Governments must establish baseline rules directly.';
+      const cleaned = cleanAssistantSolution(direct);
+      expect(cleaned).toBe('Governments must establish baseline rules directly.');
+    });
+
+    it('strips standalone Draft Response: or Suggested Response: prefixes', () => {
+      const withHeader = 'Draft Response:\nThe optimal solution is binary search.';
+      const cleaned = cleanAssistantSolution(withHeader);
+      expect(cleaned).toBe('The optimal solution is binary search.');
+    });
+
+    it('hides incomplete context preamble while streaming so it does not flicker on screen', () => {
+      const partial = 'Context: The visible screen shows a question';
+      const cleaned = cleanAssistantSolution(partial);
+      expect(cleaned).toBe('');
+    });
   });
 });

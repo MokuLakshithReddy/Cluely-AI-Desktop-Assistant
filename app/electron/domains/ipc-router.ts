@@ -9,7 +9,7 @@ import { credentialVault } from '../services/vault';
 import { sessionRepository, SessionRecord } from '../services/session-repository';
 import { SharedState } from '../../src/lib/types';
 import { broadcastSharedStateToAppWindows } from './state-broadcast';
-import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio } from '../../src/lib/providers';
+import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio, cleanAssistantSolution } from '../../src/lib/providers';
 import { inspectAndSanitizeOutboundPayload, containsSensitiveData, sanitizeScreenshot } from '../../src/lib/redaction';
 
 const BOOLEAN_STATE_KEYS = new Set([
@@ -1063,7 +1063,7 @@ export class IpcRouter {
           });
         }
 
-        return { content: resultText, sources: cleanPassages };
+        return { content: cleanAssistantSolution(resultText), sources: cleanPassages };
       } finally {
         this.activeAiControllers.complete(operationId, correlationId);
         this.activeAiTasks.delete(aiTaskSettled);

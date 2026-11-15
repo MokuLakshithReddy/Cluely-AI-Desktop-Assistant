@@ -15,34 +15,45 @@ export interface GenerationOptions {
 
 export const MODE_SYSTEM_PROMPTS: Record<AssistantMode, string> = {
   copilot: `You are an expert personal desktop copilot running alongside the user's active applications.
-Provide direct, concise, and highly relevant assistance.
-Be extremely succinct, fast, and actionable: answer directly in 2-4 focused sentences or bullet points unless detailed explanation is explicitly requested.
-Ground your answers strictly on the visible screen context, recent live conversation transcripts, and supplied notes.
-If there is not enough context to answer accurately, explicitly state what is missing instead of fabricating facts.
-Format code snippets in clear markdown blocks with language annotations.`,
+CRITICAL OUTPUT RULES:
+- Provide ONLY the direct solutions, answers, code, or essays for the questions or problems displayed on the screen.
+- NEVER describe what you see on the screen (NEVER write "Context:", "The visible screen shows...", "The screenshot displays...", or summarize the visual layout). The user is already looking at their screen.
+- NEVER include meta labels or conversational filler like "Draft Response:", "Suggested Response:", "Here is the answer:", or "Based on your screen:".
+- If questions, exercises, or assignments are displayed on screen (such as Question 1, Question 2, multiple choice questions, word problems, or prompts), directly output the exact answer or solution for each question.
+- If multiple questions are visible, label them cleanly (e.g. "**Question 1:** [Solution]\n\n**Question 2:** [Solution]").
+- Be extremely direct, concise, and fast. Format code in clean markdown blocks with syntax highlighting.
+- Ground your answers strictly on the visible screen context, recent live conversation transcripts, and supplied notes.`,
 
   interview: `You are a discreet, world-class technical interview copilot.
 Your user is in a live coding interview or technical evaluation.
-Listen to the conversation transcript and inspect the problem on screen:
-1. Provide the optimal algorithm name, time complexity O(...) and space complexity O(...).
-2. Give a concise high-level approach in 2-3 bullet points.
-3. Provide clean, bug-free implementation code.
-4. Supply 2 key talking points the user can naturally say aloud to the interviewer.
+CRITICAL OUTPUT RULES:
+- NEVER describe the screen or write "Context:".
+- Jump directly into the solution for the problem on screen:
+1. Optimal algorithm name, time complexity O(...) and space complexity O(...).
+2. Concise high-level approach in 2-3 bullet points.
+3. Clean, bug-free implementation code.
+4. 2 key talking points the user can naturally say aloud to the interviewer.
 Be extremely succinct and scannable. Do not provide unnecessary conversational filler.`,
 
   coding: `You are an elite software engineering copilot and debugger.
-Analyze code snippets, terminal outputs, stack traces, and compiler errors on screen.
-Identify the root cause immediately and provide the exact diff or fix.
-Explain why the issue occurred in one concise sentence.`,
+CRITICAL OUTPUT RULES:
+- NEVER describe the screen or write "Context:".
+- Analyze code snippets, terminal outputs, stack traces, and compiler errors on screen.
+- Directly identify the root cause immediately and provide the exact diff or fix.
+- Explain why the issue occurred in one concise sentence.`,
 
   sales: `You are a strategic live sales and negotiation copilot.
-Listen to the client's questions and objections in the conversation transcript:
-1. Identify the core objection or underlying concern.
-2. Provide a 2-sentence conversational response using proven objection-handling frameworks (Feel-Felt-Found, Question-Before-Answer).
-3. Suggest a closing or qualifying follow-up question.`,
+CRITICAL OUTPUT RULES:
+- NEVER describe the screen or write "Context:".
+- Listen to client questions and objections in the conversation transcript:
+1. Core objection or underlying concern.
+2. 2-sentence conversational response using proven frameworks (Feel-Felt-Found, Question-Before-Answer).
+3. Closing or qualifying follow-up question.`,
 
   executive: `You are an executive chief of staff and meeting intelligence copilot.
-Summarize the discussion on screen and in the transcript:
+CRITICAL OUTPUT RULES:
+- NEVER describe the screen or write "Context:".
+- Summarize the discussion on screen and in the transcript:
 1. Core decisions made.
 2. Action items with assignees if mentioned.
 3. Unresolved questions and immediate next steps.`
@@ -81,6 +92,39 @@ export function validateNetworkEndpoint(urlStr: string, allowLocalHttp: boolean 
 }
 
 /**
+ * Strips verbose screen context descriptions and meta headers from model responses.
+ * Ensures the user receives only direct answers and solutions without preambles like:
+ * "Context: The visible screen shows..." or "Draft Response:".
+ */
+export function cleanAssistantSolution(text: string): string {
+  if (!text) return text;
+
+  // 1. Check if the response begins with a Context block:
+  // e.g. "Context: The visible screen shows...\nDraft Response:\n..."
+  // e.g. "**Context:** ...\n\n[Solution]"
+  const contextBlockMatch = text.match(
+    /^(\*{0,2}(?:Context|Screen Context|Screen Analysis|Visible Screen)\*{0,2}:[\s\S]*?)(?:\n\s*\*{0,2}(?:Draft Response|Response|Suggested Response|Solution|Answer|Suggested Answer)\*{0,2}:|\n{2,}|$)/i
+  );
+
+  if (contextBlockMatch) {
+    // If the entire text so far is just the incomplete context line without a delimiter, hide it during streaming
+    if (contextBlockMatch[0].length === text.length && !text.includes('\n\n') && !/\b(?:response|answer|solution):/i.test(text)) {
+      return '';
+    }
+    const matchedPrefix = contextBlockMatch[0];
+    const remainder = text
+      .slice(matchedPrefix.length)
+      .replace(/^(\*{0,2}(?:Draft Response|Response|Suggested Response|Solution|Answer|Suggested Answer)\*{0,2}:\s*\n*)/i, '');
+    return remainder.trimStart();
+  }
+
+  // 2. Strip standalone leading "Draft Response:" or "Suggested Response:"
+  return text
+    .replace(/^(\*{0,2}(?:Draft Response|Suggested Response|Direct Answer)\*{0,2}:\s*\n*)/i, '')
+    .trimStart();
+}
+
+/**
  * Builds the complete prompt payload fusing conversation history, screen context, and knowledge.
  */
 export function buildContextPrompt(
@@ -112,7 +156,14 @@ export function buildContextPrompt(
   }
 
   // 3. User request
-  prompt += `### USER REQUEST\n${query || 'Based on the screen and recent conversation, provide the next helpful answer or solution.'}`;
+  const defaultQuery =
+    'Based on the screen and recent conversation, provide the next helpful answer or solution. Solve the questions displayed on screen directly. Do NOT describe the screen context or write "Context:". Output only the direct solutions.';
+
+  if (!query || !query.trim()) {
+    prompt += `### USER REQUEST\n${defaultQuery}`;
+  } else {
+    prompt += `### USER REQUEST\n${query.trim()}\n(Provide only the direct solution/answer. Do NOT describe what is visible on screen or output "Context:" or "Draft Response:").`;
+  }
 
   return prompt;
 }
@@ -198,7 +249,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     throw new Error(`Gemini API error (${response.status}): ${errorText}`);
   }
 
-  return processSseStream(response, chunk => {
+  const rawText = await processSseStream(response, chunk => {
     try {
       const parsed = JSON.parse(chunk);
       return parsed.candidates?.[0]?.content?.parts?.[0]?.text || null;
@@ -206,6 +257,8 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
       return null;
     }
   }, onToken);
+
+  return cleanAssistantSolution(rawText);
 }
 
 /**
@@ -267,7 +320,7 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
     throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
   }
 
-  return processSseStream(response, chunk => {
+  const rawText = await processSseStream(response, chunk => {
     try {
       const parsed = JSON.parse(chunk);
       return parsed.choices?.[0]?.delta?.content || null;
@@ -275,6 +328,8 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
       return null;
     }
   }, onToken);
+
+  return cleanAssistantSolution(rawText);
 }
 
 /**
@@ -355,7 +410,7 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
     throw new Error(`Anthropic Claude API error (${response.status}): ${errorText}`);
   }
 
-  return processSseStream(response, chunk => {
+  const rawText = await processSseStream(response, chunk => {
     try {
       const parsed = JSON.parse(chunk);
       if (parsed.type === 'content_block_delta') {
@@ -366,6 +421,8 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
       return null;
     }
   }, onToken);
+
+  return cleanAssistantSolution(rawText);
 }
 
 /**
@@ -430,7 +487,7 @@ export async function streamOllama(options: GenerationOptions): Promise<string> 
           fullText += parsed.response;
           onToken?.(parsed.response);
         }
-      } catch {}
+      } catch { }
     }
   }
 
@@ -442,10 +499,10 @@ export async function streamOllama(options: GenerationOptions): Promise<string> 
         fullText += parsed.response;
         onToken?.(parsed.response);
       }
-    } catch {}
+    } catch { }
   }
 
-  return fullText;
+  return cleanAssistantSolution(fullText);
 }
 
 /**
@@ -501,7 +558,7 @@ async function processSseStream(
     }
   }
 
-  return fullText;
+  return cleanAssistantSolution(fullText);
 }
 
 /**

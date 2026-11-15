@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { SharedState, ChatMessage, SessionRecord } from '../lib/types';
 import { StateUpdater } from './useSharedState';
 import { retrieveRelevantPassages } from '../lib/knowledge';
+import { cleanAssistantSolution } from '../lib/providers';
 
 export function useAiAssistant(
   state: SharedState,
@@ -94,7 +95,8 @@ export function useAiAssistant(
     if (window.desktopBridge) {
       unsubTokens = window.desktopBridge.onAiTokenStream(token => {
         accumulatedContent += token;
-        updateActiveAssistantMessage(assistantMessageId, accumulatedContent, true, false);
+        const displayContent = cleanAssistantSolution(accumulatedContent);
+        updateActiveAssistantMessage(assistantMessageId, displayContent, true, false);
       });
     }
 
@@ -114,14 +116,14 @@ export function useAiAssistant(
           requestId,
         });
 
-        accumulatedContent = result.content;
+        accumulatedContent = cleanAssistantSolution(result.content);
       } else {
         // Fallback demo response if running outside Electron
-        accumulatedContent = `**Screen Context Analyzed**\n- Screenshot Attached: ${screenshotBase64 ? 'Yes (1920x1080)' : 'No'}\n- Transcripts in context: ${recentTranscript.length} entries\n- Mode: **${latestState.activeMode.toUpperCase()}**\n\nConfigure your API keys in the Dashboard to enable live cloud LLM reasoning.`;
+        accumulatedContent = `Direct Solution:\nBased on the screen and context, proceed with the active task.`;
       }
 
-      // Finalize message with complete content and isStreaming: false (force durable patch)
-      updateActiveAssistantMessage(assistantMessageId, accumulatedContent, false, true);
+      // Finalize message with complete cleaned solution and isStreaming: false (force durable patch)
+      updateActiveAssistantMessage(assistantMessageId, cleanAssistantSolution(accumulatedContent), false, true);
 
       // Save complete session to SessionRepository with stripped screenshots
       const finalState = getLatestState();
