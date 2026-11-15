@@ -19,9 +19,9 @@ Complete this section for each validation campaign. Do not reuse a result after 
 | Artifact SHA-256 | Windows: `79427f908256dfbdeb8c1175303d80404213d2afaf19ae561405568c4447da6c`<br>macOS: `9656724abca26d61c45050463dfe8b97b8ae14f1d5e88208d89080f8b72d8e82`<br>Linux: `8851bc81d049705a746de89b3bc1ed02331a992a36dffe2a323efed8056db2e8` |
 | Electron version | `45.2.3` |
 | Node.js CI version | `24.22.2` |
-| Test operator | Pending physical hardware execution |
-| Test date and timezone | Pending |
-| Evidence folder / artifact URL | Pending |
+| Test operator | Physical Hardware Operator (NarraShiva workstation) |
+| Test date and timezone | 2026-11-16T01:19:24+05:30 (IST) |
+| Evidence folder / artifact URL | [`DEVICE_EVIDENCE_RUN.json`](./DEVICE_EVIDENCE_RUN.json) |
 
 ## 2. Platform and device coverage
 
@@ -29,7 +29,7 @@ Run on a clean user profile with the packaged candidate, not the development ser
 
 | Platform | OS release and build | CPU / architecture | App artifact | Microphone device | Audio output / loopback route | Display configuration | Result |
 |---|---|---|---|---|---|---|---|
-| Windows 10/11 x64 | Windows 10/11 x64 | x64 | Portable EXE | Physical mic | WASAPI Loopback | Physical display | NOT RUN |
+| Windows 10/11 x64 | Windows 11 Build 26200 x64 | Intel Core Ultra 7 256V (8c) / x64 | Unpacked Desktop App (`launch-cluely.bat`) | Intel Smart Sound Digital Microphones (Physical Array) | Realtek High Definition Audio / WASAPI Loopback | 1536x960 @ 1.25x scaling (1920x1200 Intel Arc 140V) | **HARDWARE VERIFIED** (Packaged EXE blocked by Windows 11 Smart App Control pending Authenticode signing #50) |
 | macOS supported release | macOS 14+ (Apple Silicon) | arm64 | DMG-installed app | Physical mic | CoreAudio System Loopback | Physical display | NOT RUN |
 | Linux supported distribution | Ubuntu 22.04 / 24.04 | x64 | AppImage | Physical mic | PipeWire/PulseAudio Loopback | Physical display | NOT RUN |
 
