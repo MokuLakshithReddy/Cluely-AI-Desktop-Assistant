@@ -116,10 +116,25 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const controlWin = windowCoordinator.getControlWindow();
-    if (controlWin) {
+    let controlWin = windowCoordinator.getControlWindow();
+    if (!controlWin || controlWin.isDestroyed()) {
+      controlWin = windowCoordinator.createControlWindow();
+    }
+    if (controlWin && !controlWin.isDestroyed()) {
       if (controlWin.isMinimized()) controlWin.restore();
+      controlWin.show();
       controlWin.focus();
+    }
+
+    let chatWin = windowCoordinator.getChatWindow();
+    if (!chatWin || chatWin.isDestroyed()) {
+      chatWin = windowCoordinator.createChatWindow();
+    }
+    if (chatWin && !chatWin.isDestroyed()) {
+      if (chatWin.isMinimized()) chatWin.restore();
+      chatWin.show();
+      chatWin.focus();
+      stateManager.patchState({ showChat: true });
     }
   });
 
