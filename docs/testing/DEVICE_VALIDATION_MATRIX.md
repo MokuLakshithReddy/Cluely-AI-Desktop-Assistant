@@ -13,8 +13,8 @@ Complete this section for each validation campaign. Do not reuse a result after 
 | Field | Value |
 |---|---|
 | Release candidate version | `1.0.2` |
-| Git commit SHA | [`f76f956c3f9213612564248fb1770fcbd8f38156`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/f76f956c3f9213612564248fb1770fcbd8f38156) |
-| CI workflow run URL | [CI Verification Suite #206 (run 43707179094)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707179094) |
+| Git commit SHA | [`e5a58b4dc4558d35fd2698f297d26910921dff99`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/e5a58b4dc4558d35fd2698f297d26910921dff99) |
+| CI workflow run URL | [CI Verification Suite #207 (run 43707962654)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654) |
 | Artifact name | `Cluely-Copilot-1.0.2-Windows-x64.exe` / `Cluely-Copilot-1.0.2-macOS-arm64.dmg` / `Cluely-Copilot-1.0.2-Linux-x64.AppImage` |
 | Artifact SHA-256 | Windows: `79427f908256dfbdeb8c1175303d80404213d2afaf19ae561405568c4447da6c`<br>macOS: `9656724abca26d61c45050463dfe8b97b8ae14f1d5e88208d89080f8b72d8e82`<br>Linux: `8851bc81d049705a746de89b3bc1ed02331a992a36dffe2a323efed8056db2e8` |
 | Electron version | `45.2.3` |

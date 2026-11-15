@@ -311,7 +311,7 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 The latest verified CI run recorded **192 passing automated checks**: 191 Vitest tests across 18 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
-Evidence: [CI run 43707179094 (run #206)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707179094)  
+Evidence: [CI run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |
