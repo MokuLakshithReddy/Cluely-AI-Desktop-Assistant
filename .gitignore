@@ -38,6 +38,7 @@ coverage/
 
 # Scratch & temporary
 scratch/
+release-assets/
 
 # Runtime state & vault storage
 *.vault
