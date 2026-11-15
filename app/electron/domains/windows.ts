@@ -89,7 +89,9 @@ export class WindowCoordinator {
 
     this.controlWin.loadURL(this.getRendererUrl('control'));
     this.controlWin.once('ready-to-show', () => {
+      console.log('[CONTROL_READY] Showing floating control bar');
       this.controlWin?.show();
+      this.controlWin?.focus();
       stateManager.patchState({ isControlWindowLoaded: true });
     });
 
@@ -156,7 +158,9 @@ export class WindowCoordinator {
 
     this.chatWin.loadURL(this.getRendererUrl('chat'));
     this.chatWin.once('ready-to-show', () => {
+      console.log('[CHAT_READY] Showing chat panel');
       this.chatWin?.show();
+      this.chatWin?.focus();
       stateManager.patchState({ isChatWindowLoaded: true });
     });
 
@@ -218,7 +222,9 @@ export class WindowCoordinator {
 
     this.dashboardWin.loadURL(this.getRendererUrl(`dashboard${tab ? `?tab=${tab}` : ''}`));
     this.dashboardWin.once('ready-to-show', () => {
+      console.log('[DASHBOARD_READY] Showing dashboard window');
       this.dashboardWin?.show();
+      this.dashboardWin?.focus();
       stateManager.patchState({ isDashboardWindowLoaded: true, showDashboard: true });
     });
 

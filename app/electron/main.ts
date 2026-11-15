@@ -121,6 +121,10 @@ if (!gotSingleInstanceLock) {
     windowCoordinator.init();
     shortcutManager.init();
 
+    if (process.env.SMOKE_TEST !== 'true') {
+      windowCoordinator.openDashboardWindow('models');
+    }
+
     // Reload encrypted state once secure storage subsystem is available, and actively migrate legacy plaintext sessions
     try {
       stateManager.reloadFromDisk();
