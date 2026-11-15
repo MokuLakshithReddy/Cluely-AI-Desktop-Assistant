@@ -107,6 +107,17 @@ export class WindowCoordinator {
       }
     });
 
+    this.controlWin.on('move', () => {
+      if (this.isSynchronizingWindows) return;
+      if (this.controlWin && !this.controlWin.isDestroyed() && this.chatWin && !this.chatWin.isDestroyed()) {
+        const bounds = this.controlWin.getBounds();
+        const chatBounds = this.chatWin.getBounds();
+        const chatX = Math.round(bounds.x + (bounds.width - chatBounds.width) / 2);
+        const chatY = bounds.y + bounds.height + 8;
+        this.chatWin.setPosition(chatX, chatY);
+      }
+    });
+
     this.updateStealthMode(stateManager.getState().isStealthMode);
 
     return this.controlWin;
@@ -250,19 +261,26 @@ export class WindowCoordinator {
     }
   }
 
+  private isSynchronizingWindows = false;
+
   public moveControlWindow(delta: { x: number; y: number }) {
     if (!this.controlWin || this.controlWin.isDestroyed()) return;
-    const bounds = this.controlWin.getBounds();
-    const newX = bounds.x + delta.x;
-    const newY = bounds.y + delta.y;
-    this.controlWin.setPosition(newX, newY);
+    this.isSynchronizingWindows = true;
+    try {
+      const bounds = this.controlWin.getBounds();
+      const newX = bounds.x + delta.x;
+      const newY = bounds.y + delta.y;
+      this.controlWin.setPosition(newX, newY);
 
-    // Synchronize chat window position
-    if (this.chatWin && !this.chatWin.isDestroyed()) {
-      const chatBounds = this.chatWin.getBounds();
-      const chatX = Math.round(newX + (bounds.width - chatBounds.width) / 2);
-      const chatY = newY + bounds.height + 8;
-      this.chatWin.setPosition(chatX, chatY);
+      // Synchronize chat window position
+      if (this.chatWin && !this.chatWin.isDestroyed()) {
+        const chatBounds = this.chatWin.getBounds();
+        const chatX = Math.round(newX + (bounds.width - chatBounds.width) / 2);
+        const chatY = newY + bounds.height + 8;
+        this.chatWin.setPosition(chatX, chatY);
+      }
+    } finally {
+      this.isSynchronizingWindows = false;
     }
   }
 

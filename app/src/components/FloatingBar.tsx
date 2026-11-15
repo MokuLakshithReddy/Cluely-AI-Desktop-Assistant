@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { SharedState, AssistantMode } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
+import { useDraggableWindow } from '../hooks/useDraggableWindow';
 
 interface FloatingBarProps {
   state: SharedState;
@@ -31,6 +32,7 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
   isGenerating,
 }) => {
   const [showConsentModal, setShowConsentModal] = React.useState(false);
+  const { handleMouseDown } = useDraggableWindow();
 
   const toggleRecording = () => {
     if (!state.isRecording) {
@@ -89,7 +91,10 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
     : state.captureWarning || 'Start Listening to request microphone and system-audio capture.';
 
   return (
-    <div className="flex items-center justify-between w-full h-[50px] px-3 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-full shadow-2xl text-slate-200 select-none overflow-hidden box-border">
+    <div
+      onMouseDown={handleMouseDown}
+      className="drag-region flex items-center justify-between w-full h-[50px] px-3 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-full shadow-2xl text-slate-200 select-none overflow-hidden box-border cursor-grab active:cursor-grabbing"
+    >
       {showConsentModal ? (
         <div className="flex items-center justify-between w-full h-full px-1 text-xs animate-in fade-in">
           <div className="flex items-center gap-1.5 text-cyan-300 font-medium truncate">
