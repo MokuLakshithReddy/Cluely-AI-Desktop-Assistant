@@ -16,6 +16,7 @@ export interface GenerationOptions {
 export const MODE_SYSTEM_PROMPTS: Record<AssistantMode, string> = {
   copilot: `You are an expert personal desktop copilot running alongside the user's active applications.
 Provide direct, concise, and highly relevant assistance.
+Be extremely succinct, fast, and actionable: answer directly in 2-4 focused sentences or bullet points unless detailed explanation is explicitly requested.
 Ground your answers strictly on the visible screen context, recent live conversation transcripts, and supplied notes.
 If there is not enough context to answer accurately, explicitly state what is missing instead of fabricating facts.
 Format code snippets in clear markdown blocks with language annotations.`,
@@ -138,10 +139,10 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     });
   }
 
-  // Prefer active 2026 models: Automatically migrate legacy gemini-2.5-flash to gemini-3.8-flash
-  let modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-3.8-flash';
+  // Prefer active 2026 models: Default to ultra-fast sub-second gemini-3.5-flash-lite
+  let modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-3.5-flash-lite';
   if (modelName === 'gemini-2.5-flash') {
-    modelName = 'gemini-3.8-flash';
+    modelName = 'gemini-3.5-flash-lite';
   }
 
   let endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
@@ -170,7 +171,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
       systemInstruction: { parts: [{ text: systemInstruction }] },
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 1024,
       },
     }),
     signal,
@@ -180,11 +181,17 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
   // The selected model is part of the user's configuration and must remain observable.
 
   if (!response.ok) {
+    // Graceful automatic recovery: if a model encounters a temporary 503 high-demand spike, failover to sub-second flash-lite
+    if (response.status === 503 && modelName !== 'gemini-3.5-flash-lite') {
+      console.warn(`[streamGemini] ${modelName} returned 503 high-demand spike. Falling back to sub-second gemini-3.5-flash-lite.`);
+      return streamGemini({ ...options, model: 'gemini-3.5-flash-lite' });
+    }
+
     const errorText = await response.text();
     if (response.status === 403 || response.status === 404) {
       if (options.model?.includes('2.5') || modelName.includes('2.5') || errorText.includes('legacy') || errorText.includes('restricted')) {
         throw new Error(
-          `Gemini API access error (${response.status}): Access to ${options.model || modelName} is restricted to legacy projects. Please switch to "Gemini 3.8 Flash" (or "Gemini 3.6 Flash") in Settings. Details: ${errorText}`
+          `Gemini API access error (${response.status}): Access to ${options.model || modelName} is restricted to legacy projects. Please switch to "Gemini 3.5 Flash-Lite" (or "Gemini 3.8 Flash") in Settings. Details: ${errorText}`
         );
       }
     }

@@ -379,9 +379,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                   onChange={e => patchState({ activeModel: e.target.value as any })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-cyan-500"
                 >
-                  <option value="gemini-3.8-flash">Google Gemini 3.8 Flash (Flagship 2026 Multimodal - Recommended)</option>
+                  <option value="gemini-3.5-flash-lite">Google Gemini 3.5 Flash-Lite (Sub-second &lt;1s Latency - Recommended)</option>
                   <option value="gemini-3.6-flash">Google Gemini 3.6 Flash (Fast Multimodal)</option>
-                  <option value="gemini-3.5-flash-lite">Google Gemini 3.5 Flash-Lite (Low Latency / High Volume)</option>
+                  <option value="gemini-3.8-flash">Google Gemini 3.8 Flash (Deep Multimodal)</option>
                   <option value="gemini-3.1-pro-preview">Google Gemini 3.1 Pro Preview (Deep Complex Reasoning)</option>
                   <option value="gpt-4o">OpenAI GPT-4o (Multimodal Vision)</option>
                   <option value="gpt-4o-mini">OpenAI GPT-4o Mini (Fast & Cost Efficient)</option>

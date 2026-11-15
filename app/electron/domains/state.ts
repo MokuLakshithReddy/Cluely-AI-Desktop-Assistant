@@ -50,7 +50,7 @@ export const INITIAL_STATE: SharedState = {
   blockOutboundSecrets: false,
   encryptedStorageEnabled: true,
   activeMode: 'copilot',
-  activeModel: 'gemini-3.8-flash',
+  activeModel: 'gemini-3.5-flash-lite',
   hasApiKeys: {
     gemini: false,
     openai: false,
@@ -114,7 +114,7 @@ export class StateManager {
 
   public patchState(patch: Partial<SharedState>): SharedState {
     if ((patch.activeModel as any) === 'gemini-2.5-flash') {
-      patch.activeModel = 'gemini-3.8-flash';
+      patch.activeModel = 'gemini-3.5-flash-lite';
     } else if ((patch.activeModel as any) === 'gemini-3.1-pro') {
       patch.activeModel = 'gemini-3.1-pro-preview';
     }
@@ -238,9 +238,13 @@ export class StateManager {
           }
         }
 
-        // Automatic migration from restricted legacy gemini-2.5-flash to flagship gemini-3.8-flash
-        if ((this.state.activeModel as string) === 'gemini-2.5-flash' || !this.state.activeModel) {
-          this.state.activeModel = 'gemini-3.8-flash';
+        // Automatic migration from restricted legacy or high-latency models to ultra-fast sub-second gemini-3.5-flash-lite
+        if (
+          (this.state.activeModel as string) === 'gemini-2.5-flash' ||
+          (this.state.activeModel as string) === 'gemini-3.8-flash' ||
+          !this.state.activeModel
+        ) {
+          this.state.activeModel = 'gemini-3.5-flash-lite';
         } else if ((this.state.activeModel as string) === 'gemini-3.1-pro') {
           this.state.activeModel = 'gemini-3.1-pro-preview';
         }

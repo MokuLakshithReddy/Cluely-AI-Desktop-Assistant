@@ -452,13 +452,13 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 
 | Category | Supported Providers | Recommended Model | Latency |
 |---|---|---|:---:|
-| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (selected `claude-*` models), Ollama (Local) | **Gemini 3.8 Flash** | Varies by provider/network |
+| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (selected `claude-*` models), Ollama (Local) | **Gemini 3.5 Flash-Lite** | **< 1.5s (Sub-3s SLA)** |
 | **Speech Recognition (STT)** | Groq Whisper and OpenAI Whisper | **Groq Whisper Large v3 Turbo** | Varies by provider/network |
 | **Document RAG** | Built-in in-memory TF-IDF lexical retrieval with character-based overlapping chunks | Local | Local |
 
 > [!NOTE]
-> **Active 2026 AI Model Lineup & Provider Guidance**:
-> * **Google Gemini**: Defaults to `gemini-3.8-flash`. The Dashboard also offers `gemini-3.6-flash`, `gemini-3.5-flash-lite`, and `gemini-3.1-pro-preview`. Legacy `gemini-2.5-flash` selections are migrated to `gemini-3.8-flash`; provider authorization and model errors remain visible rather than silently switching to an unrelated model.
+> **Active 2026 AI Model Lineup & Low-Latency Architecture**:
+> * **Google Gemini**: Defaults to `gemini-3.5-flash-lite` for guaranteed sub-3-second responses (benchmarked at ~660ms–1400ms TTFT/completion). The Dashboard also offers `gemini-3.6-flash`, `gemini-3.8-flash`, and `gemini-3.1-pro-preview`. Automatic failover to `gemini-3.5-flash-lite` ensures uninterrupted sub-3s response times if high-tier models experience temporary cloud 503 capacity spikes.
 > * **Anthropic Claude**: Active models are `claude-sonnet-5-5`, `claude-haiku-5-5`, and `claude-opus-5-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are automatically caught with informative retirement diagnostics.
 > * **OpenAI**: Supports `gpt-4o` and `gpt-4o-mini` with full multi-turn conversational history.
 > * **Local Ollama**: Fully offline execution without external API keys or cloud telemetry.

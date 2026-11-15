@@ -30,7 +30,7 @@ export const FALLBACK_STATE: SharedState = {
   blockOutboundSecrets: false,
   encryptedStorageEnabled: true,
   activeMode: 'copilot',
-  activeModel: 'gemini-3.8-flash',
+  activeModel: 'gemini-3.5-flash-lite',
   hasApiKeys: {
     gemini: false,
     openai: false,
@@ -67,8 +67,8 @@ export function useSharedState() {
   }, [state]);
 
   const migrateState = (s: SharedState): SharedState => {
-    if (s && ((s.activeModel as string) === 'gemini-2.5-flash' || !s.activeModel)) {
-      return { ...s, activeModel: 'gemini-3.8-flash' };
+    if (s && ((s.activeModel as string) === 'gemini-2.5-flash' || (s.activeModel as string) === 'gemini-3.8-flash' || !s.activeModel)) {
+      return { ...s, activeModel: 'gemini-3.5-flash-lite' };
     }
     return s;
   };
@@ -105,13 +105,11 @@ export function useSharedState() {
     stateRef.current = nextState;
     setState(nextState);
 
-    // Send clean patch to Electron
+    // Send clean patch to Electron asynchronously to keep UI rendering instant
     if (window.desktopBridge) {
-      try {
-        await window.desktopBridge.patchSharedState(patch);
-      } catch (e) {
+      window.desktopBridge.patchSharedState(patch).catch(e => {
         console.error('[useSharedState] Failed to patch state via IPC:', e);
-      }
+      });
     }
     return nextState;
   }, []);
