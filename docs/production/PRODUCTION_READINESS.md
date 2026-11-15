@@ -1,7 +1,7 @@
 # Production Readiness Assessment
 
-**Assessment date:** 2026-11-08 (Asia/Kolkata)  
-**Audited source revision:** [`a9e2ceced6783ebb083bb003a565881c9a38e417`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/a9e2ceced6783ebb083bb003a565881c9a38e417)  
+**Assessment date:** 2026-11-15 (Asia/Kolkata)  
+**Audited source revision:** [`6e18019b142803b7ce85cb59310dd1b3a7d6a6cf`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/6e18019b142803b7ce85cb59310dd1b3a7d6a6cf)  
 **Baseline CI evidence:** [CI Verification Suite — run 43682643059](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43682643059)
 
 ## Status
@@ -16,7 +16,7 @@ This assessment is scoped to the exact source revision and CI run above. Re-run 
 |---|---|---|
 | Dependency installation and audit | Clean `npm ci`; `npm audit --audit-level=high` | The gate passed. Six moderate paths remain for one documented build-tooling advisory; this is not a clean `npm audit` result. |
 | TypeScript and lint | CI `npm run lint` | Static checks only |
-| Unit and integration tests | 124 Vitest tests across 16 test files | Includes synthetic inputs, fixtures, and mocks |
+| Unit and integration tests | 191 Vitest tests across 18 test files | Includes synthetic inputs, fixtures, and mocks |
 | Electron UI/IPC smoke | Dashboard, preload bridge, IPC, persistence, purge, and clean shutdown | Does not use physical capture hardware or live customer provider credentials |
 | Windows packaged-app smoke | Native Windows package job | Launches the portable executable and checks packaged renderer/preload/IPC readiness and controlled shutdown |
 | macOS packaged-app smoke | Native macOS package job | Mounts the DMG, extracts and launches the app bundle, and checks controlled shutdown |

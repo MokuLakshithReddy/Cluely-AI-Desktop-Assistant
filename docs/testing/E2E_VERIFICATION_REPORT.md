@@ -1,6 +1,6 @@
 # End-to-End and Integration Verification Report
 
-**Evidence revision:** [`6e18019ba22f87a858509e5bca1b5826f4fcae95`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/6e18019ba22f87a858509e5bca1b5826f4fcae95)  
+**Evidence revision:** [`6e18019b142803b7ce85cb59310dd1b3a7d6a6cf`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/6e18019b142803b7ce85cb59310dd1b3a7d6a6cf)  
 **Verification workflow:** [CI run 43682643059](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43682643059)
 
 ## Executive summary
