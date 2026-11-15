@@ -126,6 +126,42 @@ describe('State persistence error reporting', () => {
     expect(decrypted.showChat).toBe(true);
   });
 
+  it('purges sensitive in-memory state and records persistence error when legacy migration fails', () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-failclosed-'));
+    const stateFile = path.join(directory, 'state.json');
+
+    const legacyPlaintext = JSON.stringify({
+      showChat: true,
+      activeMode: 'interview',
+      secretKey: 'sensitive-unencrypted-token',
+    });
+    fs.writeFileSync(stateFile, legacyPlaintext, 'utf8');
+
+    // Simulate disk failure during the save(true) migration re-write
+    const originalWriteFileSync = fs.writeFileSync;
+    let writeCount = 0;
+    const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(((targetPath: any, data: any, options: any) => {
+      writeCount++;
+      if (writeCount > 0 && typeof targetPath === 'string' && targetPath.includes('state.json')) {
+        throw new Error('EACCES: permission denied writing encrypted state');
+      }
+      return originalWriteFileSync(targetPath, data, options);
+    }) as any);
+
+    try {
+      const manager = new StateManager(stateFile, false);
+      const state = manager.getState();
+
+      // Verify fail-closed behavior:
+      // In-memory state was purged to INITIAL_STATE, persistence error is surfaced, and plaintext values were NOT retained
+      expect(state.persistenceError).toMatch(/Fail-closed: Migration of legacy plaintext state to encrypted storage failed/);
+      expect((state as any).secretKey).toBeUndefined();
+      expect(state.activeMode).toBe('copilot'); // Reset to INITIAL_STATE default
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
   it('suppresses active session and knowledge documents from disk when enterpriseMode is active', () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-enterprise-'));
     const stateFile = path.join(directory, 'state.json');

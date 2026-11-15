@@ -79,7 +79,11 @@ export class StateManager {
   private saveTimeout: NodeJS.Timeout | null = null;
 
   constructor(private readonly stateFileOverride?: string, syncVaultOnStart: boolean = true) {
-    this.load();
+    try {
+      this.load();
+    } catch (e) {
+      // Caught in constructor so instance is created, but state is guaranteed purged to INITIAL_STATE with persistenceError
+    }
     if (syncVaultOnStart) this.syncVaultKeys();
   }
 
@@ -225,6 +229,11 @@ export class StateManager {
             console.log('[StateManager] Migrated legacy plaintext state file to AES-256-GCM encrypted storage.');
           } catch (migErr) {
             console.error('[StateManager] Failed to encrypt legacy state file on disk:', migErr);
+            // FAIL-CLOSED: Immediately purge sensitive in-memory state
+            this.state = {
+              ...INITIAL_STATE,
+              persistenceError: 'Fail-closed: Migration of legacy plaintext state to encrypted storage failed. In-memory state purged.',
+            };
             throw new Error('[StateManager] Fail-closed: Migration of legacy plaintext state to encrypted storage failed.');
           }
         }
@@ -249,15 +258,24 @@ export class StateManager {
           }
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('[StateManager] Failed to load state:', e);
+      // FAIL-CLOSED: Reset sensitive in-memory state if loading/migration fails
+      this.state = {
+        ...INITIAL_STATE,
+        persistenceError: `Fail-closed: State load or migration failed (${e?.message || e}). In-memory state purged.`,
+      };
+      throw e;
     }
   }
 
   /** Reload state from disk once OS secure storage subsystem is available. */
   public reloadFromDisk(): void {
-    this.load();
-    this.notify();
+    try {
+      this.load();
+    } finally {
+      this.notify();
+    }
   }
 
   private save(throwOnError: boolean = false) {

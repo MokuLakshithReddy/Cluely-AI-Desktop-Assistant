@@ -66,8 +66,36 @@ export interface SessionSummary {
 export class SessionRepository {
   private static readonly SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
   private encryptionKey?: Buffer;
+  private isLocked: boolean = false;
+  private lockReason: string | null = null;
 
   constructor(private readonly storageDirOverride?: string) {}
+
+  public isRepositoryLocked(): boolean {
+    return this.isLocked;
+  }
+
+  public getLockReason(): string | null {
+    return this.lockReason;
+  }
+
+  public lock(reason: string): void {
+    this.isLocked = true;
+    this.lockReason = reason;
+  }
+
+  public unlock(): void {
+    this.isLocked = false;
+    this.lockReason = null;
+  }
+
+  private assertNotLocked(): void {
+    if (this.isLocked) {
+      throw new Error(
+        `[SessionRepository] Fail-closed: Session repository is locked due to migration failure (${this.lockReason || 'Plaintext legacy sessions cannot be secured'}). Access prohibited.`
+      );
+    }
+  }
 
   public setEncryptionKey(key?: Buffer): void {
     this.encryptionKey = key;
@@ -137,6 +165,7 @@ export class SessionRepository {
   }
 
   public async saveSession(session: SessionRecord): Promise<void> {
+    this.assertNotLocked();
     if (!session || !session.id) {
       throw new Error('[SessionRepository] Invalid session record: Missing session ID');
     }
@@ -170,6 +199,7 @@ export class SessionRepository {
   }
 
   public async getSession(id: string): Promise<SessionRecord | null> {
+    this.assertNotLocked();
     if (!id) return null;
     let filePath: string;
     try {
@@ -183,7 +213,7 @@ export class SessionRepository {
       const decrypted = decryptLocalSession(raw, this.encryptionKey);
 
       // Mandatory migration: re-encrypt legacy plaintext JSON files on access.
-      // FAIL-CLOSED: If migration write fails, do not return unmigrated data.
+      // FAIL-CLOSED: If migration write fails, do not return unmigrated data and lock repository.
       if (!raw.startsWith('enc:v1:')) {
         try {
           fs.writeFileSync(filePath, encryptLocalSession(decrypted, this.encryptionKey), { encoding: 'utf8', mode: 0o600 });
@@ -191,6 +221,7 @@ export class SessionRepository {
             fs.chmodSync(filePath, 0o600);
           }
         } catch (migErr) {
+          this.lock(`Migration of legacy plaintext session "${id}" to encrypted format failed`);
           console.error(`[SessionRepository] Failed to migrate legacy session ${id} to encrypted format:`, migErr);
           throw new Error(`[SessionRepository] Fail-closed: Migration of legacy plaintext session "${id}" to encrypted storage failed.`);
         }
@@ -198,12 +229,16 @@ export class SessionRepository {
 
       return JSON.parse(decrypted);
     } catch (e) {
+      if (this.isLocked) {
+        throw e;
+      }
       console.error(`[SessionRepository] Failed to read session ${id}:`, e);
       return null;
     }
   }
 
   public async listSessions(): Promise<SessionSummary[]> {
+    this.assertNotLocked();
     const dir = this.getStorageDir();
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
     const summaries: SessionSummary[] = [];
@@ -215,7 +250,7 @@ export class SessionRepository {
         const decrypted = decryptLocalSession(raw, this.encryptionKey);
 
         // Mandatory migration: re-encrypt legacy plaintext JSON files when listed.
-        // FAIL-CLOSED: If migration write fails, do not include unmigrated plaintext archive.
+        // FAIL-CLOSED: If migration write fails, lock repository and fail closed.
         if (!raw.startsWith('enc:v1:')) {
           try {
             fs.writeFileSync(fullPath, encryptLocalSession(decrypted, this.encryptionKey), { encoding: 'utf8', mode: 0o600 });
@@ -223,6 +258,7 @@ export class SessionRepository {
               fs.chmodSync(fullPath, 0o600);
             }
           } catch (migErr) {
+            this.lock(`Migration of legacy plaintext session file "${file}" to encrypted format failed`);
             console.error(`[SessionRepository] Failed to migrate legacy session file ${file} to encrypted format:`, migErr);
             throw new Error(`[SessionRepository] Fail-closed: Migration of legacy plaintext session file "${file}" to encrypted storage failed.`);
           }
@@ -240,6 +276,9 @@ export class SessionRepository {
           messageCount: s.messages?.length || 0,
         });
       } catch (e) {
+        if (this.isLocked) {
+          throw e;
+        }
         console.warn(`[SessionRepository] Skipping unreadable file ${file}:`, e);
       }
     }
@@ -250,6 +289,7 @@ export class SessionRepository {
   }
 
   public async deleteSession(id: string): Promise<boolean> {
+    this.assertNotLocked();
     if (!id) return false;
     let filePath: string;
     try {
@@ -289,6 +329,7 @@ export class SessionRepository {
    * into authenticated AES-256-GCM encrypted format. Fails closed if write fails.
    */
   public async migrateAllLegacySessions(): Promise<{ total: number; migrated: number }> {
+    this.assertNotLocked();
     const dir = this.getStorageDir();
     if (!fs.existsSync(dir)) return { total: 0, migrated: 0 };
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
@@ -307,6 +348,7 @@ export class SessionRepository {
           migrated++;
         }
       } catch (err) {
+        this.lock(`Active migration of legacy session archive "${file}" failed: ${err instanceof Error ? err.message : String(err)}`);
         console.error(`[SessionRepository] Active migration failed for session file "${file}":`, err);
         throw new Error(`[SessionRepository] Fail-closed: Startup migration of legacy plaintext session archive "${file}" failed.`);
       }

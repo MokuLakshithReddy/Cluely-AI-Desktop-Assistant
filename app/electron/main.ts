@@ -115,7 +115,7 @@ if (!gotSingleInstanceLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     ipcRouter.init();
     shortcutManager.setEmergencyStopHandler(() => ipcRouter.emergencyStop());
     windowCoordinator.init();
@@ -124,11 +124,13 @@ if (!gotSingleInstanceLock) {
     // Reload encrypted state once secure storage subsystem is available, and actively migrate legacy plaintext sessions
     try {
       stateManager.reloadFromDisk();
-      void sessionRepository.migrateAllLegacySessions().catch(err => {
-        console.warn('[Startup] Legacy session migration warning:', err?.message || err);
+      await sessionRepository.migrateAllLegacySessions();
+    } catch (migErr: any) {
+      console.error('[Startup] Critical migration failure:', migErr);
+      sessionRepository.lock(migErr?.message || 'Startup migration failure');
+      stateManager.patchState({
+        persistenceError: `Critical: Local storage migration failed (${migErr?.message || migErr}). In-memory state purged and session repository locked.`,
       });
-    } catch (migErr) {
-      console.warn('[Startup] State migration check warning:', migErr);
     }
 
     if (process.env.SMOKE_TEST_MODE === 'packaged') {

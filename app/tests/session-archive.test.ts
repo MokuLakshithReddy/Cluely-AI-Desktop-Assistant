@@ -279,5 +279,85 @@ describe('Multi-Session Archive & Persistence Subsystem', () => {
       /Session exceeds maximum aggregate size limit of 5MB/
     );
   });
+
+  it('locks repository and rejects access if migrateAllLegacySessions fails to encrypt legacy archives', async () => {
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+    const legacyPath = path.join(testDir, 'sess_unmigrated.json');
+    fs.writeFileSync(legacyPath, JSON.stringify({
+      id: 'sess_unmigrated',
+      title: 'Unencrypted Session',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      transcript: [],
+      messages: [],
+    }), 'utf8');
+
+    // Simulate disk write failure during active migration
+    const originalWriteFileSync = fs.writeFileSync;
+    const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(((targetPath: any, data: any, options: any) => {
+      if (typeof targetPath === 'string' && targetPath.includes('sess_unmigrated.json')) {
+        throw new Error('EACCES: permission denied rewriting archive');
+      }
+      return originalWriteFileSync(targetPath, data, options);
+    }) as any);
+
+    try {
+      await expect(repo.migrateAllLegacySessions()).rejects.toThrow(
+        /Fail-closed: Startup migration of legacy plaintext session archive/
+      );
+
+      // Verify repository is permanently locked
+      expect(repo.isRepositoryLocked()).toBe(true);
+
+      // All session access must be rejected under fail-closed policy
+      await expect(repo.getSession('sess_unmigrated')).rejects.toThrow(/Session repository is locked/);
+      await expect(repo.listSessions()).rejects.toThrow(/Session repository is locked/);
+      await expect(repo.saveSession({
+        id: 'sess_new',
+        title: 'New Session',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        durationSeconds: 10,
+        mode: 'copilot',
+        audioInputLanguage: 'en',
+        transcript: [],
+        messages: [],
+      })).rejects.toThrow(/Session repository is locked/);
+      await expect(repo.deleteSession('sess_unmigrated')).rejects.toThrow(/Session repository is locked/);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('locks repository and fails closed if getSession encounters a migration re-write error', async () => {
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+    const legacyPath = path.join(testDir, 'sess_on_demand.json');
+    fs.writeFileSync(legacyPath, JSON.stringify({
+      id: 'sess_on_demand',
+      title: 'On Demand Plaintext',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      transcript: [],
+      messages: [],
+    }), 'utf8');
+
+    const originalWriteFileSync = fs.writeFileSync;
+    const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(((targetPath: any, data: any, options: any) => {
+      if (typeof targetPath === 'string' && targetPath.includes('sess_on_demand.json')) {
+        throw new Error('EROFS: read-only filesystem');
+      }
+      return originalWriteFileSync(targetPath, data, options);
+    }) as any);
+
+    try {
+      await expect(repo.getSession('sess_on_demand')).rejects.toThrow(
+        /Fail-closed: Migration of legacy plaintext session "sess_on_demand" to encrypted storage failed/
+      );
+      expect(repo.isRepositoryLocked()).toBe(true);
+      await expect(repo.listSessions()).rejects.toThrow(/Session repository is locked/);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
 });
 

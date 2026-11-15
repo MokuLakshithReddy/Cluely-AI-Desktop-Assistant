@@ -615,8 +615,10 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
           throw new Error('EACCES: permission denied');
         });
 
-        const failedSession = await repo.getSession('sess_readonly_legacy');
-        expect(failedSession).toBeNull();
+        await expect(repo.getSession('sess_readonly_legacy')).rejects.toThrow(
+          /Fail-closed: Migration of legacy plaintext session "sess_readonly_legacy" to encrypted storage failed/
+        );
+        expect(repo.isRepositoryLocked()).toBe(true);
 
         writeSpy.mockRestore();
       } finally {
@@ -804,8 +806,36 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
       expect(stateManager.getState().systemAudioActive).toBe(false);
     });
 
+    it('blocks cloud screenshot transmission fail-closed when redactSensitiveData is active', async () => {
+      stateManager.patchState({ redactSensitiveData: true, blockOutboundSecrets: false });
+
+      const fakeWebContents = {
+        send: vi.fn(),
+      };
+      const fakeEvent = {
+        sender: fakeWebContents,
+        senderFrame: { url: `file://${trustedHtml}` },
+      };
+
+      const handleAiStream = (router as any).handlers?.get?.('ai-stream-request');
+      if (handleAiStream) {
+        await expect(
+          handleAiStream(fakeEvent, {
+            providerName: 'openai',
+            model: 'gpt-4o-mini',
+            mode: 'copilot',
+            query: 'Analyze this screen',
+            screenshotBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+            recentTranscript: [],
+            knowledgePassages: [],
+            conversationHistory: [],
+          })
+        ).rejects.toThrow(/Cloud screenshot transmission blocked: Sensitive-Content Redaction is enabled/);
+      }
+    });
+
     it('blocks unredacted screenshots to external cloud providers when blockOutboundSecrets is active', async () => {
-      stateManager.patchState({ blockOutboundSecrets: true });
+      stateManager.patchState({ redactSensitiveData: false, blockOutboundSecrets: true });
 
       const fakeWebContents = {
         send: vi.fn(),
@@ -831,7 +861,37 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
         ).rejects.toThrow(/Transmitting unredacted desktop screen captures to cloud AI provider "openai" is prohibited/);
       }
 
-      stateManager.patchState({ blockOutboundSecrets: false });
+      stateManager.patchState({ redactSensitiveData: true, blockOutboundSecrets: false });
+    });
+
+    it('permits local screenshot processing on-device when provider is local ollama', async () => {
+      stateManager.patchState({ redactSensitiveData: true, blockOutboundSecrets: true });
+
+      const fakeWebContents = {
+        send: vi.fn(),
+      };
+      const fakeEvent = {
+        sender: fakeWebContents,
+        senderFrame: { url: `file://${trustedHtml}` },
+      };
+
+      const handleAiStream = (router as any).handlers?.get?.('ai-stream-request');
+      if (handleAiStream) {
+        await expect(
+          handleAiStream(fakeEvent, {
+            providerName: 'ollama',
+            model: 'ollama:llama3',
+            mode: 'copilot',
+            query: 'Analyze local screen',
+            screenshotBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+            recentTranscript: [],
+            knowledgePassages: [],
+            conversationHistory: [],
+          })
+        ).rejects.not.toThrow(/Outbound Security Guard/);
+      }
+
+      stateManager.patchState({ redactSensitiveData: true, blockOutboundSecrets: false });
     });
   });
 });

@@ -934,37 +934,33 @@ export class IpcRouter {
 
         if (currentState.redactSensitiveData || currentState.blockOutboundSecrets) {
           // Strict Outbound Redaction: when redactSensitiveData is active and transmitting to cloud AI,
-          // visually redact sensitive screen coordinates before transmitting image payload.
-          // FAIL-CLOSED: If redaction fails or cannot be verified, never transmit the original unredacted screenshot.
-          if (currentState.redactSensitiveData && screenshotBase64 && providerName !== 'ollama') {
-            let redactionConfirmed = false;
+          // fail closed because pixel-level OCR cannot yet verify arbitrary workspace regions across the screen.
+          // Transmitting desktop screenshots to external cloud AI providers is strictly blocked under fail-closed policy.
+          if (screenshotBase64 && providerName !== 'ollama') {
+            if (currentState.redactSensitiveData) {
+              throw new Error(
+                `[Outbound Security Guard] Cloud screenshot transmission blocked: Sensitive-Content Redaction is enabled. Because pixel-level OCR cannot yet verify arbitrary workspace regions on screen, transmitting desktop captures to cloud provider "${providerName}" is prohibited under fail-closed privacy policy. Switch to Local Ollama for offline screen analysis or disable screenshot attachment.`
+              );
+            }
+            if (currentState.blockOutboundSecrets) {
+              throw new Error(
+                `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
+              );
+            }
+          }
+
+          // For on-device local inference (Ollama), perform local screen band masking
+          if (currentState.redactSensitiveData && screenshotBase64 && providerName === 'ollama') {
             try {
               const base64Data = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
               const imgBuf = Buffer.from(base64Data, 'base64');
               const { sanitizedBuffer, isRedacted } = await sanitizeScreenshot(imgBuf);
               if (isRedacted && sanitizedBuffer && sanitizedBuffer.length > 0) {
                 cleanScreenshot = `data:image/png;base64,${sanitizedBuffer.toString('base64')}`;
-                redactionConfirmed = true;
               }
             } catch (err) {
-              console.warn('[IpcRouter] Failed to visually redact screenshot:', err);
+              console.warn('[IpcRouter] Failed to visually redact local screenshot for Ollama:', err);
             }
-
-            // FAIL CLOSED: If visual redaction could not be confirmed, drop unredacted screenshot.
-            // If blockOutboundSecrets is enabled, block the request entirely.
-            if (!redactionConfirmed) {
-              cleanScreenshot = undefined;
-              if (currentState.blockOutboundSecrets) {
-                throw new Error(
-                  `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
-                );
-              }
-            }
-          } else if (!currentState.redactSensitiveData && currentState.blockOutboundSecrets && screenshotBase64 && providerName !== 'ollama') {
-            // Outbound Secret Guard: unredacted screenshot transmission to cloud AI is prohibited
-            throw new Error(
-              `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
-            );
           }
 
           const inspection = inspectAndSanitizeOutboundPayload(
