@@ -121,7 +121,14 @@ function requestShutdown() {
   }
   shutdownTimeout = setTimeout(() => {
     console.error('Packaged app did not shut down within 15 seconds.');
-    try { child.kill(); } catch {}
+    try {
+      if (process.platform === 'win32') {
+        child.kill();
+      } else {
+        child.kill('SIGKILL');
+      }
+    } catch {}
+    setTimeout(() => { process.exit(1); }, 1500);
   }, 15000);
 }
 
@@ -160,7 +167,14 @@ applySmokeStatus();
 const readinessTimeout = setTimeout(() => {
   console.error('Timed out waiting for packaged renderer/preload/IPC readiness after 60 seconds.');
   packagedFailed = true;
-  try { child.kill(); } catch {}
+  try {
+    if (process.platform === 'win32') {
+      child.kill();
+    } else {
+      child.kill('SIGKILL');
+    }
+  } catch {}
+  setTimeout(() => { process.exit(1); }, 1500);
 }, 60000);
 
 child.on('close', (code, signal) => {

@@ -5,6 +5,7 @@ import { windowCoordinator } from './domains/windows';
 import { shortcutManager } from './domains/shortcuts';
 import { ipcRouter } from './domains/ipc-router';
 import { stateManager } from './domains/state';
+import { sessionRepository } from './services/session-repository';
 
 let isQuitting = false;
 
@@ -53,7 +54,7 @@ async function waitForPackagedWindowBridge(
     try {
       const result = await win.webContents.executeJavaScript(`(async () => {
         const bridge = window.desktopBridge;
-        if (document.readyState !== 'complete' || !bridge ||
+        if (document.readyState === 'loading' || !bridge ||
             typeof bridge.getSharedState !== 'function') return null;
         const state = await bridge.getSharedState();
         const route = window.location.hash.replace(/^#\\/?/, '').split('?')[0];
@@ -111,6 +112,16 @@ if (!gotSingleInstanceLock) {
     shortcutManager.setEmergencyStopHandler(() => ipcRouter.emergencyStop());
     windowCoordinator.init();
     shortcutManager.init();
+
+    // Reload encrypted state once secure storage subsystem is available, and actively migrate legacy plaintext sessions
+    try {
+      stateManager.reloadFromDisk();
+      void sessionRepository.migrateAllLegacySessions().catch(err => {
+        console.warn('[Startup] Legacy session migration warning:', err?.message || err);
+      });
+    } catch (migErr) {
+      console.warn('[Startup] State migration check warning:', migErr);
+    }
 
     if (process.env.SMOKE_TEST_MODE === 'packaged') {
       writePackagedSmokeStatus({ appReady: true });

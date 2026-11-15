@@ -73,6 +73,7 @@ export class WindowCoordinator {
         nodeIntegration: false,
         sandbox: true,
         webSecurity: true,
+        backgroundThrottling: false,
       },
     });
 
@@ -139,6 +140,7 @@ export class WindowCoordinator {
         nodeIntegration: false,
         sandbox: true,
         webSecurity: true,
+        backgroundThrottling: false,
       },
     });
 
@@ -208,6 +210,7 @@ export class WindowCoordinator {
         nodeIntegration: false,
         sandbox: true,
         webSecurity: true,
+        backgroundThrottling: false,
       },
     });
 

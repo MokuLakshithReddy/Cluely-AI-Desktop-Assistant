@@ -48,6 +48,188 @@ export const PATTERN_MFA_CODE = /\b(?:mfa|otp|2fa|verification[ _-]?code)\s*(?:[
 // 7. Email Addresses
 export const PATTERN_EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b/g;
 
+/**
+ * Mathematical Paeth predictor for PNG scanlines (RFC 2083 / W3C PNG Specification).
+ */
+export function paethPredictor(a: number, b: number, c: number): number {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  if (pb <= pc) return b;
+  return c;
+}
+
+/**
+ * Reverses PNG row filters (0: None, 1: Sub, 2: Up, 3: Average, 4: Paeth)
+ * and reconstructs the un-filtered raw pixel bytes for the entire image.
+ */
+export function unfilterPngScanlines(
+  decompressed: Buffer,
+  width: number,
+  height: number,
+  bpp: number
+): Buffer {
+  const rowBytes = width * bpp;
+  const rawPixels = Buffer.alloc(height * rowBytes);
+
+  for (let y = 0; y < height; y++) {
+    const filtRowOffset = y * (1 + rowBytes);
+    const filterType = decompressed[filtRowOffset];
+    const rawRowOffset = y * rowBytes;
+    const prevRawRowOffset = (y - 1) * rowBytes;
+
+    for (let x = 0; x < rowBytes; x++) {
+      const filtByte = decompressed[filtRowOffset + 1 + x];
+      const a = x >= bpp ? rawPixels[rawRowOffset + x - bpp] : 0;
+      const b = y > 0 ? rawPixels[prevRawRowOffset + x] : 0;
+      const c = (y > 0 && x >= bpp) ? rawPixels[prevRawRowOffset + x - bpp] : 0;
+
+      let rawByte = 0;
+      switch (filterType) {
+        case 0: // None
+          rawByte = filtByte;
+          break;
+        case 1: // Sub
+          rawByte = (filtByte + a) & 0xff;
+          break;
+        case 2: // Up
+          rawByte = (filtByte + b) & 0xff;
+          break;
+        case 3: // Average
+          rawByte = (filtByte + Math.floor((a + b) / 2)) & 0xff;
+          break;
+        case 4: // Paeth
+          rawByte = (filtByte + paethPredictor(a, b, c)) & 0xff;
+          break;
+        default:
+          throw new Error(`Unsupported or invalid PNG filter type: ${filterType}`);
+      }
+      rawPixels[rawRowOffset + x] = rawByte;
+    }
+  }
+
+  return rawPixels;
+}
+
+/**
+ * Scans image buffer for embedded text metadata (PNG tEXt, zTXt, iTXt chunks)
+ * and printable ASCII/UTF-8 string sequences for credentials and secrets.
+ */
+export function scanImageForSecrets(imageBuffer: Buffer): {
+  hasSecrets: boolean;
+  detections: string[];
+  categories: string[];
+  regions?: SensitiveRegion[];
+} {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || imageBuffer.length < 24) {
+    return { hasSecrets: false, detections: [], categories: [] };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const zlib = require('zlib');
+  const allDetections: string[] = [];
+  const allCategories: string[] = [];
+  const regions: SensitiveRegion[] = [];
+
+  const textSnippets: string[] = [];
+
+  // 1. Scan PNG text chunks (tEXt, zTXt, iTXt)
+  try {
+    let pos = 8;
+    while (pos + 8 <= imageBuffer.length) {
+      const len = imageBuffer.readUInt32BE(pos);
+      const type = imageBuffer.toString('ascii', pos + 4, pos + 8);
+      const dataOffset = pos + 8;
+
+      if (type === 'tEXt' && dataOffset + len <= imageBuffer.length) {
+        const str = imageBuffer.toString('latin1', dataOffset, dataOffset + len);
+        textSnippets.push(str);
+      } else if (type === 'zTXt' && dataOffset + len <= imageBuffer.length) {
+        // keyword + null + 1 byte compression method + compressed data
+        const nullIdx = imageBuffer.indexOf(0, dataOffset);
+        if (nullIdx > dataOffset && nullIdx + 2 < dataOffset + len) {
+          try {
+            const compressed = imageBuffer.slice(nullIdx + 2, dataOffset + len);
+            const inflated = zlib.inflateSync(compressed);
+            textSnippets.push(inflated.toString('latin1'));
+          } catch {}
+        }
+      } else if (type === 'iTXt' && dataOffset + len <= imageBuffer.length) {
+        const nullIdx = imageBuffer.indexOf(0, dataOffset);
+        if (nullIdx > dataOffset && nullIdx + 3 < dataOffset + len) {
+          const compFlag = imageBuffer[nullIdx + 1];
+          // find 3rd null byte
+          let p = nullIdx + 3;
+          let nulls = 0;
+          while (p < dataOffset + len && nulls < 2) {
+            if (imageBuffer[p] === 0) nulls++;
+            p++;
+          }
+          if (p < dataOffset + len) {
+            try {
+              const textBuf = imageBuffer.slice(p, dataOffset + len);
+              const textStr = compFlag === 1 ? zlib.inflateSync(textBuf).toString('utf8') : textBuf.toString('utf8');
+              textSnippets.push(textStr);
+            } catch {}
+          }
+        }
+      }
+
+      pos += 8 + len + 4;
+    }
+  } catch {}
+
+  // 2. Scan printable ASCII strings of length >= 12 from the raw buffer
+  let currentAscii: number[] = [];
+  for (let i = 0; i < imageBuffer.length; i++) {
+    const b = imageBuffer[i];
+    if (b >= 32 && b <= 126) {
+      currentAscii.push(b);
+    } else {
+      if (currentAscii.length >= 12) {
+        textSnippets.push(Buffer.from(currentAscii).toString('ascii'));
+      }
+      currentAscii = [];
+    }
+  }
+  if (currentAscii.length >= 12) {
+    textSnippets.push(Buffer.from(currentAscii).toString('ascii'));
+  }
+
+  // Evaluate extracted text snippets with sensitive data detector
+  for (const snippet of textSnippets) {
+    const check = detectSensitiveData(snippet);
+    if (check.hasSensitiveData) {
+      allDetections.push(...check.detections);
+      allCategories.push(...check.categories);
+
+      // Check for coordinate metadata if present (e.g., [bbox: x,y,w,h])
+      const bboxMatch = snippet.match(/bbox:\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/i);
+      if (bboxMatch) {
+        regions.push({
+          x: parseInt(bboxMatch[1], 10),
+          y: parseInt(bboxMatch[2], 10),
+          width: parseInt(bboxMatch[3], 10),
+          height: parseInt(bboxMatch[4], 10),
+          label: 'detected_credential_region',
+        });
+      }
+    }
+  }
+
+  const uniqueDetections = Array.from(new Set(allDetections));
+  const uniqueCategories = Array.from(new Set(allCategories));
+
+  return {
+    hasSecrets: uniqueDetections.length > 0,
+    detections: uniqueDetections,
+    categories: uniqueCategories,
+    regions: regions.length > 0 ? regions : undefined,
+  };
+}
+
 function resetRegexes(): void {
   PATTERN_OPENAI_API_KEY.lastIndex = 0;
   PATTERN_AWS_ACCESS_KEY.lastIndex = 0;
@@ -250,8 +432,19 @@ export function inspectAndSanitizeOutboundPayload<T>(
   // 1. First pass: scan for sensitive data
   function scan(val: any, key?: string): void {
     if (!val) return;
-    if (key === 'screenshotBase64' || (typeof val === 'string' && val.length > 100000)) {
-      return; // Skip raw base64 image data from text regex scanner
+    if (key === 'screenshotBase64' && typeof val === 'string') {
+      try {
+        const cleanB64 = val.replace(/^data:image\/\w+;base64,/, '');
+        const imgBuf = Buffer.from(cleanB64, 'base64');
+        const imgSecrets = scanImageForSecrets(imgBuf);
+        if (imgSecrets.hasSecrets) {
+          allDetections.push(...imgSecrets.detections);
+        }
+      } catch {}
+      return;
+    }
+    if (typeof val === 'string' && val.length > 100000) {
+      return; // Skip non-image oversized binary strings
     }
     if (typeof val === 'string') {
       const check = detectSensitiveData(val);
@@ -286,8 +479,21 @@ export function inspectAndSanitizeOutboundPayload<T>(
   // 2. Second pass: deep clone and sanitize strings
   function deepSanitize(val: any, key?: string): any {
     if (!val) return val;
-    if (key === 'screenshotBase64' || (typeof val === 'string' && val.length > 100000)) {
-      return val; // Preserve image data without text regex replacement
+    if (key === 'screenshotBase64' && typeof val === 'string') {
+      try {
+        const cleanB64 = val.replace(/^data:image\/\w+;base64,/, '');
+        const imgBuf = Buffer.from(cleanB64, 'base64');
+        const imgSecrets = scanImageForSecrets(imgBuf);
+        if (imgSecrets.hasSecrets) {
+          totalScrubbed += imgSecrets.detections.length;
+          // Fail closed: drop unredacted screenshot containing detected secrets
+          return undefined;
+        }
+      } catch {}
+      return val;
+    }
+    if (typeof val === 'string' && val.length > 100000) {
+      return val; // Preserve non-image oversized binary data
     }
     if (typeof val === 'string') {
       const red = redactSensitiveText(val);
@@ -395,8 +601,8 @@ export function detectSensitiveScreenRegions(width: number = 1920, height: numbe
 
 /**
  * Genuine scanline-level PNG masking using Node.js standard zlib.
- * Decodes compressed scanlines, masks pixels to solid black (0, 0, 0, 255),
- * recompresses, and yields a syntactically valid PNG.
+ * Decodes and un-filters scanlines across all PNG filter types (None, Sub, Up, Average, Paeth),
+ * masks pixels to solid black (0, 0, 0, 255), re-encodes with filter 0, and compresses.
  */
 function maskPngScanlines(
   pngBuf: Buffer,
@@ -424,6 +630,10 @@ function maskPngScanlines(
   const bpp = Math.round((bytesPerRow - 1) / width);
   if (bpp < 3 || bpp > 4) throw new Error(`Unsupported bytes per pixel: ${bpp}`);
 
+  // 1. Reconstruct genuine raw un-filtered pixel bytes
+  const rawPixels = unfilterPngScanlines(decompressed, width, height, bpp);
+
+  // 2. Visually mask target coordinates on un-filtered raw pixel bytes
   for (const reg of regions) {
     const startX = Math.max(0, Math.min(reg.x, width));
     const endX = Math.max(0, Math.min(reg.x + reg.width, width));
@@ -431,17 +641,30 @@ function maskPngScanlines(
     const endY = Math.max(0, Math.min(reg.y + reg.height, height));
 
     for (let y = startY; y < endY; y++) {
-      const rowStart = y * (1 + width * bpp);
+      const rowOffset = y * width * bpp;
       for (let x = startX; x < endX; x++) {
-        const px = rowStart + 1 + x * bpp;
-        decompressed[px] = 0;     // R
-        decompressed[px + 1] = 0; // G
-        decompressed[px + 2] = 0; // B
+        const px = rowOffset + x * bpp;
+        rawPixels[px] = 0;     // R
+        rawPixels[px + 1] = 0; // G
+        rawPixels[px + 2] = 0; // B
         if (bpp === 4) {
-          decompressed[px + 3] = 255; // A
+          rawPixels[px + 3] = 255; // A (solid opaque black box)
         }
       }
     }
+  }
+
+  // 3. Re-encode scanlines with Filter 0 (None)
+  const reencodedScanlines = Buffer.alloc(height * (1 + width * bpp));
+  for (let y = 0; y < height; y++) {
+    const reencodedOffset = y * (1 + width * bpp);
+    reencodedScanlines[reencodedOffset] = 0; // Filter 0: None
+    rawPixels.copy(
+      reencodedScanlines,
+      reencodedOffset + 1,
+      y * width * bpp,
+      (y + 1) * width * bpp
+    );
   }
 
   const makeChunk = (type: string, data: Buffer): Buffer => {
@@ -453,7 +676,7 @@ function maskPngScanlines(
     return Buffer.concat([len, typeBuf, data, crcBuf]);
   };
 
-  const newIdat = makeChunk('IDAT', zlib.deflateSync(decompressed));
+  const newIdat = makeChunk('IDAT', zlib.deflateSync(reencodedScanlines));
   const ihdrChunk = pngBuf.slice(8, 8 + 4 + 4 + 13 + 4);
   const sig = pngBuf.slice(0, 8);
   const iend = makeChunk('IEND', Buffer.alloc(0));
@@ -492,12 +715,14 @@ function verifyMaskedPng(
     const bpp = Math.round((bytesPerRow - 1) / width);
     if (bpp < 3 || bpp > 4) return false;
 
+    const rawPixels = unfilterPngScanlines(decompressed, width, height, bpp);
+
     // Verify sample coordinates in masked regions are black (0, 0, 0)
     for (const reg of regions) {
       const sampleX = Math.max(0, Math.min(reg.x + Math.floor(reg.width / 2), width - 1));
       const sampleY = Math.max(0, Math.min(reg.y + Math.floor(reg.height / 2), height - 1));
-      const px = sampleY * (1 + width * bpp) + 1 + sampleX * bpp;
-      if (decompressed[px] !== 0 || decompressed[px + 1] !== 0 || decompressed[px + 2] !== 0) {
+      const px = sampleY * width * bpp + sampleX * bpp;
+      if (rawPixels[px] !== 0 || rawPixels[px + 1] !== 0 || rawPixels[px + 2] !== 0) {
         return false;
       }
     }
@@ -529,6 +754,31 @@ export async function sanitizeScreenshot(
   // 1. Determine actual image dimensions directly from the buffer or nativeImage
   let dimensions = getPngDimensions(imageBuffer);
 
+  // Compute regions to redact: user specified or auto-detected desktop bands + arbitrary secret regions
+  const buildEffectiveRegions = (w: number, h: number): SensitiveRegion[] => {
+    if (regionsToMask && regionsToMask.length > 0) {
+      return [...regionsToMask];
+    }
+    if (!autoDetectSensitive) {
+      return [];
+    }
+    const list: SensitiveRegion[] = detectSensitiveScreenRegions(w, h);
+    const secretScan = scanImageForSecrets(imageBuffer);
+    if (secretScan.regions && secretScan.regions.length > 0) {
+      list.push(...secretScan.regions);
+    } else if (secretScan.hasSecrets) {
+      // Redact center workspace area where active terminal/editor/browser window is positioned
+      list.push({
+        x: Math.round(w * 0.1),
+        y: Math.round(h * 0.15),
+        width: Math.round(w * 0.8),
+        height: Math.round(h * 0.7),
+        label: 'arbitrary_screen_secret_workspace',
+      });
+    }
+    return list;
+  };
+
   // Attempt pixel-level redaction using Electron nativeImage if available
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -538,9 +788,7 @@ export async function sanitizeScreenshot(
       if (img && !img.isEmpty()) {
         const size = img.getSize();
         dimensions = { width: size.width, height: size.height };
-        const effectiveRegions = (regionsToMask && regionsToMask.length > 0)
-          ? regionsToMask
-          : (autoDetectSensitive ? detectSensitiveScreenRegions(size.width, size.height) : []);
+        const effectiveRegions = buildEffectiveRegions(size.width, size.height);
 
         if (effectiveRegions.length === 0) {
           return {
@@ -599,9 +847,7 @@ export async function sanitizeScreenshot(
     };
   }
 
-  const effectiveRegions = (regionsToMask && regionsToMask.length > 0)
-    ? regionsToMask
-    : (autoDetectSensitive ? detectSensitiveScreenRegions(dimensions.width, dimensions.height) : []);
+  const effectiveRegions = buildEffectiveRegions(dimensions.width, dimensions.height);
 
   if (effectiveRegions.length === 0) {
     return {

@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
 import path from 'path';
 import zlib from 'zlib';
+import fs from 'fs';
+import os from 'os';
 import { app } from 'electron';
 import {
   redactSensitiveText,
@@ -12,12 +14,16 @@ import {
   getPngDimensions,
   detectSensitiveScreenRegions,
   wipeBuffer,
+  paethPredictor,
+  unfilterPngScanlines,
+  scanImageForSecrets,
 } from '../src/lib/redaction';
 import { validateNetworkEndpoint } from '../src/lib/providers';
 import {
   encryptLocalSession,
   decryptLocalSession,
   SessionRecord,
+  SessionRepository,
 } from '../electron/services/session-repository';
 import {
   isSecureStorageBackendAvailable,
@@ -27,7 +33,13 @@ import {
 import { IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
 
-function createSyntheticPng(width: number, height: number, fillColor = { r: 180, g: 180, b: 180, a: 255 }): Buffer {
+function createSyntheticPng(
+  width: number,
+  height: number,
+  fillColor = { r: 180, g: 180, b: 180, a: 255 },
+  filterType: number = 0,
+  textChunk?: { keyword: string; text: string }
+): Buffer {
   const sig = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
   const ihdrData = Buffer.alloc(13);
   ihdrData.writeUInt32BE(width, 0);
@@ -47,23 +59,68 @@ function createSyntheticPng(width: number, height: number, fillColor = { r: 180,
     return Buffer.concat([len, typeBuf, data, crcBuf]);
   };
 
-  const rawScanlines = Buffer.alloc(height * (1 + width * 4));
+  const bpp = 4;
+  const rowBytes = width * bpp;
+  const rawImage = Buffer.alloc(height * rowBytes);
   for (let y = 0; y < height; y++) {
-    const rowOffset = y * (1 + width * 4);
-    rawScanlines[rowOffset] = 0; // Filter: None
     for (let x = 0; x < width; x++) {
-      const px = rowOffset + 1 + x * 4;
-      rawScanlines[px] = fillColor.r;
-      rawScanlines[px + 1] = fillColor.g;
-      rawScanlines[px + 2] = fillColor.b;
-      rawScanlines[px + 3] = fillColor.a;
+      const px = (y * width + x) * bpp;
+      rawImage[px] = fillColor.r;
+      rawImage[px + 1] = fillColor.g;
+      rawImage[px + 2] = fillColor.b;
+      rawImage[px + 3] = fillColor.a;
+    }
+  }
+
+  const filteredScanlines = Buffer.alloc(height * (1 + rowBytes));
+  for (let y = 0; y < height; y++) {
+    const filtRowOffset = y * (1 + rowBytes);
+    filteredScanlines[filtRowOffset] = filterType;
+    const rawRowOffset = y * rowBytes;
+    const prevRawRowOffset = (y - 1) * rowBytes;
+
+    for (let x = 0; x < rowBytes; x++) {
+      const orig = rawImage[rawRowOffset + x];
+      const a = x >= bpp ? rawImage[rawRowOffset + x - bpp] : 0;
+      const b = y > 0 ? rawImage[prevRawRowOffset + x] : 0;
+      const c = (y > 0 && x >= bpp) ? rawImage[prevRawRowOffset + x - bpp] : 0;
+
+      let filtByte = orig;
+      switch (filterType) {
+        case 0:
+          filtByte = orig;
+          break;
+        case 1:
+          filtByte = (orig - a) & 0xff;
+          break;
+        case 2:
+          filtByte = (orig - b) & 0xff;
+          break;
+        case 3:
+          filtByte = (orig - Math.floor((a + b) / 2)) & 0xff;
+          break;
+        case 4:
+          filtByte = (orig - paethPredictor(a, b, c)) & 0xff;
+          break;
+      }
+      filteredScanlines[filtRowOffset + 1 + x] = filtByte;
     }
   }
 
   const ihdrChunk = makeChunk('IHDR', ihdrData);
-  const idatChunk = makeChunk('IDAT', zlib.deflateSync(rawScanlines));
+  const chunks: Buffer[] = [sig, ihdrChunk];
+
+  if (textChunk) {
+    const keyBuf = Buffer.from(textChunk.keyword, 'latin1');
+    const valBuf = Buffer.from(textChunk.text, 'latin1');
+    const textData = Buffer.concat([keyBuf, Buffer.from([0]), valBuf]);
+    chunks.push(makeChunk('tEXt', textData));
+  }
+
+  const idatChunk = makeChunk('IDAT', zlib.deflateSync(filteredScanlines));
   const iendChunk = makeChunk('IEND', Buffer.alloc(0));
-  return Buffer.concat([sig, ihdrChunk, idatChunk, iendChunk]);
+  chunks.push(idatChunk, iendChunk);
+  return Buffer.concat(chunks);
 }
 
 function extractPngScanlines(pngBuf: Buffer): { width: number; height: number; scanlines: Buffer } {
@@ -79,6 +136,13 @@ function extractPngScanlines(pngBuf: Buffer): { width: number; height: number; s
   }
   const scanlines = zlib.inflateSync(Buffer.concat(idatParts));
   return { width, height, scanlines };
+}
+
+function extractPngRawPixels(pngBuf: Buffer): { width: number; height: number; rawPixels: Buffer } {
+  const { width, height, scanlines } = extractPngScanlines(pngBuf);
+  const bpp = Math.round((scanlines.length / height - 1) / width);
+  const rawPixels = unfilterPngScanlines(scanlines, width, height, bpp);
+  return { width, height, rawPixels };
 }
 
 describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
@@ -326,6 +390,104 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
       const corruptResult = await sanitizeScreenshot(corruptedPng);
       expect(corruptResult.isRedacted).toBe(false);
     });
+
+    it('correctly un-filters and masks PNG scanlines across Sub, Up, Average, and Paeth filter types', async () => {
+      // Test filter types 1 (Sub), 2 (Up), 3 (Average), 4 (Paeth)
+      for (const filterType of [1, 2, 3, 4]) {
+        const testColor = { r: 120 + filterType * 10, g: 140, b: 160, a: 255 };
+        const filteredPng = createSyntheticPng(30, 30, testColor, filterType);
+
+        // Verify unfiltering correctly reconstructs the raw pixels
+        const { rawPixels } = extractPngRawPixels(filteredPng);
+        expect(rawPixels[0]).toBe(testColor.r);
+        expect(rawPixels[1]).toBe(testColor.g);
+        expect(rawPixels[2]).toBe(testColor.b);
+        expect(rawPixels[3]).toBe(testColor.a);
+
+        // Sanitize with custom region
+        const customRegion = { x: 5, y: 5, width: 8, height: 8, label: `filter_${filterType}_region` };
+        const result = await sanitizeScreenshot(filteredPng, [customRegion]);
+        expect(result.isRedacted).toBe(true);
+
+        const { rawPixels: maskedRaw } = extractPngRawPixels(result.sanitizedBuffer);
+        const bpp = 4;
+        const width = 30;
+
+        // Masked coordinate (6, 6) must be solid black (0, 0, 0, 255)
+        const maskedOffset = (6 * width + 6) * bpp;
+        expect(maskedRaw[maskedOffset]).toBe(0);
+        expect(maskedRaw[maskedOffset + 1]).toBe(0);
+        expect(maskedRaw[maskedOffset + 2]).toBe(0);
+        expect(maskedRaw[maskedOffset + 3]).toBe(255);
+
+        // Unmasked coordinate (20, 20) must retain exact original color
+        const unmaskedOffset = (20 * width + 20) * bpp;
+        expect(maskedRaw[unmaskedOffset]).toBe(testColor.r);
+        expect(maskedRaw[unmaskedOffset + 1]).toBe(testColor.g);
+        expect(maskedRaw[unmaskedOffset + 2]).toBe(testColor.b);
+        expect(maskedRaw[unmaskedOffset + 3]).toBe(testColor.a);
+      }
+    });
+
+    it('scans screenshots for arbitrary secrets and automatically masks the workspace region', async () => {
+      const mockKey = ['sk', '1234567890abcdef1234567890abcdef'].join('-');
+      const secretPng = createSyntheticPng(
+        50,
+        50,
+        { r: 200, g: 200, b: 200, a: 255 },
+        0,
+        { keyword: 'Description', text: `Active Terminal Secret: ${mockKey}` }
+      );
+
+      // Verify secret scanner identifies the token in image text metadata
+      const scanResult = scanImageForSecrets(secretPng);
+      expect(scanResult.hasSecrets).toBe(true);
+      expect(scanResult.categories).toContain('openai_api_key');
+
+      // Sanitize automatically detects the arbitrary secret and masks the center workspace region
+      const sanitized = await sanitizeScreenshot(secretPng);
+      expect(sanitized.isRedacted).toBe(true);
+      expect(sanitized.redactedRegionsCount).toBeGreaterThanOrEqual(3); // titlebar, taskbar, + arbitrary secret workspace
+
+      // Verify the center workspace pixel (25, 25) is masked to solid black
+      const { rawPixels } = extractPngRawPixels(sanitized.sanitizedBuffer);
+      const bpp = 4;
+      const centerOffset = (25 * 50 + 25) * bpp;
+      expect(rawPixels[centerOffset]).toBe(0);
+      expect(rawPixels[centerOffset + 1]).toBe(0);
+      expect(rawPixels[centerOffset + 2]).toBe(0);
+      expect(rawPixels[centerOffset + 3]).toBe(255);
+    });
+
+    it('inspectAndSanitizeOutboundPayload inspects screenshotBase64 and blocks or drops credentials', () => {
+      const mockKey = ['sk', 'outbound-block-token-secret-1234567890'].join('-');
+      const secretPng = createSyntheticPng(
+        30,
+        30,
+        { r: 180, g: 180, b: 180, a: 255 },
+        0,
+        { keyword: 'Comment', text: `Captured API Key: ${mockKey}` }
+      );
+      const base64Data = `data:image/png;base64,${secretPng.toString('base64')}`;
+
+      // 1. When blockOnSecrets is true: blocks outbound request
+      const blockResult = inspectAndSanitizeOutboundPayload(
+        { query: 'Please analyze my screen', screenshotBase64: base64Data },
+        { blockOnSecrets: true }
+      );
+      expect(blockResult.blocked).toBe(true);
+      expect(blockResult.reason).toMatch(/sensitive credentials detected/);
+      expect(blockResult.detections).toContain('OpenAI API Key');
+
+      // 2. When blockOnSecrets is false: drops unredacted image containing secret under fail-closed sanitization
+      const scrubResult = inspectAndSanitizeOutboundPayload(
+        { query: 'Please analyze my screen', screenshotBase64: base64Data },
+        { blockOnSecrets: false }
+      );
+      expect(scrubResult.blocked).toBe(false);
+      expect(scrubResult.sanitizedPayload.screenshotBase64).toBeUndefined();
+      expect(scrubResult.scrubbedCount).toBeGreaterThan(0);
+    });
   });
 
   describe('Pillar 4 & 5: Authenticated AES-256-GCM Session Archive Encryption', () => {
@@ -397,6 +559,69 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
       const parsed: SessionRecord = JSON.parse(decryptLocalSession(legacyJson, testKey));
       expect(parsed.id).toBe(mockSession.id);
       expect(parsed.title).toBe(mockSession.title);
+    });
+
+    it('actively migrates all legacy unencrypted plaintext session archives on disk via migrateAllLegacySessions()', async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-migrate-all-'));
+      try {
+        const repo = new SessionRepository(tempDir);
+        repo.setEncryptionKey(testKey);
+
+        const legacySession1 = { ...mockSession, id: 'sess_legacy_001', title: 'Legacy Meeting 1' };
+        const legacySession2 = { ...mockSession, id: 'sess_legacy_002', title: 'Legacy Meeting 2' };
+
+        fs.writeFileSync(path.join(tempDir, 'sess_legacy_001.json'), JSON.stringify(legacySession1), 'utf8');
+        fs.writeFileSync(path.join(tempDir, 'sess_legacy_002.json'), JSON.stringify(legacySession2), 'utf8');
+
+        expect(fs.readFileSync(path.join(tempDir, 'sess_legacy_001.json'), 'utf8').startsWith('{')).toBe(true);
+
+        const result = await repo.migrateAllLegacySessions();
+        expect(result.total).toBe(2);
+        expect(result.migrated).toBe(2);
+
+        const file1Content = fs.readFileSync(path.join(tempDir, 'sess_legacy_001.json'), 'utf8');
+        const file2Content = fs.readFileSync(path.join(tempDir, 'sess_legacy_002.json'), 'utf8');
+        expect(file1Content.startsWith('enc:v1:')).toBe(true);
+        expect(file2Content.startsWith('enc:v1:')).toBe(true);
+
+        const readSession = await repo.getSession('sess_legacy_001');
+        expect(readSession?.title).toBe('Legacy Meeting 1');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('guarantees encrypted rewrite when accessing legacy session file and fails closed if write fails', async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-migrate-access-'));
+      try {
+        const repo = new SessionRepository(tempDir);
+        repo.setEncryptionKey(testKey);
+
+        const legacySession = { ...mockSession, id: 'sess_legacy_access', title: 'Access Migration Test' };
+        const filePath = path.join(tempDir, 'sess_legacy_access.json');
+        fs.writeFileSync(filePath, JSON.stringify(legacySession), 'utf8');
+
+        const session = await repo.getSession('sess_legacy_access');
+        expect(session?.title).toBe('Access Migration Test');
+
+        const onDisk = fs.readFileSync(filePath, 'utf8');
+        expect(onDisk.startsWith('enc:v1:')).toBe(true);
+
+        const readOnlySession = { ...mockSession, id: 'sess_readonly_legacy', title: 'Fail Closed Test' };
+        const roFilePath = path.join(tempDir, 'sess_readonly_legacy.json');
+        fs.writeFileSync(roFilePath, JSON.stringify(readOnlySession), 'utf8');
+
+        const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
+          throw new Error('EACCES: permission denied');
+        });
+
+        const failedSession = await repo.getSession('sess_readonly_legacy');
+        expect(failedSession).toBeNull();
+
+        writeSpy.mockRestore();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it('enforces Linux backend allowlist and rejects insecure basic_text', () => {

@@ -340,26 +340,35 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
         let cleanScreenshot = screenshotBase64;
 
         if (currentState.redactSensitiveData || currentState.blockOutboundSecrets) {
-          // Strict Outbound Secret Guard: prevent raw unredacted screen captures from leaving device to external cloud
-          if (currentState.blockOutboundSecrets && screenshotBase64 && providerName !== 'ollama') {
-            throw new Error(
-              `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
-            );
-          }
-
           // Strict Outbound Redaction: when redactSensitiveData is active and transmitting to cloud AI,
           // visually redact sensitive screen coordinates before transmitting image payload
           if (currentState.redactSensitiveData && screenshotBase64 && providerName !== 'ollama') {
+            let redactionConfirmed = false;
             try {
               const base64Data = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
               const imgBuf = Buffer.from(base64Data, 'base64');
               const { sanitizedBuffer, isRedacted } = await sanitizeScreenshot(imgBuf);
-              if (isRedacted && sanitizedBuffer) {
+              if (isRedacted && sanitizedBuffer && sanitizedBuffer.length > 0) {
                 cleanScreenshot = `data:image/png;base64,${sanitizedBuffer.toString('base64')}`;
+                redactionConfirmed = true;
               }
             } catch (err) {
               console.warn('[WebBridge] Failed to visually redact screenshot:', err);
             }
+
+            // FAIL CLOSED: If visual redaction could not be confirmed, drop unredacted screenshot.
+            if (!redactionConfirmed) {
+              cleanScreenshot = undefined;
+              if (currentState.blockOutboundSecrets) {
+                throw new Error(
+                  `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
+                );
+              }
+            }
+          } else if (!currentState.redactSensitiveData && currentState.blockOutboundSecrets && screenshotBase64 && providerName !== 'ollama') {
+            throw new Error(
+              `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
+            );
           }
 
           const inspection = inspectAndSanitizeOutboundPayload(

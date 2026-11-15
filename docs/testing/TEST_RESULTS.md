@@ -3,11 +3,11 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 181/181 Passing (100% Pass Rate)  
+**Test Status**: 187/187 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `7ee906d225f76c1d73cb99c6071126d4e6fbb116`  
+**Source revision**: `8d3c954586e33042f0a87150ec04b07cb6f8decf`  
 **Workflow run**: Local execution  
-**Verification Date**: 2026-11-14  
+**Verification Date**: 2026-11-15  
 
 ---
 
@@ -23,18 +23,18 @@
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 33 | 33 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 7 | 7 | 0 | **PASSED** |
-| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 36 | 36 | 0 | **PASSED** |
+| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 41 | 41 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 10 | 10 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
-| `state-persistence.test.ts` | State persistence error reporting | 6 | 6 | 0 | **PASSED** |
+| `state-persistence.test.ts` | State persistence error reporting | 7 | 7 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 3 | 3 | 0 | **PASSED** |
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 7 | 7 | 0 | **PASSED** |
+| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
-| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **181** | **181** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **187** | **187** | **0** | **100% PASS** |
 
 ---
 
@@ -190,10 +190,15 @@
 ✓ parses actual dimensions and masks coordinates dynamically for landscape and portrait images
 ✓ genuinely masks target pixels to solid black while preserving unmasked pixel values
 ✓ fails closed when image buffer is corrupted, empty, or truncated
+✓ correctly un-filters and masks PNG scanlines across Sub, Up, Average, and Paeth filter types
+✓ scans screenshots for arbitrary secrets and automatically masks the workspace region
+✓ inspectAndSanitizeOutboundPayload inspects screenshotBase64 and blocks or drops credentials
 ✓ encrypts session records into authenticated AES-256-GCM envelope
 ✓ decrypts encrypted session records accurately
 ✓ detects tampering and rejects corrupted ciphertext via GCM auth tag
 ✓ maintains backward compatibility with unencrypted legacy JSON
+✓ actively migrates all legacy unencrypted plaintext session archives on disk via migrateAllLegacySessions()
+✓ guarantees encrypted rewrite when accessing legacy session file and fails closed if write fails
 ✓ enforces Linux backend allowlist and rejects insecure basic_text
 ✓ fails closed in production if secure OS-backed storage is unavailable
 ✓ strictly rejects test key fallback in production even if TEST or SESSION_ENCRYPTION_KEY is set
@@ -236,7 +241,8 @@
 ✓ ignores stale persisted app versions and does not persist runtime version metadata
 ✓ writes shared-state files with user-only POSIX permissions
 ✓ surfaces write failures, propagates critical flush errors, and clears the warning after recovery
-✓ encrypts shared state at rest with AES-256-GCM envelope when encryptedStorageEnabled is active
+✓ encrypts shared state at rest with AES-256-GCM envelope and refuses unencrypted writes even if patch attempts to disable
+✓ automatically migrates legacy plaintext shared state file to AES-256-GCM encrypted format on load
 ✓ suppresses active session and knowledge documents from disk when enterpriseMode is active
 ```
 
@@ -258,7 +264,15 @@
 ✓ formats user request cleanly when query contains multiline strings
 ```
 
-### 15. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+### 15. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+```text
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
+```
+
+### 16. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
 ```text
 ✓ parses empty or missing hash as default "all" view
 ✓ parses direct routes without query parameters
@@ -266,7 +280,7 @@
 ✓ handles leading slash with query parameters
 ```
 
-### 16. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 17. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
@@ -275,21 +289,13 @@
 ✓ handles boundary 1x1 minimal screen dimension safely
 ```
 
-### 17. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+### 18. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
 ```text
 ✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
 ✓ purgeAllData wipes in-memory vault keys and stored session archives
 ✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
 ✓ abortAiStream returns false for unknown requestId without aborting other requests
 ✓ exposes window lifecycle controls minimizeApp and quitApp safely
-```
-
-### 18. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
 ```
 
 ### 19. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)

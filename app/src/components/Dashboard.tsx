@@ -1011,22 +1011,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
               </div>
 
               <div className="space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={state.encryptedStorageEnabled}
-                    onChange={e => patchState({ encryptedStorageEnabled: e.target.checked })}
-                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-900"
-                  />
-                  <div>
-                    <span className="text-xs font-semibold text-slate-200">
-                      AES-256-GCM Session Archive Encryption
-                    </span>
-                    <p className="text-[10px] text-slate-400 leading-normal">
-                      Stored sessions and meeting transcripts are encrypted on disk with authenticated AES-256-GCM. Plaintext JSON files are never written directly to the file system.
+                <div className="flex items-start gap-3 p-3 bg-slate-950/70 rounded-lg border border-cyan-900/40">
+                  <div className="mt-0.5 p-1 bg-cyan-950/80 rounded border border-cyan-800/60 text-cyan-400">
+                    <Shield className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-200">
+                        AES-256-GCM Storage Encryption
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-950 border border-cyan-800 text-cyan-300 uppercase tracking-wider">
+                        Enforced
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-normal mt-1">
+                      Stored sessions, shared state, and meeting transcripts are permanently encrypted on disk with authenticated AES-256-GCM backed by the OS hardware keystore (Windows DPAPI, macOS Keychain, Linux Secret Service). Plaintext JSON files are never written directly to the file system.
                     </p>
                   </div>
-                </label>
+                </div>
 
                 <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
                   <div className="flex items-center gap-1.5 text-cyan-400 font-semibold text-xs">

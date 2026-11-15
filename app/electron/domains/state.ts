@@ -126,6 +126,9 @@ export class StateManager {
       patch.activeModel = 'ollama';
     }
 
+    // Storage encryption is permanently enforced; plaintext serialization is impossible
+    patch.encryptedStorageEnabled = true;
+
     this.state = { ...this.state, ...patch };
     this.scheduleSave();
     this.notify();
@@ -173,6 +176,15 @@ export class StateManager {
 
   private load() {
     try {
+      if (
+        typeof app !== 'undefined' &&
+        typeof app.isReady === 'function' &&
+        !app.isReady() &&
+        process.env.VITEST !== 'true' &&
+        process.env.TEST !== 'true'
+      ) {
+        return; // OS-backed safeStorage is only initialized after Electron app.whenReady() in live runtime
+      }
       const stateFile = this.getStateFilePath();
       if (fs.existsSync(stateFile)) {
         const raw = fs.readFileSync(stateFile, 'utf8');
@@ -188,6 +200,7 @@ export class StateManager {
         this.state = {
           ...INITIAL_STATE,
           ...parsed,
+          encryptedStorageEnabled: true,
           appVersion: getApplicationVersion(),
           isControlWindowLoaded: false,
           isChatWindowLoaded: false,
@@ -204,6 +217,17 @@ export class StateManager {
           themHasVoiceActivity: false,
           isCapturingScreenshot: false,
         };
+
+        // Guarantee legacy migration: if the state file was unencrypted plaintext JSON, immediately rewrite encrypted
+        if (!raw.startsWith('enc:v1:')) {
+          try {
+            this.save(true);
+            console.log('[StateManager] Migrated legacy plaintext state file to AES-256-GCM encrypted storage.');
+          } catch (migErr) {
+            console.error('[StateManager] Failed to encrypt legacy state file on disk:', migErr);
+            throw new Error('[StateManager] Fail-closed: Migration of legacy plaintext state to encrypted storage failed.');
+          }
+        }
 
         // Automatic migration from restricted legacy gemini-2.5-flash to flagship gemini-3.8-flash
         if ((this.state.activeModel as string) === 'gemini-2.5-flash' || !this.state.activeModel) {
@@ -228,6 +252,12 @@ export class StateManager {
     } catch (e) {
       console.error('[StateManager] Failed to load state:', e);
     }
+  }
+
+  /** Reload state from disk once OS secure storage subsystem is available. */
+  public reloadFromDisk(): void {
+    this.load();
+    this.notify();
   }
 
   private save(throwOnError: boolean = false) {
@@ -268,10 +298,8 @@ export class StateManager {
       }
 
       const serialized = JSON.stringify(toSave, null, 2);
-      let payloadToWrite = serialized;
-      if (this.state.encryptedStorageEnabled) {
-        payloadToWrite = encryptStoragePayload(serialized);
-      }
+      // Permanent authenticated encryption at rest: plaintext JSON files are never written directly to disk
+      const payloadToWrite = encryptStoragePayload(serialized);
 
       fs.writeFileSync(stateFile, payloadToWrite, { encoding: 'utf8', mode: 0o600 });
       if (process.platform !== 'win32') fs.chmodSync(stateFile, 0o600);

@@ -83,12 +83,13 @@ describe('State persistence error reporting', () => {
     expect(persistedState).not.toHaveProperty('persistenceError');
   });
 
-  it('encrypts shared state at rest with AES-256-GCM envelope when encryptedStorageEnabled is active', () => {
+  it('encrypts shared state at rest with AES-256-GCM envelope and refuses unencrypted writes even if patch attempts to disable', () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-encrypt-'));
     const stateFile = path.join(directory, 'state.json');
     const manager = new StateManager(stateFile, false);
 
-    manager.patchState({ showChat: true, activeMode: 'interview', encryptedStorageEnabled: true });
+    // Attempting to patch encryptedStorageEnabled: false must be rejected/ignored; encryption remains permanently enforced
+    manager.patchState({ showChat: true, activeMode: 'interview', encryptedStorageEnabled: false as any });
     manager.flushSave();
 
     const raw = fs.readFileSync(stateFile, 'utf8');
@@ -97,6 +98,32 @@ describe('State persistence error reporting', () => {
     const decrypted = JSON.parse(decryptStoragePayload(raw));
     expect(decrypted.showChat).toBe(true);
     expect(decrypted.activeMode).toBe('interview');
+    expect(decrypted.encryptedStorageEnabled).toBe(true);
+  });
+
+  it('automatically migrates legacy plaintext shared state file to AES-256-GCM encrypted format on load', () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cluely-state-migrate-'));
+    const stateFile = path.join(directory, 'state.json');
+
+    // Create an unencrypted legacy plaintext JSON state file
+    const legacyPlaintext = JSON.stringify({
+      showChat: true,
+      activeMode: 'copilot',
+      shortcuts: { toggleVisibility: 'CommandOrControl+Shift+Space' },
+    });
+    fs.writeFileSync(stateFile, legacyPlaintext, 'utf8');
+    expect(fs.readFileSync(stateFile, 'utf8').startsWith('{')).toBe(true);
+
+    // Loading the legacy file triggers automatic migration to AES-256-GCM
+    const manager = new StateManager(stateFile, false);
+    expect(manager.getState().showChat).toBe(true);
+
+    // Verify on disk the file is now actively rewritten as enc:v1:
+    const onDisk = fs.readFileSync(stateFile, 'utf8');
+    expect(onDisk.startsWith('enc:v1:')).toBe(true);
+
+    const decrypted = JSON.parse(decryptStoragePayload(onDisk));
+    expect(decrypted.showChat).toBe(true);
   });
 
   it('suppresses active session and knowledge documents from disk when enterpriseMode is active', () => {

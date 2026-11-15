@@ -933,13 +933,6 @@ export class IpcRouter {
         let cleanScreenshot = screenshotBase64;
 
         if (currentState.redactSensitiveData || currentState.blockOutboundSecrets) {
-          // Strict Outbound Secret Guard: prevent raw unredacted screen captures from leaving device to external cloud
-          if (currentState.blockOutboundSecrets && screenshotBase64 && providerName !== 'ollama') {
-            throw new Error(
-              `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
-            );
-          }
-
           // Strict Outbound Redaction: when redactSensitiveData is active and transmitting to cloud AI,
           // visually redact sensitive screen coordinates before transmitting image payload.
           // FAIL-CLOSED: If redaction fails or cannot be verified, never transmit the original unredacted screenshot.
@@ -963,10 +956,15 @@ export class IpcRouter {
               cleanScreenshot = undefined;
               if (currentState.blockOutboundSecrets) {
                 throw new Error(
-                  '[Outbound Security Guard] Screenshot redaction could not be confirmed; outbound cloud transmission blocked under fail-closed privacy policy.'
+                  `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
                 );
               }
             }
+          } else if (!currentState.redactSensitiveData && currentState.blockOutboundSecrets && screenshotBase64 && providerName !== 'ollama') {
+            // Outbound Secret Guard: unredacted screenshot transmission to cloud AI is prohibited
+            throw new Error(
+              `[Outbound Security Guard] Request blocked: Outbound secret blocking is active. Transmitting unredacted desktop screen captures to cloud AI provider "${providerName}" is prohibited when egress secrets guard is enabled. Switch to Local Ollama or disable Block Outbound Secrets.`
+            );
           }
 
           const inspection = inspectAndSanitizeOutboundPayload(
