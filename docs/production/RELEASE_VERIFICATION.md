@@ -4,7 +4,7 @@
 
 The repository is preparing **v1.0.2**. The previous published release is **v1.0.1**; the v1.0.2 release workflow has been added, but this assessment does not claim that v1.0.2 has been published.
 
-The latest recorded main revision is [`6e18019b142803b7ce85cb59310dd1b3a7d6a6cf`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/6e18019b142803b7ce85cb59310dd1b3a7d6a6cf). Its [CI Verification Suite run 43682643059](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43682643059) completed successfully: source verification passed, and Windows, macOS, and Linux packaged-app launch jobs all passed. The run's uploaded test-results artifact records 192/192 automated checks (191 Vitest tests plus one Electron UI/IPC smoke check).
+The latest recorded main revision is [`d53476e1050c192be3a147767f8e1d58dd35abff`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/d53476e1050c192be3a147767f8e1d58dd35abff). Its [CI Verification Suite run 43686142718 (run #201)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686142718) completed successfully: source verification passed, and Windows, macOS, and Linux packaged-app launch jobs all passed. The run's uploaded test-results artifact records 192/192 automated checks (191 Vitest tests plus one Electron UI/IPC smoke check).
 
 Do not use the v1.0.1 release or its historical assets as evidence that v1.0.2 has been built, signed, tested, or published.
 
