@@ -1,7 +1,7 @@
 # End-to-End and Integration Verification Report
 
-**Evidence revision:** `911c61bb62585e256b251aa022b6ecea3ed3d9a5`  
-**Verification workflow:** [CI run 42384194110](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42384194110)
+**Evidence revision:** [`6e18019ba22f87a858509e5bca1b5826f4fcae95`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/6e18019ba22f87a858509e5bca1b5826f4fcae95)  
+**Verification workflow:** [CI run 43682643059](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43682643059)
 
 ## Executive summary
 
@@ -14,7 +14,7 @@ A separate active-capture purge E2E flow mounts the production capture hook in t
 
 ## Automated coverage
 
-The cited CI run passed 90 Vitest unit/integration tests and one Electron UI/IPC smoke check. It also produced Windows portable, macOS DMG, and Linux AppImage artifacts. The packaging jobs only check artifact generation; they do not run the packaged binaries.
+The cited CI run passed 191 Vitest unit/integration tests and one Electron UI/IPC smoke check (192/192 total passing checks). It also produced Windows portable, macOS DMG, and Linux AppImage artifacts and verified packaged-app launch and clean shutdown on native Windows, macOS, and Linux runners.
 
 See [TEST_RESULTS.md](TEST_RESULTS.md) for the test-scope table and limitations.
 

@@ -2,7 +2,7 @@
 
 **Assessment date:** 2026-11-08 (Asia/Kolkata)  
 **Audited source revision:** [`a9e2ceced6783ebb083bb003a565881c9a38e417`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/a9e2ceced6783ebb083bb003a565881c9a38e417)  
-**Baseline CI evidence:** [CI Verification Suite — run 42402797459](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/42402797459)
+**Baseline CI evidence:** [CI Verification Suite — run 43682643059](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43682643059)
 
 ## Status
 
