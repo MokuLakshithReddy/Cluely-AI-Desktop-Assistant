@@ -6,7 +6,7 @@
 
 ## Status
 
-**GO for production release.** The candidate source revision passes all 192 automated checks (191 Vitest unit/integration tests across 18 suites + 1 native Electron smoke test) with 100% pass rate in CI run #201. Packaged portable Windows executable, macOS DMG, and Linux AppImage launch checks pass on native CI runners. Physical-device validation across Windows, macOS, and Linux is complete, machine-validated in [`campaign-v1.0.2.json`](../testing/campaign-v1.0.2.json), and approved. Release blocker issue #49 is resolved and closed. Production release publication is ready to proceed under milestone Issue #50.
+**NO-GO for general production release.** The merged source revision passes automated verification (192/192 checks) and packaged-app launch smoke checks on the three CI platforms. Real-device acceptance, production code-signing/notarization, and publication of the signed v1.0.2 release remain outstanding. Releases published as `v1.0.2-pre` contain unsigned CI validation builds.
 
 This assessment is scoped to the exact source revision and CI run above. Re-run the release gates against the exact candidate tag before publication.
 
@@ -68,12 +68,12 @@ The committed-lockfile audit reports **six moderate findings, zero high, and zer
 
 Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/60) is closed as completed after the high/critical gate and audit artifact were merged in PR #62. Keep the moderate advisory under review and remove the exception when a compatible fixed packaging-toolchain dependency is available. Do not describe the dependency tree as audit-clean.
 
-## Release status
+## Release blockers
 
-1. **Real-device validation (#49):** COMPLETED. The Windows, macOS, and Linux physical-device validation matrix has been verified, recorded with full artifact SHA-256 digests in [`campaign-v1.0.2.json`](../testing/campaign-v1.0.2.json), validated with `scripts/validate-device-evidence.cjs`, and approved. Issue #49 is closed as completed.
-2. **Signed production release (#50):** READY TO PUBLISH. The candidate commit and multi-platform packages are ready for official v1.0.2 publication on GitHub Releases.
+1. **Real-device validation (#49):** the Windows, macOS, and supported Linux device matrix still needs actual physical-device runs and signed-off evidence for microphone permissions, loopback audio, display permissions, device disconnects, emergency stop, purge, and live provider/network behavior. The matrix is a runbook, not completed evidence. Issue #49 remains open as an active blocker.
+2. **Signed production release (#50):** publish v1.0.2 only from the exact verified main commit after required device gates pass, Windows Authenticode and Apple signing/notarization credentials are configured, the signed GPG tag and checksum manifest validate, and the release workflow publishes all required platform assets. Signed Production Release run #43703841311 failed due to missing `RELEASE_GPG_PUBLIC_KEY`. The `v1.0.2-pre` release on GitHub provides unsigned CI validation builds, not signed production installers. Issue #50 remains open.
 
-The release automation is in [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md).
+The release automation is in [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md). It deliberately blocks publication while release-gate issues remain open or required signing material is missing.
 
 ## Important implementation facts
 
@@ -89,6 +89,6 @@ The release automation is in [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md).
 
 ## Required sign-off
 
-A release owner has recorded the candidate commit, runtime versions, CI run, per-platform packaged launch evidence, device matrix results, checksums, supported OS versions, and known limitations.
+A release owner must record the candidate commit, runtime versions, CI run, per-platform packaged launch evidence, device matrix results, signing/notarization checks, checksums, supported OS versions, known limitations, and release URL.
 
-Status: **GO**. Release candidate v1.0.2 is verified, tested across all platforms, and cleared for release.
+Until the applicable real-device and signed-release gates above are complete, the status remains **NO-GO**.

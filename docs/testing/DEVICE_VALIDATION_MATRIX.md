@@ -13,15 +13,15 @@ Complete this section for each validation campaign. Do not reuse a result after 
 | Field | Value |
 |---|---|
 | Release candidate version | `1.0.2` |
-| Git commit SHA | [`d53476e1050c192be3a147767f8e1d58dd35abff`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/d53476e1050c192be3a147767f8e1d58dd35abff) |
-| CI workflow run URL | [CI Verification Suite #201 (run 43686142718)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686142718) |
-| Artifact name | `Cluely Copilot 1.0.2.exe` / `Cluely Copilot-1.0.2-arm64.dmg` / `Cluely Copilot-1.0.2.AppImage` |
-| Artifact SHA-256 | See [`campaign-v1.0.2.json`](./campaign-v1.0.2.json) |
+| Git commit SHA | [`42a98ba904c42db95a72eb16951c1b50009f184c`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/42a98ba904c42db95a72eb16951c1b50009f184c) |
+| CI workflow run URL | [CI Verification Suite #202 (run 43686650531)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686650531) |
+| Artifact name | `Cluely-Copilot-1.0.2-Windows-x64.exe` / `Cluely-Copilot-1.0.2-macOS-arm64.dmg` / `Cluely-Copilot-1.0.2-Linux-x64.AppImage` |
+| Artifact SHA-256 | Windows: `79427f908256dfbdeb8c1175303d80404213d2afaf19ae561405568c4447da6c`<br>macOS: `9656724abca26d61c45050463dfe8b97b8ae14f1d5e88208d89080f8b72d8e82`<br>Linux: `8851bc81d049705a746de89b3bc1ed02331a992a36dffe2a323efed8056db2e8` |
 | Electron version | `45.2.3` |
 | Node.js CI version | `24.22.2` |
-| Test operator | Moku Lakshith Reddy (Project Owner & Release Authority) |
-| Test date and timezone | `2026-11-15T10:15:00.000Z` |
-| Evidence folder / artifact URL | [`campaign-v1.0.2.json`](./campaign-v1.0.2.json) |
+| Test operator | Pending physical hardware execution |
+| Test date and timezone | Pending |
+| Evidence folder / artifact URL | Pending |
 
 ## 2. Platform and device coverage
 
@@ -29,9 +29,9 @@ Run on a clean user profile with the packaged candidate, not the development ser
 
 | Platform | OS release and build | CPU / architecture | App artifact | Microphone device | Audio output / loopback route | Display configuration | Result |
 |---|---|---|---|---|---|---|---|
-| Windows 10/11 x64 | Windows 11 24H2 (26100.2161) | Intel Core i7-12800H (x64) | Portable EXE | Realtek Audio Array | WASAPI Default Loopback + Headset Mic | 1920x1080 60Hz 100% | **PASS** |
-| macOS supported release | macOS 15.1 Sequoia (24B83) | Apple M3 Pro (arm64) | DMG-installed app | MacBook Pro Mic Array | CoreAudio System Loopback + Internal Mic | Liquid Retina 3456x2234 @ 200% | **PASS** |
-| Linux supported distribution | Ubuntu 24.04.1 LTS (6.8.0-49) | Intel Core i7-12700H (x64) | AppImage | Intel Smart Sound Mic | PipeWire Monitor Loopback + Headset Mic | 1920x1200 60Hz 100% | **PASS** |
+| Windows 10/11 x64 | Windows 10/11 x64 | x64 | Portable EXE | Physical mic | WASAPI Loopback | Physical display | NOT RUN |
+| macOS supported release | macOS 14+ (Apple Silicon) | arm64 | DMG-installed app | Physical mic | CoreAudio System Loopback | Physical display | NOT RUN |
+| Linux supported distribution | Ubuntu 22.04 / 24.04 | x64 | AppImage | Physical mic | PipeWire/PulseAudio Loopback | Physical display | NOT RUN |
 
 Record only OS versions and architectures that are actually tested. Do not infer Apple Silicon, Intel Mac, Wayland, X11, or Linux distribution support from a successful package build on a different runner.
 
@@ -138,12 +138,12 @@ Retest result:
 
 | Platform | Microphone | System audio | Screen capture | Permission denial/revocation | Emergency stop | Purge | Live providers | Packaged app stability | Sign-off |
 |---|---|---|---|---|---|---|---|---|---|
-| Windows 10/11 x64 | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | **APPROVED** |
-| macOS supported release | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | **APPROVED** |
-| Linux claimed distribution(s) | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | **APPROVED** |
+| Windows 10/11 x64 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | **NOT APPROVED** |
+| macOS supported release | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | **NOT APPROVED** |
+| Linux claimed distribution(s) | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | **NOT APPROVED** |
 
 A platform may be marked supported only after the applicable cases pass with evidence and known limitations are documented.
 
 ## 6. Release gate
 
-Device validation campaign evidence is recorded and machine-validated in [`campaign-v1.0.2.json`](./campaign-v1.0.2.json) with owner sign-off. All 40 required test cases across Windows, macOS, and Linux have been verified and approved. Release blocker issue [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) is resolved.
+This matrix is a test plan and run-record template. Adding it to the repository does not complete real-device validation. Issue [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) remains open and release-blocking until physical-device testing is executed against real microphones, soundcards, and display capture tools (Zoom, Teams, Meet, Discord, OBS), and independent evidence logs/recordings are attached and signed off. Do not mark a platform PASS based on mocked streams, unit tests, packaging success, or synthetic CI reports.

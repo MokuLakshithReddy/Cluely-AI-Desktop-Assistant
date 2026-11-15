@@ -2,11 +2,11 @@
 
 ## Current release record
 
-The repository is preparing **v1.0.2**. The previous published release is **v1.0.1**; the v1.0.2 release workflow has been added, but this assessment does not claim that v1.0.2 has been published.
+The repository is preparing **v1.0.2**. An unsigned pre-release validation build ([`v1.0.2-pre`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.2)) is available on GitHub Releases with CI-generated validation assets. However, the Signed Production Release workflow failed ([Run #43703841311](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43703841311)) due to missing `RELEASE_GPG_PUBLIC_KEY` secret and unsigned tag verification. The latest verified signed production release remains **v1.0.1**.
 
-The latest recorded main revision is [`d53476e1050c192be3a147767f8e1d58dd35abff`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/d53476e1050c192be3a147767f8e1d58dd35abff). Its [CI Verification Suite run 43686142718 (run #201)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686142718) completed successfully: source verification passed, and Windows, macOS, and Linux packaged-app launch jobs all passed. The run's uploaded test-results artifact records 192/192 automated checks (191 Vitest tests plus one Electron UI/IPC smoke check).
+The latest recorded main revision is [`42a98ba904c42db95a72eb16951c1b50009f184c`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/42a98ba904c42db95a72eb16951c1b50009f184c). Its [CI Verification Suite run 43686650531 (run #202)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686650531) completed successfully: source verification passed, and Windows, macOS, and Linux packaged-app launch jobs all passed. The run's uploaded test-results artifact records 192/192 automated checks (191 Vitest tests plus one Electron UI/IPC smoke check).
 
-Do not use the v1.0.1 release or its historical assets as evidence that v1.0.2 has been built, signed, tested, or published.
+Do not use the `v1.0.2-pre` CI validation assets as evidence that production code-signing, Apple notarization, or GPG manifest signing have completed.
 
 ## CI validation artifacts are not production releases
 

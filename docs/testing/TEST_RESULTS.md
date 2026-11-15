@@ -5,8 +5,8 @@
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
 **Test Status**: 192/192 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: [`d53476e1050c192be3a147767f8e1d58dd35abff`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/d53476e1050c192be3a147767f8e1d58dd35abff)  
-**Workflow run**: [CI Verification Suite — run 43686142718 (run #201)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686142718)  
+**Source revision**: [`42a98ba904c42db95a72eb16951c1b50009f184c`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/42a98ba904c42db95a72eb16951c1b50009f184c)  
+**Workflow run**: [CI Verification Suite — run 43686650531 (run #202)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686650531)  
 **Verification Date**: 2026-11-15  
 
 ---
