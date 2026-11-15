@@ -276,11 +276,8 @@ export function useAudioCapture(
       stopDualCapture(false, false);
       await patchState({
         isRecording: false,
-<<<<<<< HEAD
         micActive: false,
         systemAudioActive: false,
-=======
->>>>>>> origin/fix/audio-capture-readiness-status
         meHasVoiceActivity: false,
         microphoneCaptureStatus: 'unavailable',
         systemAudioCaptureStatus: 'idle',
@@ -338,11 +335,7 @@ export function useAudioCapture(
 
       micSource.connect(micScriptNode);
       micScriptNode.connect(micAudioCtx.destination);
-<<<<<<< HEAD
       await patchState({ micActive: true, microphoneCaptureStatus: 'active' });
-=======
-      await patchState({ microphoneCaptureStatus: 'active' });
->>>>>>> origin/fix/audio-capture-readiness-status
     } catch (err: any) {
       if (captureSessionIdRef.current !== currentSessionId) return;
       console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
@@ -353,12 +346,8 @@ export function useAudioCapture(
       const captureError = err?.name === 'NotAllowedError'
         ? 'Microphone permission was denied.'
         : `Microphone capture failed: ${err?.message || 'device unavailable'}`;
-<<<<<<< HEAD
 
-      // Gracefully reset recording state
-=======
       // Gracefully reset recording state while keeping the failure visible until the next attempt.
->>>>>>> origin/fix/audio-capture-readiness-status
       await patchState(prev => {
         if (prev.isPurging) return {};
         const activeSession = prev.session || {
@@ -404,7 +393,6 @@ export function useAudioCapture(
 
     // 2. Channel B: Start Remote System Audio Loopback Capture ('them')
     try {
-<<<<<<< HEAD
       const latestState = getLatestState();
       const hasConsent =
         latestState.meetingConsent === 'allowed_once' ||
@@ -498,95 +486,12 @@ export function useAudioCapture(
         });
       }
     } catch (err: any) {
-      // Loopback media prompt dismissed or not supported on this platform
-=======
-      if (!navigator.mediaDevices.getDisplayMedia) {
-        const message = 'System-audio loopback is not supported in this environment. Microphone capture is still active.';
-        await patchState({
-          systemAudioCaptureStatus: 'unavailable',
-          captureWarning: message,
-        });
-        return;
-      }
-
-      {
-        // In Electron, setDisplayMediaRequestHandler provides screen video + loopback audio
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: true,
-        });
-
-        // Abort and stop tracks if recording stopped or session changed while prompt was active
-        if (
-          captureSessionIdRef.current !== currentSessionId ||
-          !getLatestState().isRecording ||
-          getLatestState().isPurging
-        ) {
-          displayStream.getTracks().forEach(t => t.stop());
-          return;
-        }
-
-        // Disable and stop the video track immediately to conserve CPU and GPU
-        displayStream.getVideoTracks().forEach(track => {
-          track.enabled = false;
-          track.stop();
-        });
-
-        const audioTracks = displayStream.getAudioTracks();
-        if (audioTracks.length === 0) {
-          const message = 'System-audio loopback was not provided by the operating system. Microphone capture is still active.';
-          await patchState({
-            systemAudioCaptureStatus: 'unavailable',
-            captureWarning: message,
-          });
-        } else {
-          systemStreamRef.current = new MediaStream(audioTracks);
-          watchAudioTracks(systemStreamRef.current, 'them', 'System-audio loopback');
-          if (captureSessionIdRef.current !== currentSessionId) return;
-
-          const systemAudioCtx = new AudioContext({ sampleRate: 48000 });
-          systemAudioCtxRef.current = systemAudioCtx;
-          const systemSource = systemAudioCtx.createMediaStreamSource(systemStreamRef.current);
-          const systemResampler = new AudioResampler(48000, 16000);
-          systemResamplerRef.current = systemResampler;
-
-          const systemVad = new VADProcessor();
-          systemVadRef.current = systemVad;
-
-          systemVad.onSpeechStart = () => {
-            patchState({ themHasVoiceActivity: true });
-          };
-          systemVad.onSpeechEnd = (wav, duration) => {
-            patchState({ themHasVoiceActivity: false });
-            handleSpeechSegmentReady('them', wav, duration);
-          };
-
-          const systemScriptNode = systemAudioCtx.createScriptProcessor(4096, 1, 1);
-          systemScriptNode.onaudioprocess = event => {
-            const inputData = event.inputBuffer.getChannelData(0);
-            const resampled = systemResampler.resample(inputData);
-            systemVad.processFrame(resampled);
-          };
-
-          systemSource.connect(systemScriptNode);
-          systemScriptNode.connect(systemAudioCtx.destination);
-          await patchState({
-            systemAudioCaptureStatus: 'active',
-            captureWarning: null,
-          });
-        }
-      }
-    } catch (err: any) {
       // The OS may deny or decline loopback while leaving microphone capture usable.
->>>>>>> origin/fix/audio-capture-readiness-status
       const message = `System-audio loopback is unavailable: ${err?.message || 'permission was not granted'}. Microphone capture is still active.`;
       console.info('[useAudioCapture] ' + message);
       if (captureSessionIdRef.current === currentSessionId && getLatestState().isRecording && !getLatestState().isPurging) {
         await patchState({
-<<<<<<< HEAD
           systemAudioActive: false,
-=======
->>>>>>> origin/fix/audio-capture-readiness-status
           systemAudioCaptureStatus: 'unavailable',
           captureWarning: message.slice(0, 256),
         });
@@ -630,8 +535,6 @@ export function useAudioCapture(
       systemVadRef.current = null;
     }
 
-<<<<<<< HEAD
-    const latest = getLatestState();
     const latest = getLatestState();
     const nextConsent = latest.meetingConsent === 'allowed_once' ? 'prompt' : latest.meetingConsent;
     patchState({

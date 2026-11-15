@@ -706,10 +706,7 @@ describe('IPC Security & Origin Validation Subsystem', () => {
       /Session record exceeds maximum aggregate size limit of 5MB/
     );
   });
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/fix/audio-capture-readiness-status
   it('validates microphone and system-audio readiness as bounded finite states', () => {
     const sanitized = router.sanitizePatchState({
       microphoneCaptureStatus: 'active',

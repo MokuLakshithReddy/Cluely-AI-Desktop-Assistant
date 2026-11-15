@@ -101,9 +101,6 @@ export interface SharedState {
   isGenerating?: boolean;
   micActive?: boolean;
   systemAudioActive?: boolean;
-  microphoneCaptureStatus: AudioCaptureStatus;
-  systemAudioCaptureStatus: AudioCaptureStatus;
-  captureWarning: string | null;
   privacyMode: 'local' | 'cloud';
   meetingConsent: 'prompt' | 'allowed_once' | 'always_allowed' | 'denied';
   telemetryEnabled: boolean;
