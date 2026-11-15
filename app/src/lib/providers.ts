@@ -392,6 +392,11 @@ export async function streamOllama(options: GenerationOptions): Promise<string> 
 
   if (!response.ok) {
     const errText = await response.text();
+    if (response.status === 404 && errText.includes('not found')) {
+      throw new Error(
+        `Ollama model "${modelName}" is not downloaded yet. Run "ollama pull ${modelName}" in PowerShell, or switch back to Google Gemini in Dashboard Settings.`
+      );
+    }
     throw new Error(`Ollama connection error (${response.status}): Is Ollama running on localhost:11434? ${errText}`);
   }
 

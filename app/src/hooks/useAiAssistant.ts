@@ -146,6 +146,8 @@ export function useAiAssistant(
         const rawMsg = err.message || 'Failed to complete request';
         if (rawMsg.includes('[Outbound Security Guard]')) {
           accumulatedContent = `🛡️ **Outbound Security Guard Blocked Transmission**\n\n${rawMsg}\n\n---\n**How to proceed:**\n1. **Text & Conversation Only** *(Instant)*: Click the **Camera icon** at the bottom to toggle it off (text-only mode), then ask your question again.\n2. **Allow Cloud Vision with Gemini**: In **Dashboard -> Settings -> Security & Privacy**, uncheck **Automated Sensitive-Content Redaction**.\n3. **Private On-Device Screen Vision**: In **Dashboard -> Models**, select **Ollama (Local LLM)** for offline, zero-cloud desktop analysis.`;
+        } else if (rawMsg.includes('Ollama model') || rawMsg.includes('not found') || rawMsg.includes('not downloaded')) {
+          accumulatedContent = `🦙 **Local Ollama Model Not Installed**\n\n${rawMsg}\n\n---\n**How to proceed:**\n1. **Option A (Download Local Vision Model)**: Open a terminal and run:\n   \`\`\`cmd\n   ollama pull llava\n   \`\`\`\n   *(or \`ollama pull llama3.2\` for text-only)*\n2. **Option B (Use Fast Cloud Gemini)**: In **Dashboard -> Models**, switch back to **Google Gemini** (and uncheck *Sensitive-Content Redaction* in **Security & Privacy** if you want Gemini to analyze your screen).`;
         } else {
           accumulatedContent = `**Generation Error**: ${rawMsg}`;
         }
