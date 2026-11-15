@@ -143,7 +143,12 @@ export function useAiAssistant(
         accumulatedContent += '\n\n*(Generation stopped by user)*';
       } else {
         console.error('[useAiAssistant] AI generation error:', err);
-        accumulatedContent = `**Generation Error**: ${err.message || 'Failed to complete request'}`;
+        const rawMsg = err.message || 'Failed to complete request';
+        if (rawMsg.includes('[Outbound Security Guard]')) {
+          accumulatedContent = `🛡️ **Outbound Security Guard Blocked Transmission**\n\n${rawMsg}\n\n---\n**How to proceed:**\n1. **Text & Conversation Only** *(Instant)*: Click the **Camera icon** at the bottom to toggle it off (text-only mode), then ask your question again.\n2. **Allow Cloud Vision with Gemini**: In **Dashboard -> Settings -> Security & Privacy**, uncheck **Automated Sensitive-Content Redaction**.\n3. **Private On-Device Screen Vision**: In **Dashboard -> Models**, select **Ollama (Local LLM)** for offline, zero-cloud desktop analysis.`;
+        } else {
+          accumulatedContent = `**Generation Error**: ${rawMsg}`;
+        }
       }
       updateActiveAssistantMessage(assistantMessageId, accumulatedContent, false, true);
     } finally {

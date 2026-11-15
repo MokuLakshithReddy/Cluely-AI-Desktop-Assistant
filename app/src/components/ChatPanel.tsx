@@ -10,6 +10,7 @@ import {
   MessageSquare,
   BookOpen,
   X,
+  ShieldAlert,
 } from 'lucide-react';
 import { SharedState, ChatMessage } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
@@ -33,7 +34,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'transcript'>('chat');
   const [queryInput, setQueryInput] = useState('');
-  const [includeScreen, setIncludeScreen] = useState(true);
+  const isCloudWithRedaction =
+    (state.redactSensitiveData || state.blockOutboundSecrets) &&
+    !state.activeModel.toLowerCase().includes('ollama');
+  const [includeScreen, setIncludeScreen] = useState(!isCloudWithRedaction);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -201,6 +205,16 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         )}
       </div>
 
+      {/* Outbound Privacy Guard Notice if Screen is active with Cloud Redaction */}
+      {includeScreen && isCloudWithRedaction && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-950/70 border-t border-amber-800/60 text-[11px] text-amber-300">
+          <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+          <span className="flex-1">
+            <strong>Sensitive Redaction is ON</strong>: Desktop captures to {state.activeModel} are blocked. Click camera for text-only, or disable redaction in Settings.
+          </span>
+        </div>
+      )}
+
       {/* Input Form Bar */}
       <form
         onSubmit={handleSubmit}
@@ -212,10 +226,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           onClick={() => setIncludeScreen(!includeScreen)}
           className={`p-2 rounded-lg border transition-all ${
             includeScreen
-              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
+              ? isCloudWithRedaction
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
               : 'bg-slate-800/60 text-slate-500 border-slate-700'
           }`}
-          title={includeScreen ? 'Screen capture attached to question' : 'Text only (no screenshot)'}
+          title={
+            includeScreen
+              ? isCloudWithRedaction
+                ? 'Screen capture attached (Note: Redaction is ON in Settings, which blocks cloud screenshots)'
+                : 'Screen capture attached to question'
+              : 'Text only (no screenshot)'
+          }
         >
           <Camera className="w-4 h-4" />
         </button>
