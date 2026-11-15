@@ -5,7 +5,7 @@
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
 **Test Status**: 187/187 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `8d3c954586e33042f0a87150ec04b07cb6f8decf`  
+**Source revision**: `b63d6f6a5205b12d842305ba8b6061214759eed1`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-15  
 
@@ -30,8 +30,8 @@
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 3 | 3 | 0 | **PASSED** |
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 7 | 7 | 0 | **PASSED** |
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
-| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
+| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
 | **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **187** | **187** | **0** | **100% PASS** |
@@ -272,21 +272,21 @@
 ✓ guarantees state immutability when updating session records
 ```
 
-### 16. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
-```text
-✓ parses empty or missing hash as default "all" view
-✓ parses direct routes without query parameters
-✓ correctly extracts route and tab query parameters from complex hashes
-✓ handles leading slash with query parameters
-```
-
-### 17. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 16. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
 ✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
 ✓ preserves aspect ratio when height is greater than width (portrait display)
 ✓ handles boundary 1x1 minimal screen dimension safely
+```
+
+### 17. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+```text
+✓ parses empty or missing hash as default "all" view
+✓ parses direct routes without query parameters
+✓ correctly extracts route and tab query parameters from complex hashes
+✓ handles leading slash with query parameters
 ```
 
 ### 18. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)

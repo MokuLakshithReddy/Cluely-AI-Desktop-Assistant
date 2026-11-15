@@ -37,13 +37,15 @@ const env = {
 if (process.platform === 'win32') {
   env.APPDATA = path.join(smokeRoot, 'AppData', 'Roaming');
   env.LOCALAPPDATA = path.join(smokeRoot, 'AppData', 'Local');
-} else {
+} else if (process.platform === 'linux') {
   env.HOME = path.join(smokeRoot, 'home');
   env.XDG_CONFIG_HOME = path.join(env.HOME, '.config');
   env.XDG_CACHE_HOME = path.join(env.HOME, '.cache');
 }
+// On macOS (darwin), preserve real process.env.HOME so Mach bootstrap and launchd namespaces
+// for Electron helper processes (Cluely Copilot Helper.app) remain intact.
 for (const dir of [env.APPDATA, env.LOCALAPPDATA, env.HOME, env.XDG_CONFIG_HOME, env.XDG_CACHE_HOME]) {
-  if (dir) fs.mkdirSync(dir, { recursive: true });
+  if (dir && dir !== process.env.HOME) fs.mkdirSync(dir, { recursive: true });
 }
 delete env.ELECTRON_RUN_AS_NODE;
 

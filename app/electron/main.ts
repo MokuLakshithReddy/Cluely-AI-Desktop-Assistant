@@ -7,6 +7,14 @@ import { ipcRouter } from './domains/ipc-router';
 import { stateManager } from './domains/state';
 import { sessionRepository } from './services/session-repository';
 
+if (process.env.SMOKE_TEST_USER_DATA && path.isAbsolute(process.env.SMOKE_TEST_USER_DATA)) {
+  try {
+    app.setPath('userData', process.env.SMOKE_TEST_USER_DATA);
+  } catch (err) {
+    console.warn('[Main] Failed to set custom smoke test userData:', err);
+  }
+}
+
 let isQuitting = false;
 
 const packagedSmokeStatus: Record<string, unknown> = {

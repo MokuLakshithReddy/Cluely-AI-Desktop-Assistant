@@ -298,8 +298,8 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 3 |
 | `ai-context.test.ts` | AI context assembly and operating modes | 7 |
 | `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
-| `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
 | `screen-capture.test.ts` | Display thumbnail scaling | 5 |
+| `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
 | **Total** | **18 Vitest suites + 1 Electron smoke check** | **187** |

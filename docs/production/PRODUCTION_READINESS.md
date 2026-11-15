@@ -50,8 +50,8 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 13.  tests/window-coordinator.test.ts     3 passed (Window close recovery, macOS reinitialization & listener idempotency)
 14.  tests/ai-context.test.ts             7 passed (AI Context Synthesis & Multimodal Provider Subsystem)
 15.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
-16.  tests/dashboard-routing.test.ts      4 passed (Dashboard Route and Hash Parsing)
-17.  tests/screen-capture.test.ts         5 passed (Screen Capture & Thumbnail Scaling Subsystem)
+16.  tests/screen-capture.test.ts         5 passed (Screen Capture & Thumbnail Scaling Subsystem)
+17.  tests/dashboard-routing.test.ts      4 passed (Dashboard Route and Hash Parsing)
 18.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
 19.  tests/electron-smoke.cjs         1/1 passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)
 --------------------------------------------------------------------------------------
