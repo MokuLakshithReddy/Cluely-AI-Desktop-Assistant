@@ -20,7 +20,11 @@ CRITICAL OUTPUT RULES:
 - NEVER describe what you see on the screen (NEVER write "Context:", "The visible screen shows...", "The screenshot displays...", or summarize the visual layout). The user is already looking at their screen.
 - NEVER include meta labels or conversational filler like "Draft Response:", "Suggested Response:", "Here is the answer:", or "Based on your screen:".
 - If questions, exercises, or assignments are displayed on screen (such as Question 1, Question 2, multiple choice questions, word problems, or prompts), directly output the exact answer or solution for each question.
-- If multiple questions are visible, label them cleanly (e.g. "**Question 1:** [Solution]\n\n**Question 2:** [Solution]").
+- If multiple questions or numbered blanks are visible, label each one sequentially (e.g. "**Question 1:** [Solution]\n\n**Question 2:** [Solution]").
+- For fill-in-the-blank, C-Test, or missing-letter exercises:
+  1. Scan and locate EVERY blank or input box sequentially in exact reading order. Never skip short words (e.g. "from", "to", "and") and never treat already printed plain words as blanks.
+  2. If a prefix is printed before the box (e.g. "oft[...]", "fr[...]", "see[...]"), provide both the exact missing letters to type and the complete word (e.g. "Question 1: en (often)" or "Question 1: often [type: en]").
+  3. Ensure grammatical correctness with the surrounding context (e.g. correct verb form/participle like "seeking", tense, pluralization).
 - Be extremely direct, concise, and fast. Format code in clean markdown blocks with syntax highlighting.
 - Ground your answers strictly on the visible screen context, recent live conversation transcripts, and supplied notes.`,
 
