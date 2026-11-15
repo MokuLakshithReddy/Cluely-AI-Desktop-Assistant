@@ -1,8 +1,8 @@
 # Production Readiness Assessment
 
 **Assessment date:** 2026-11-15 (Asia/Kolkata)  
-**Audited source revision:** [`d53476e1050c192be3a147767f8e1d58dd35abff`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/d53476e1050c192be3a147767f8e1d58dd35abff)  
-**Baseline CI evidence:** [CI Verification Suite #201 — run 43686142718](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43686142718)
+**Audited source revision:** [`f76f956c3f9213612564248fb1770fcbd8f38156`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/f76f956c3f9213612564248fb1770fcbd8f38156)  
+**Baseline CI evidence:** [CI Verification Suite #206 — run 43707179094](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707179094)
 
 ## Status
 
