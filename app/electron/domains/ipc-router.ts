@@ -851,11 +851,19 @@ export class IpcRouter {
     // 6. Window Resize
     ipcMain.on('resize-chat-window', (event, height: any) => {
       this.validateOrigin(event);
-      if (typeof height !== 'number') return;
+      if (typeof height !== 'number' || !Number.isFinite(height)) return;
       const chatWin = windowCoordinator.getChatWindow();
       if (chatWin && !chatWin.isDestroyed()) {
-        const bounds = chatWin.getBounds();
-        chatWin.setBounds({ ...bounds, height: Math.max(260, Math.min(height, 800)) });
+        try {
+          const bounds = chatWin.getBounds();
+          const targetHeight = Math.round(Math.max(260, Math.min(height, 800)));
+          const bX = Math.round(Number.isFinite(bounds.x) ? bounds.x : 0);
+          const bY = Math.round(Number.isFinite(bounds.y) ? bounds.y : 0);
+          const bW = Math.round(Number.isFinite(bounds.width) ? bounds.width : 620);
+          chatWin.setBounds({ x: bX, y: bY, width: bW, height: targetHeight });
+        } catch (err) {
+          console.warn('[IpcRouter] Failed to safely resize chat window:', err);
+        }
       }
     });
 

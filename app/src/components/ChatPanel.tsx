@@ -18,6 +18,7 @@ import { StateUpdater } from '../hooks/useSharedState';
 import { useDraggableWindow } from '../hooks/useDraggableWindow';
 import { TranscriptLive } from './TranscriptLive';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { cleanAssistantSolution } from '../lib/providers';
 
 interface ChatPanelProps {
   state: SharedState;
@@ -156,7 +157,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       </span>
                       {msg.role === 'assistant' && (
                         <button
-                          onClick={() => copyToClipboard(msg.content, msg.id)}
+                          onClick={() => copyToClipboard(cleanAssistantSolution(msg.content), msg.id)}
                           className="hover:text-cyan-300 transition-colors"
                           title="Copy Answer"
                         >
@@ -184,7 +185,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   {/* Message Content */}
                   {msg.role === 'assistant' ? (
                     msg.content ? (
-                      <MarkdownRenderer content={msg.content} />
+                      <MarkdownRenderer content={cleanAssistantSolution(msg.content)} />
                     ) : (
                       <div className="font-sans text-cyan-400 animate-pulse italic text-xs">
                         {msg.isStreaming ? 'Thinking...' : ''}

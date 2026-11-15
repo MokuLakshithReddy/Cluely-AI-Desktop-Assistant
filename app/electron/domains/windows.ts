@@ -109,12 +109,31 @@ export class WindowCoordinator {
 
     this.controlWin.on('move', () => {
       if (this.isSynchronizingWindows) return;
-      if (this.controlWin && !this.controlWin.isDestroyed() && this.chatWin && !this.chatWin.isDestroyed()) {
+      if (!this.controlWin || this.controlWin.isDestroyed()) return;
+      if (!this.chatWin || this.chatWin.isDestroyed()) return;
+      if (!this.chatWin.isVisible()) return;
+
+      this.isSynchronizingWindows = true;
+      try {
         const bounds = this.controlWin.getBounds();
         const chatBounds = this.chatWin.getBounds();
-        const chatX = Math.round(bounds.x + (bounds.width - chatBounds.width) / 2);
-        const chatY = bounds.y + bounds.height + 8;
-        this.chatWin.setPosition(chatX, chatY);
+
+        const bX = Number.isFinite(bounds?.x) ? bounds.x : 0;
+        const bY = Number.isFinite(bounds?.y) ? bounds.y : 0;
+        const bWidth = Number.isFinite(bounds?.width) ? bounds.width : 620;
+        const bHeight = Number.isFinite(bounds?.height) ? bounds.height : 58;
+        const cWidth = Number.isFinite(chatBounds?.width) ? chatBounds.width : 620;
+
+        const chatX = Math.round(bX + (bWidth - cWidth) / 2);
+        const chatY = Math.round(bY + bHeight + 8);
+
+        if (Number.isFinite(chatX) && Number.isFinite(chatY)) {
+          this.chatWin.setPosition(chatX, chatY);
+        }
+      } catch (err) {
+        console.warn('[WindowCoordinator] Suppressed position sync error in move listener:', err);
+      } finally {
+        this.isSynchronizingWindows = false;
       }
     });
 
@@ -129,8 +148,12 @@ export class WindowCoordinator {
     const controlBounds = this.controlWin ? this.controlWin.getBounds() : { x: 500, y: 24, width: 620, height: 58 };
     const chatWidth = 620;
     const chatHeight = 540;
-    const chatX = Math.round(controlBounds.x + (controlBounds.width - chatWidth) / 2);
-    const chatY = controlBounds.y + controlBounds.height + 8;
+    const cbX = Number.isFinite(controlBounds?.x) ? controlBounds.x : 500;
+    const cbY = Number.isFinite(controlBounds?.y) ? controlBounds.y : 24;
+    const cbW = Number.isFinite(controlBounds?.width) ? controlBounds.width : 620;
+    const cbH = Number.isFinite(controlBounds?.height) ? controlBounds.height : 58;
+    const chatX = Math.round(cbX + (cbW - chatWidth) / 2);
+    const chatY = Math.round(cbY + cbH + 8);
 
     this.chatWin = new BrowserWindow({
       width: chatWidth,
@@ -265,20 +288,37 @@ export class WindowCoordinator {
 
   public moveControlWindow(delta: { x: number; y: number }) {
     if (!this.controlWin || this.controlWin.isDestroyed()) return;
+    const dx = Number(delta?.x);
+    const dy = Number(delta?.y);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+
     this.isSynchronizingWindows = true;
     try {
       const bounds = this.controlWin.getBounds();
-      const newX = bounds.x + delta.x;
-      const newY = bounds.y + delta.y;
-      this.controlWin.setPosition(newX, newY);
+      const bX = Number.isFinite(bounds?.x) ? bounds.x : 0;
+      const bY = Number.isFinite(bounds?.y) ? bounds.y : 0;
+      const bWidth = Number.isFinite(bounds?.width) ? bounds.width : 620;
+      const bHeight = Number.isFinite(bounds?.height) ? bounds.height : 58;
 
-      // Synchronize chat window position
-      if (this.chatWin && !this.chatWin.isDestroyed()) {
-        const chatBounds = this.chatWin.getBounds();
-        const chatX = Math.round(newX + (bounds.width - chatBounds.width) / 2);
-        const chatY = newY + bounds.height + 8;
-        this.chatWin.setPosition(chatX, chatY);
+      const newX = Math.round(bX + dx);
+      const newY = Math.round(bY + dy);
+
+      if (Number.isFinite(newX) && Number.isFinite(newY)) {
+        this.controlWin.setPosition(newX, newY);
       }
+
+      // Synchronize chat window position if visible
+      if (this.chatWin && !this.chatWin.isDestroyed() && this.chatWin.isVisible()) {
+        const chatBounds = this.chatWin.getBounds();
+        const cWidth = Number.isFinite(chatBounds?.width) ? chatBounds.width : 620;
+        const chatX = Math.round(newX + (bWidth - cWidth) / 2);
+        const chatY = Math.round(newY + bHeight + 8);
+        if (Number.isFinite(chatX) && Number.isFinite(chatY)) {
+          this.chatWin.setPosition(chatX, chatY);
+        }
+      }
+    } catch (err) {
+      console.warn('[WindowCoordinator] Suppressed position sync error in moveControlWindow:', err);
     } finally {
       this.isSynchronizingWindows = false;
     }

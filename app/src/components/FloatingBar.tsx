@@ -96,27 +96,36 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
       className="drag-region flex items-center justify-between w-full h-[50px] px-3 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-full shadow-2xl text-slate-200 select-none overflow-hidden box-border cursor-grab active:cursor-grabbing"
     >
       {showConsentModal ? (
-        <div className="flex items-center justify-between w-full h-full px-1 text-xs animate-in fade-in">
+        <div className="no-drag flex items-center justify-between w-full h-full px-1 text-xs animate-in fade-in">
           <div className="flex items-center gap-1.5 text-cyan-300 font-medium truncate">
             <Shield className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
             <span className="truncate">Enable meeting transcription?</span>
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="no-drag flex items-center gap-1 flex-shrink-0">
             <button
-              onClick={() => handleConsent('denied')}
-              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md text-[11px] font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleConsent('denied');
+              }}
+              className="no-drag px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md text-[11px] font-medium"
             >
               Deny
             </button>
             <button
-              onClick={() => handleConsent('allowed_once')}
-              className="px-2 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-md text-[11px] font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleConsent('allowed_once');
+              }}
+              className="no-drag px-2 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-md text-[11px] font-medium"
             >
               Allow Once
             </button>
             <button
-              onClick={() => handleConsent('always_allowed')}
-              className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-[11px] font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleConsent('always_allowed');
+              }}
+              className="no-drag px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-[11px] font-medium"
             >
               Always Allow
             </button>

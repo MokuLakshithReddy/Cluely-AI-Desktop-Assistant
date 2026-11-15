@@ -4,6 +4,7 @@ import { app } from 'electron';
 import { SharedState } from '../../src/lib/types';
 import { credentialVault } from '../services/vault';
 import { encryptStoragePayload, decryptStoragePayload } from '../services/storage-encryption';
+import { cleanAssistantSolution } from '../../src/lib/providers';
 
 function getApplicationVersion(): string {
   try {
@@ -133,6 +134,16 @@ export class StateManager {
     // Storage encryption is permanently enforced; plaintext serialization is impossible
     patch.encryptedStorageEnabled = true;
 
+    // Sanitize assistant messages to ensure direct solutions with zero context/draft headers
+    if (patch.session?.messages && Array.isArray(patch.session.messages)) {
+      patch.session.messages = patch.session.messages.map((m: any) => {
+        if (m && m.role === 'assistant' && typeof m.content === 'string') {
+          return { ...m, content: cleanAssistantSolution(m.content) };
+        }
+        return m;
+      });
+    }
+
     this.state = { ...this.state, ...patch };
     this.scheduleSave();
     this.notify();
@@ -200,6 +211,16 @@ export class StateManager {
         delete parsed.persistenceError;
         // Application version belongs to the packaged application, never to user state.
         delete parsed.appVersion;
+
+        // Strip legacy preambles from stored assistant messages
+        if (Array.isArray(parsed.session?.messages)) {
+          parsed.session.messages = parsed.session.messages.map((m: any) => {
+            if (m && m.role === 'assistant' && typeof m.content === 'string') {
+              return { ...m, content: cleanAssistantSolution(m.content) };
+            }
+            return m;
+          });
+        }
 
         this.state = {
           ...INITIAL_STATE,

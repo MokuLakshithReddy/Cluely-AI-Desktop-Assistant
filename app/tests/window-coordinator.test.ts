@@ -148,4 +148,41 @@ describe('WindowCoordinator macOS close-all recovery', () => {
 
     expect(coordinator.getControlWindow()).toBeNull();
   });
+
+  it('moveControlWindow rounds fractional coordinates and syncs visible chat window', () => {
+    const coordinator = new WindowCoordinator();
+    coordinator.init();
+
+    const control = coordinator.getControlWindow() as any;
+    const chat = coordinator.getChatWindow() as any;
+    chat.visible = true;
+
+    coordinator.moveControlWindow({ x: 12.7, y: -4.3 });
+
+    expect(control.setPosition).toHaveBeenCalledWith(Math.round(100 + 12.7), Math.round(24 - 4.3));
+    expect(chat.setPosition).toHaveBeenCalled();
+    const [chatX, chatY] = chat.setPosition.mock.calls[0];
+    expect(Number.isInteger(chatX)).toBe(true);
+    expect(Number.isInteger(chatY)).toBe(true);
+  });
+
+  it('moveControlWindow does not reposition chat window when chat is hidden', () => {
+    const coordinator = new WindowCoordinator();
+    coordinator.init();
+
+    const chat = coordinator.getChatWindow() as any;
+    chat.visible = false;
+
+    coordinator.moveControlWindow({ x: 10, y: 10 });
+    expect(chat.setPosition).not.toHaveBeenCalled();
+  });
+
+  it('moveControlWindow safely ignores invalid or NaN deltas', () => {
+    const coordinator = new WindowCoordinator();
+    coordinator.init();
+
+    const control = coordinator.getControlWindow() as any;
+    coordinator.moveControlWindow({ x: NaN, y: 10 });
+    expect(control.setPosition).not.toHaveBeenCalled();
+  });
 });

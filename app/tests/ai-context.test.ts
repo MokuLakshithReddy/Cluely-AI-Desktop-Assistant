@@ -133,6 +133,25 @@ describe('AI Context Synthesis & Multimodal Provider Subsystem', () => {
       expect(cleaned).toBe('The optimal solution is binary search.');
     });
 
+    it('strips bulleted Context and Draft Response preambles cleanly', () => {
+      const bulleted =
+        '• Context: The visible screen shows a writing assignment ("Question 2") about economic regulation.\n' +
+        '• Draft Response:\n' +
+        'Governments must establish baseline rules to protect public health and safety.';
+      const cleaned = cleanAssistantSolution(bulleted);
+      expect(cleaned).toBe('Governments must establish baseline rules to protect public health and safety.');
+      expect(cleaned).not.toContain('Context:');
+      expect(cleaned).not.toContain('Draft Response:');
+    });
+
+    it('strips dashed Context and Answer preambles cleanly', () => {
+      const dashed =
+        '- Context: User is viewing a coding problem.\n\n' +
+        'def solve(arr):\n    return sum(arr)';
+      const cleaned = cleanAssistantSolution(dashed);
+      expect(cleaned).toBe('def solve(arr):\n    return sum(arr)');
+    });
+
     it('hides incomplete context preamble while streaming so it does not flicker on screen', () => {
       const partial = 'Context: The visible screen shows a question';
       const cleaned = cleanAssistantSolution(partial);

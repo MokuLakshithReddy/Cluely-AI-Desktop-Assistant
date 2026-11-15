@@ -7,6 +7,14 @@ import { ipcRouter } from './domains/ipc-router';
 import { stateManager } from './domains/state';
 import { sessionRepository } from './services/session-repository';
 
+process.on('uncaughtException', (error) => {
+  console.error('[MAIN_UNCAUGHT_EXCEPTION]', error?.stack || error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[MAIN_UNHANDLED_REJECTION]', reason);
+});
+
 if (process.env.SMOKE_TEST_USER_DATA && path.isAbsolute(process.env.SMOKE_TEST_USER_DATA)) {
   try {
     app.setPath('userData', process.env.SMOKE_TEST_USER_DATA);

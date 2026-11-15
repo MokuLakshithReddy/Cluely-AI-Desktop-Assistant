@@ -99,11 +99,12 @@ export function validateNetworkEndpoint(urlStr: string, allowLocalHttp: boolean 
 export function cleanAssistantSolution(text: string): string {
   if (!text) return text;
 
-  // 1. Check if the response begins with a Context block:
+  // 1. Check if the response begins with a Context block (plain, markdown bold/header, bulleted, or list)
   // e.g. "Context: The visible screen shows...\nDraft Response:\n..."
-  // e.g. "**Context:** ...\n\n[Solution]"
+  // e.g. "• Context: ... \n• Draft Response:\n..."
+  // e.g. "**Context:** ... \n\n[Solution]"
   const contextBlockMatch = text.match(
-    /^(\*{0,2}(?:Context|Screen Context|Screen Analysis|Visible Screen)\*{0,2}:[\s\S]*?)(?:\n\s*\*{0,2}(?:Draft Response|Response|Suggested Response|Solution|Answer|Suggested Answer)\*{0,2}:|\n{2,}|$)/i
+    /^[\s*•\-#]*(\*{0,2}(?:Context|Screen Context|Screen Analysis|Visible Screen)\*{0,2}:?[\s\S]*?)(?:\n\s*[\s*•\-#]*\*{0,2}(?:Draft Response|Response|Suggested Response|Solution|Answer|Suggested Answer)\*{0,2}:?|\n{2,}|$)/i
   );
 
   if (contextBlockMatch) {
@@ -114,13 +115,13 @@ export function cleanAssistantSolution(text: string): string {
     const matchedPrefix = contextBlockMatch[0];
     const remainder = text
       .slice(matchedPrefix.length)
-      .replace(/^(\*{0,2}(?:Draft Response|Response|Suggested Response|Solution|Answer|Suggested Answer)\*{0,2}:\s*\n*)/i, '');
+      .replace(/^[\s*•\-#]*(\*{0,2}(?:Draft Response|Response|Suggested Response|Solution|Answer|Suggested Answer)\*{0,2}:?\s*\n*)/i, '');
     return remainder.trimStart();
   }
 
-  // 2. Strip standalone leading "Draft Response:" or "Suggested Response:"
+  // 2. Strip standalone leading "Draft Response:", "Suggested Response:", bulleted or plain
   return text
-    .replace(/^(\*{0,2}(?:Draft Response|Suggested Response|Direct Answer)\*{0,2}:\s*\n*)/i, '')
+    .replace(/^[\s*•\-#]*(\*{0,2}(?:Draft Response|Suggested Response|Direct Answer|Solution|Answer)\*{0,2}:?\s*\n*)/i, '')
     .trimStart();
 }
 
