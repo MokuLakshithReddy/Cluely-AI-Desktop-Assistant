@@ -51,11 +51,20 @@ const desktopBridge: DesktopBridge = {
   startRealtimeSTT: (model?: string) => ipcRenderer.invoke('realtime-stt-start', { model }),
   feedRealtimeSTTAudio: (pcmBase64: string) => ipcRenderer.invoke('realtime-stt-feed', { pcmBase64 }),
   stopRealtimeSTT: () => ipcRenderer.invoke('realtime-stt-stop'),
+  pauseRealtimeSTT: () => ipcRenderer.invoke('realtime-stt-pause'),
+  resumeRealtimeSTT: () => ipcRenderer.invoke('realtime-stt-resume'),
   getRealtimeSTTStatus: () => ipcRenderer.invoke('realtime-stt-status'),
+  getRealtimeSTTModelsInfo: () => ipcRenderer.invoke('realtime-stt-models-info'),
+  deleteRealtimeSTTModel: (modelId: string) => ipcRenderer.invoke('realtime-stt-delete-model', { modelId }),
   onRealtimeSTTInterim: (callback: (data: { text: string; timestamp: number }) => void) => {
     const handler = (_event: any, data: { text: string; timestamp: number }) => callback(data);
     ipcRenderer.on('realtime-stt-interim', handler);
     return () => ipcRenderer.off('realtime-stt-interim', handler);
+  },
+  onRealtimeSTTStabilized: (callback: (data: { text: string; timestamp: number }) => void) => {
+    const handler = (_event: any, data: { text: string; timestamp: number }) => callback(data);
+    ipcRenderer.on('realtime-stt-stabilized', handler);
+    return () => ipcRenderer.off('realtime-stt-stabilized', handler);
   },
   onRealtimeSTTFinal: (callback: (data: { text: string; timestamp: number }) => void) => {
     const handler = (_event: any, data: { text: string; timestamp: number }) => callback(data);

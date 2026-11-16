@@ -232,3 +232,18 @@ export function decryptStoragePayload(payloadStr: string, customKey?: Buffer): s
   decrypted += decipher.final('utf8');
   return decrypted;
 }
+
+/**
+ * Asynchronously encrypts arbitrary session records or state payloads using authenticated AES-256-GCM.
+ */
+export async function encryptStoragePayloadAsync(data: string | any, customKey?: Buffer): Promise<string> {
+  return encryptStoragePayload(data, customKey);
+}
+
+/**
+ * Asynchronously decrypts AES-256-GCM storage envelopes. Gracefully parses legacy unencrypted plaintext.
+ */
+export async function decryptStoragePayloadAsync(payloadStr: string, customKey?: Buffer): Promise<string> {
+  return decryptStoragePayload(payloadStr, customKey);
+}
+

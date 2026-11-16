@@ -160,12 +160,34 @@ export function useAudioCapture(
       });
     });
 
+    const unStabilized = window.desktopBridge.onRealtimeSTTStabilized?.(({ text }) => {
+      if (!text || getLatestState().isPurging) return;
+      patchState(prev => {
+        if (!prev.session || prev.isPurging) return {};
+        const transcript = [...prev.session.transcript];
+        if (activeInterimIdRef.current) {
+          const idx = transcript.findIndex(i => i.id === activeInterimIdRef.current);
+          if (idx >= 0) {
+            transcript[idx] = { ...transcript[idx], text, status: 'transcribing' };
+          }
+        }
+        return {
+          session: {
+            ...prev.session,
+            updatedAt: new Date().toISOString(),
+            transcript,
+          },
+        };
+      });
+    });
+
     const unStatus = window.desktopBridge.onRealtimeSTTStatus?.(({ status }) => {
       patchState({ realtimeSttStatus: status as any });
     });
 
     return () => {
       unInterim?.();
+      unStabilized?.();
       unFinal?.();
       unStatus?.();
     };
@@ -381,8 +403,23 @@ export function useAudioCapture(
 
     // 1. Channel A: Start Local Microphone Capture ('me')
     const isRealtimeLocal = (getLatestState().sttEngineMode ?? 'realtime_local') === 'realtime_local';
+    const latestState = getLatestState();
+    const hasConsent =
+      latestState.meetingConsent === 'allowed_once' ||
+      latestState.meetingConsent === 'always_allowed';
 
     if (isRealtimeLocal) {
+      if (!hasConsent) {
+        console.log('[useAudioCapture] Meeting transcription consent not granted; local RealtimeSTT disabled.');
+        await patchState({
+          micActive: false,
+          systemAudioActive: false,
+          systemAudioCaptureStatus: 'idle',
+          captureWarning: 'Meeting consent required for local audio transcription.',
+        });
+        return;
+      }
+
       // Per system design & user requirements: RealtimeSTT captures Computer/System Audio only.
       // Do not capture microphone audio; do not prompt for getUserMedia.
       await patchState({
@@ -390,7 +427,14 @@ export function useAudioCapture(
         microphoneCaptureStatus: 'idle',
       });
       const model = getLatestState().realtimeSttModel || 'tiny.en';
-      void window.desktopBridge?.startRealtimeSTT?.(model);
+      const startRes = await window.desktopBridge?.startRealtimeSTT?.(model);
+      if (startRes && !startRes.success) {
+        console.warn('[useAudioCapture] Failed to start RealtimeSTT:', startRes.error);
+        await patchState({
+          captureWarning: startRes.error || 'Failed to start local speech recognition engine.',
+          realtimeSttStatus: 'error',
+        });
+      }
     } else {
       if (!navigator?.mediaDevices?.getUserMedia) {
         const message = 'Microphone capture is not supported in this environment.';
@@ -432,7 +476,8 @@ export function useAudioCapture(
         const micAudioCtx = new AudioContext({ sampleRate: 48000 });
         micAudioCtxRef.current = micAudioCtx;
         const micSource = micAudioCtx.createMediaStreamSource(micStream);
-        const micResampler = new AudioResampler(48000, 16000);
+        const actualMicSampleRate = micAudioCtx.sampleRate || 48000;
+        const micResampler = new AudioResampler(actualMicSampleRate, 16000);
         micResamplerRef.current = micResampler;
 
         const micVad = new VADProcessor();
@@ -574,7 +619,8 @@ export function useAudioCapture(
         const systemAudioCtx = new AudioContext({ sampleRate: 48000 });
         systemAudioCtxRef.current = systemAudioCtx;
         const systemSource = systemAudioCtx.createMediaStreamSource(systemStreamRef.current);
-        const systemResampler = new AudioResampler(48000, 16000);
+        const actualSysSampleRate = systemAudioCtx.sampleRate || 48000;
+        const systemResampler = new AudioResampler(actualSysSampleRate, 16000);
         systemResamplerRef.current = systemResampler;
 
         const systemVad = new VADProcessor();

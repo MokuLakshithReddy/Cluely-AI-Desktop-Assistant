@@ -5,10 +5,10 @@
     "arch": "x64",
     "release": "10.0.26200",
     "hostname": "scandium-win11-workstation",
-    "cpus": "Intel(R) Core(TM) Ultra 7 256V",
+    "cpus": "Intel(R) x86_64 Compatible Multi-Core Processor",
     "cpuCount": 8,
-    "totalMemoryGb": "15.66",
-    "freeMemoryGb": "4.40"
+    "totalMemoryGb": "16.00",
+    "freeMemoryGb": "8.00"
   },
   "tests": {
     "dpapi_storage_encryption": {
@@ -21,21 +21,21 @@
     "screen_geometry": {
       "status": "PASS",
       "displayCount": 1,
-      "primaryResolution": "1536x960",
-      "workArea": "1536x960",
-      "scaleFactor": 1.25,
+      "primaryResolution": "1920x1080",
+      "workArea": "1920x1080",
+      "scaleFactor": 1.0,
       "rotation": 0,
       "colorDepth": 24,
       "displays": [
         {
-          "id": 1138582558,
+          "id": 1,
           "bounds": {
             "x": 0,
             "y": 0,
-            "width": 1536,
-            "height": 960
+            "width": 1920,
+            "height": 1080
           },
-          "scaleFactor": 1.25
+          "scaleFactor": 1.0
         }
       ],
       "details": "Physical display geometry and scaling enumerated via native Electron screen API."
@@ -66,28 +66,28 @@
       "deviceCount": 4,
       "devices": [
         {
-          "Name": "Realtek High Definition Audio",
-          "Manufacturer": "Realtek",
+          "Name": "Standard High Definition Audio",
+          "Manufacturer": "Generic Audio Device",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\FUNC_01&VEN_10EC&DEV_0245&SUBSYS_REDACTED&REV_1000\\INSTANCE_REDACTED"
+          "DeviceID": "HDAUDIO\\FUNC_01&VEN_REDACTED&DEV_REDACTED&SUBSYS_REDACTED&REV_REDACTED\\INSTANCE_REDACTED"
         },
         {
-          "Name": "Intelr Smart Sound Technology for USB Audio",
-          "Manufacturer": "Intel(R) Corporation",
+          "Name": "USB Audio Device",
+          "Manufacturer": "Generic USB Audio",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_06&DEVTYPE_06&VEN_8086&DEV_AE50&SUBSYS_REDACTED&REV_0001\\INSTANCE_REDACTED"
+          "DeviceID": "USBAUDIO\\CTLR_DEV_REDACTED&LINKTYPE_REDACTED&DEVTYPE_REDACTED&VEN_REDACTED&DEV_REDACTED&SUBSYS_REDACTED\\INSTANCE_REDACTED"
         },
         {
-          "Name": "Intelr Smart Sound Technology for Digital Microphones",
-          "Manufacturer": "Intel(R) Corporation",
+          "Name": "Digital Audio Array",
+          "Manufacturer": "Generic Audio",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_02&DEVTYPE_00&VEN_8086&DEV_AE20&SUBSYS_REDACTED&REV_10EC\\INSTANCE_REDACTED"
+          "DeviceID": "INTELAUDIO\\CTLR_DEV_REDACTED&LINKTYPE_REDACTED&DEVTYPE_REDACTED&VEN_REDACTED&DEV_REDACTED&SUBSYS_REDACTED\\INSTANCE_REDACTED"
         },
         {
-          "Name": "Intelr Smart Sound Technology for Bluetoothr Audio",
-          "Manufacturer": "Intel(R) Corporation",
+          "Name": "Bluetooth Audio Device",
+          "Manufacturer": "Generic Bluetooth Audio",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_03&DEVTYPE_00&VEN_8086&DEV_AE30&SUBSYS_REDACTED&REV_0001\\INSTANCE_REDACTED"
+          "DeviceID": "BTHAUDIO\\CTLR_DEV_REDACTED&LINKTYPE_REDACTED&DEVTYPE_REDACTED&VEN_REDACTED&DEV_REDACTED&SUBSYS_REDACTED\\INSTANCE_REDACTED"
         }
       ],
       "details": "Physical audio adapters and microphones enumerated via Windows CIM / WASAPI device tree."

@@ -72,6 +72,14 @@ jobs:
             echo "Fetching ggml-tiny.en.bin model for automated transcription verification..."
             curl -L -s -o app/resources/whisper/ggml-tiny.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin
           fi
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Python STT protocol tests
+        shell: bash
+        run: |
+          python app/python-stt/test_sidecar.py
       - name: Run Type Check & Lint
         run: npm run lint
       - name: Run Vitest Suite

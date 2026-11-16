@@ -5,7 +5,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Scandium-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-245%2F245%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-247%2F247%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (245/245 Passing)](#6-automated-verification--test-suites-245245-passing)
+6. [Automated Verification & Test Suites (247/247 Passing)](#6-automated-verification--test-suites-247247-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -311,9 +311,9 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 ---
 
-## 6. Automated Verification & Test Suites (245/245 Passing)
+## 6. Automated Verification & Test Suites (247/247 Passing)
 
-The latest verified CI run recorded **245 passing automated checks**: 244 Vitest tests across 24 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The latest verified CI run recorded **247 passing automated checks**: 246 Vitest tests across 24 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
 Evidence: [CI run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
@@ -331,7 +331,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
 | `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 11 |
 | `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 7 |
-| `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 7 |
+| `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 9 |
 | `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 46 |
 | `session-archive.test.ts` | Session archive persistence and path containment | 12 |
 | `state-broadcast.test.ts` | Shared-state renderer updates | 2 |
@@ -340,12 +340,12 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
 | `ai-context.test.ts` | AI context assembly and operating modes | 14 |
-| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
 | `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
+| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **24 Vitest suites + 1 Electron smoke check** | **245** |
+| **Total** | **24 Vitest suites + 1 Electron smoke check** | **247** |
 
 The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
@@ -385,14 +385,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 244 Vitest unit & integration tests
+# Run the 246 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (245 total verified checks)
+# Generate the automated test results markdown report (247 total verified checks)
 npm run test:report
 ```
 

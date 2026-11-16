@@ -210,10 +210,15 @@ export interface DesktopBridge {
 
   // RealtimeSTT (Local, Real-Time Faster-Whisper, System Audio Loopback Only, $0 Owner Cost)
   startRealtimeSTT?: (model?: string) => Promise<{ success: boolean; error?: string }>;
-  feedRealtimeSTTAudio?: (pcmBase64: string) => Promise<void>;
+  feedRealtimeSTTAudio?: (pcmBase64: string) => Promise<{ success: boolean; error?: string } | void>;
   stopRealtimeSTT?: () => Promise<void>;
+  pauseRealtimeSTT?: () => Promise<{ success: boolean }>;
+  resumeRealtimeSTT?: () => Promise<{ success: boolean }>;
   getRealtimeSTTStatus?: () => Promise<{ status: string; model: string; error?: string }>;
+  getRealtimeSTTModelsInfo?: () => Promise<Array<{ id: string; name: string; sizeBytes: number; sizeMb: string; path: string; isActive: boolean }>>;
+  deleteRealtimeSTTModel?: (modelId: string) => Promise<{ success: boolean; message: string }>;
   onRealtimeSTTInterim?: (callback: (data: { text: string; timestamp: number }) => void) => () => void;
+  onRealtimeSTTStabilized?: (callback: (data: { text: string; timestamp: number }) => void) => () => void;
   onRealtimeSTTFinal?: (callback: (data: { text: string; timestamp: number }) => void) => () => void;
   onRealtimeSTTStatus?: (callback: (data: { status: string; model: string; message?: string }) => void) => () => void;
 

@@ -8,6 +8,7 @@ import { stateManager } from './domains/state';
 import { sessionRepository } from './services/session-repository';
 import { licenseManager } from './services/license-manager';
 import { initStorageEncryptionAsync } from './services/storage-encryption';
+import { realtimeSTTManager } from './services/realtime-stt-manager';
 
 process.on('uncaughtException', (error) => {
   console.error('[MAIN_UNCAUGHT_EXCEPTION]', error?.stack || error);
@@ -257,12 +258,16 @@ if (!gotSingleInstanceLock) {
   app.on('before-quit', () => {
     writePackagedSmokeStatus({ beforeQuit: true });
     console.log('[APP_BEFORE_QUIT] Application lifecycle before-quit triggered.');
+    realtimeSTTManager.shutdown().catch((err) => {
+      console.warn('[Main] Error shutting down RealtimeSTT:', err);
+    });
     stateManager.flushSave();
   });
 
   app.on('will-quit', () => {
     writePackagedSmokeStatus({ willQuit: true });
     console.log('[APP_WILL_QUIT] Application lifecycle will-quit completed.');
+    realtimeSTTManager.stop().catch(() => {});
     if (process.env.SMOKE_TEST === 'true') {
       process.exit(0);
     }

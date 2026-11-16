@@ -324,6 +324,15 @@ if (fs.existsSync(prodDocPath)) {
     'production readiness report command count'
   );
 
+  prodDoc = prodDoc.replace(
+    /passes all \d+ automated verification checks \(\d+ Vitest \+ 1 Electron UI\/preload\/IPC E2E smoke test/g,
+    `passes all ${grandTotalTests} automated verification checks (${totalUnitTests} Vitest + 1 Electron UI/preload/IPC E2E smoke test`
+  );
+  prodDoc = prodDoc.replace(
+    /\|\s*\d+ Vitest tests across \d+ test files\s*\|/g,
+    `| ${totalUnitTests} Vitest tests across ${totalSuites} test files |`
+  );
+
   const breakdownMarker = '============================== TEST EXECUTION BREAKDOWN ==============================';
   const breakdownStart = prodDoc.indexOf(breakdownMarker);
   const separator = '======================================================================================';

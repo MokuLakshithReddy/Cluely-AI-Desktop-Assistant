@@ -1430,8 +1430,33 @@ export class IpcRouter {
 
     ipcMain.handle('realtime-stt-feed', async (event, { pcmBase64 }: any) => {
       this.validateOrigin(event);
-      if (!pcmBase64 || typeof pcmBase64 !== 'string') return;
+      const state = stateManager.getState();
+      // Enforce strict consent, active recording, and emergency/purge gating
+      if (
+        state.isPurging ||
+        state.isEmergencyStopping ||
+        !state.isRecording ||
+        (state.meetingConsent !== 'allowed_once' && state.meetingConsent !== 'always_allowed')
+      ) {
+        return { success: false, error: 'Feed rejected: capture not consented or session inactive' };
+      }
+
+      if (!pcmBase64 || typeof pcmBase64 !== 'string') {
+        return { success: false, error: 'Invalid audio payload' };
+      }
+
+      // Max 512KB base64 chunk (~384KB binary)
+      if (pcmBase64.length > 512 * 1024) {
+        return { success: false, error: 'Audio chunk exceeds maximum allowed size' };
+      }
+
+      // Enforce base64 characters
+      if (!/^[A-Za-z0-9+/=]+$/.test(pcmBase64)) {
+        return { success: false, error: 'Malformed base64 audio payload' };
+      }
+
       realtimeSTTManager.feedAudioChunk(pcmBase64);
+      return { success: true };
     });
 
     ipcMain.handle('realtime-stt-stop', async event => {
@@ -1440,9 +1465,34 @@ export class IpcRouter {
       return { success: true };
     });
 
+    ipcMain.handle('realtime-stt-pause', async event => {
+      this.validateOrigin(event);
+      realtimeSTTManager.pause();
+      return { success: true };
+    });
+
+    ipcMain.handle('realtime-stt-resume', async event => {
+      this.validateOrigin(event);
+      realtimeSTTManager.resume();
+      return { success: true };
+    });
+
     ipcMain.handle('realtime-stt-status', async event => {
       this.validateOrigin(event);
       return realtimeSTTManager.getStatus();
+    });
+
+    ipcMain.handle('realtime-stt-models-info', async event => {
+      this.validateOrigin(event);
+      return realtimeSTTManager.getModelsInfo();
+    });
+
+    ipcMain.handle('realtime-stt-delete-model', async (event, { modelId }: any) => {
+      this.validateOrigin(event);
+      if (!modelId || typeof modelId !== 'string') {
+        return { success: false, message: 'Invalid modelId' };
+      }
+      return realtimeSTTManager.deleteModel(modelId);
     });
 
     // Broadcast state updates to windows

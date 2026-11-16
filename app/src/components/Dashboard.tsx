@@ -820,24 +820,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     Live word-by-word streaming transcription from computer audio using local CPU INT8 inference. $0 cost, zero cloud APIs, no minute quotas.
                   </p>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  {state.realtimeSttStatus || 'Ready'}
+                <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wider border ${
+                  state.realtimeSttStatus === 'ready'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : state.realtimeSttStatus === 'downloading' || state.realtimeSttStatus === 'initializing'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30 animate-pulse'
+                    : state.realtimeSttStatus === 'error'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : state.realtimeSttStatus === 'paused'
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                    : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                }`}>
+                  {state.realtimeSttStatus ? state.realtimeSttStatus.replace('_', ' ') : 'Not Configured'}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {[
-                  { id: 'tiny.en', name: 'Tiny.en', desc: 'Fastest • ~75 MB • Lowest CPU load' },
-                  { id: 'base.en', name: 'Base.en (Default)', desc: 'Balanced • ~145 MB • High accuracy' },
+                  { id: 'tiny.en', name: 'Tiny.en (Default)', desc: 'Fastest • ~75 MB • Lowest CPU load' },
+                  { id: 'base.en', name: 'Base.en', desc: 'Balanced • ~145 MB • High accuracy' },
                   { id: 'small.en', name: 'Small.en', desc: 'Accurate • ~460 MB • Deep precision' },
                 ].map(profile => (
                   <button
                     key={profile.id}
+                    disabled={state.isRecording}
                     onClick={() => {
+                      if (state.isRecording) return;
                       patchState({ realtimeSttModel: profile.id as any });
                       window.desktopBridge?.startRealtimeSTT?.(profile.id);
                     }}
                     className={`p-3 rounded-lg border text-left transition-all ${
+                      state.isRecording ? 'opacity-60 cursor-not-allowed' : ''
+                    } ${
                       (state.realtimeSttModel || 'tiny.en') === profile.id
                         ? 'bg-cyan-950/40 border-cyan-500/50 shadow-sm'
                         : 'bg-slate-950 border-slate-800 hover:border-slate-700'

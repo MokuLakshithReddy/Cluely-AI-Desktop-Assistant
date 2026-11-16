@@ -102,4 +102,30 @@ describe('RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT)', () =>
     await manager.stop();
     expect(manager.getStatus().status).toBe('stopped');
   });
+
+  it('pauses and resumes transcription state', async () => {
+    await manager.start('tiny.en');
+    manager.pause();
+    expect(manager.getStatus().status).toBe('paused');
+    manager.resume();
+    expect(manager.getStatus().status).toBe('ready');
+    await manager.stop();
+  });
+
+  it('returns model cache info and handles model deletion gracefully', async () => {
+    await manager.start('tiny.en');
+    const info = await manager.getModelsInfo();
+    expect(Array.isArray(info)).toBe(true);
+
+    const deleteActive = await manager.deleteModel('tiny.en');
+    expect(deleteActive.success).toBe(false); // cannot delete active model
+    expect(deleteActive.message).toContain('actively in use');
+
+    const deleteMissing = await manager.deleteModel('non-existent-model');
+    expect(deleteMissing.success).toBe(false);
+    expect(deleteMissing.message).toContain('not found');
+
+    await manager.shutdown();
+    expect(manager.getStatus().status).toBe('stopped');
+  });
 });

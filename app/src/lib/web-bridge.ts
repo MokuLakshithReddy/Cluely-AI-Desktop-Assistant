@@ -654,10 +654,15 @@ export function initWebBridge(defaultState?: Partial<SharedState>): DesktopBridg
 
     // RealtimeSTT (Local, Real-Time Faster-Whisper, System Audio Loopback Only, $0 Owner Cost)
     startRealtimeSTT: async (model?: string) => ({ success: true, status: 'ready' }),
-    feedRealtimeSTTAudio: async (_pcmBase64: string) => {},
+    feedRealtimeSTTAudio: async (_pcmBase64: string) => ({ success: true }),
     stopRealtimeSTT: async () => {},
+    pauseRealtimeSTT: async () => ({ success: true }),
+    resumeRealtimeSTT: async () => ({ success: true }),
     getRealtimeSTTStatus: async () => ({ status: 'ready', model: 'tiny.en' }),
+    getRealtimeSTTModelsInfo: async () => [],
+    deleteRealtimeSTTModel: async () => ({ success: true, message: 'Deleted in web bridge' }),
     onRealtimeSTTInterim: (_cb: any) => () => {},
+    onRealtimeSTTStabilized: (_cb: any) => () => {},
     onRealtimeSTTFinal: (_cb: any) => () => {},
     onRealtimeSTTStatus: (_cb: any) => () => {},
 
