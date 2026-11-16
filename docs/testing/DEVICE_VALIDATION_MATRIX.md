@@ -13,8 +13,8 @@ Complete this section for each validation campaign. Do not reuse a result after 
 | Field | Value |
 |---|---|
 | Release candidate version | `1.0.2` |
-| Git commit SHA | [`6e889b8`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/6e889b8) |
-| CI workflow run URL | [CI Verification Suite (run 43867460803)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43867460803) |
+| Git commit SHA | [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696) |
+| CI workflow run URL | [CI Verification Suite (run 43873876041)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041) |
 | Artifact name | `Scandium-1.0.2-Windows-x64.exe` / `Scandium-1.0.2-macOS-arm64.dmg` / `Scandium-1.0.2-Linux-x64.AppImage` |
 | Artifact SHA-256 | Windows: `79427f908256dfbdeb8c1175303d80404213d2afaf19ae561405568c4447da6c`<br>macOS: `9656724abca26d61c45050463dfe8b97b8ae14f1d5e88208d89080f8b72d8e82`<br>Linux: `8851bc81d049705a746de89b3bc1ed02331a992a36dffe2a323efed8056db2e8` |
 | Electron version | `45.2.3` |

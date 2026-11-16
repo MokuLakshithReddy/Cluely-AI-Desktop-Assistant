@@ -315,7 +315,7 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 The latest verified CI run recorded **238 passing automated checks**: 237 Vitest tests across 23 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
-Evidence: [CI run 43867460803](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)  
+Evidence: [CI run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |

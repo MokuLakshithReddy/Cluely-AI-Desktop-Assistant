@@ -1,8 +1,8 @@
 # Production Readiness Assessment
 
 **Assessment date:** 2026-11-16 (Asia/Kolkata)  
-**Audited source revision:** [`6e889b8`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/6e889b8)  
-**Baseline CI evidence:** [CI Verification Suite (run 43867460803)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43867460803)
+**Audited source revision:** [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696)  
+**Baseline CI evidence:** [CI Verification Suite (run 43873876041)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041)
 
 ## Status
 
