@@ -4,7 +4,7 @@
     "platform": "win32",
     "arch": "x64",
     "release": "10.0.26200",
-    "hostname": "NarraShiva",
+    "hostname": "scandium-win11-workstation",
     "cpus": "Intel(R) Core(TM) Ultra 7 256V",
     "cpuCount": 8,
     "totalMemoryGb": "15.66",
@@ -69,25 +69,25 @@
           "Name": "Realtek High Definition Audio",
           "Manufacturer": "Realtek",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\FUNC_01&VEN_10EC&DEV_0245&SUBSYS_103C8DA1&REV_1000\\5&1DA0E9F&0&0001DIF_000B&UIF_0000"
+          "DeviceID": "INTELAUDIO\\FUNC_01&VEN_10EC&DEV_0245&SUBSYS_REDACTED&REV_1000\\INSTANCE_REDACTED"
         },
         {
           "Name": "Intelr Smart Sound Technology for USB Audio",
           "Manufacturer": "Intel(R) Corporation",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_06&DEVTYPE_06&VEN_8086&DEV_AE50&SUBSYS_8DA1103C&REV_0001\\5&1DA0E9F&0&0605DIF_000B&UIF_0000"
+          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_06&DEVTYPE_06&VEN_8086&DEV_AE50&SUBSYS_REDACTED&REV_0001\\INSTANCE_REDACTED"
         },
         {
           "Name": "Intelr Smart Sound Technology for Digital Microphones",
           "Manufacturer": "Intel(R) Corporation",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_02&DEVTYPE_00&VEN_8086&DEV_AE20&SUBSYS_8DA1103C&REV_10EC\\5&1DA0E9F&0&0000DIF_000B&UIF_0000"
+          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_02&DEVTYPE_00&VEN_8086&DEV_AE20&SUBSYS_REDACTED&REV_10EC\\INSTANCE_REDACTED"
         },
         {
           "Name": "Intelr Smart Sound Technology for Bluetoothr Audio",
           "Manufacturer": "Intel(R) Corporation",
           "Status": "OK",
-          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_03&DEVTYPE_00&VEN_8086&DEV_AE30&SUBSYS_8DA1103C&REV_0001\\5&1DA0E9F&0&0000DIF_000B&UIF_0000"
+          "DeviceID": "INTELAUDIO\\CTLR_DEV_A828&LINKTYPE_03&DEVTYPE_00&VEN_8086&DEV_AE30&SUBSYS_REDACTED&REV_0001\\INSTANCE_REDACTED"
         }
       ],
       "details": "Physical audio adapters and microphones enumerated via Windows CIM / WASAPI device tree."

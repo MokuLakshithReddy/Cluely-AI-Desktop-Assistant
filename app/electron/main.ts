@@ -7,6 +7,7 @@ import { ipcRouter } from './domains/ipc-router';
 import { stateManager } from './domains/state';
 import { sessionRepository } from './services/session-repository';
 import { licenseManager } from './services/license-manager';
+import { initStorageEncryptionAsync } from './services/storage-encryption';
 
 process.on('uncaughtException', (error) => {
   console.error('[MAIN_UNCAUGHT_EXCEPTION]', error?.stack || error);
@@ -151,6 +152,7 @@ if (!gotSingleInstanceLock) {
 
     // Reload encrypted state once secure storage subsystem is available, and actively migrate legacy plaintext sessions
     try {
+      await initStorageEncryptionAsync();
       stateManager.reloadFromDisk();
       await sessionRepository.migrateAllLegacySessions();
       licenseManager.init();

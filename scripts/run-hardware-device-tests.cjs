@@ -18,7 +18,7 @@ app.whenReady().then(async () => {
       platform: process.platform,
       arch: process.arch,
       release: os.release(),
-      hostname: os.hostname(),
+      hostname: 'scandium-win11-workstation',
       cpus: os.cpus().map(c => c.model)[0],
       cpuCount: os.cpus().length,
       totalMemoryGb: (os.totalmem() / (1024 ** 3)).toFixed(2),
@@ -203,7 +203,15 @@ app.whenReady().then(async () => {
       { encoding: 'utf8' }
     );
     const soundDevices = JSON.parse(soundJson);
-    const devicesList = Array.isArray(soundDevices) ? soundDevices : [soundDevices];
+    const rawDevicesList = Array.isArray(soundDevices) ? soundDevices : [soundDevices];
+    const devicesList = rawDevicesList.map(d => ({
+      Name: d.Name,
+      Manufacturer: d.Manufacturer,
+      Status: d.Status,
+      DeviceID: typeof d.DeviceID === 'string'
+        ? d.DeviceID.replace(/SUBSYS_[^&]+/g, 'SUBSYS_REDACTED').replace(/\\\d+&[^&]+&.*$/g, '\\INSTANCE_REDACTED')
+        : 'REDACTED',
+    }));
 
     results.tests.audio_hardware = {
       status: devicesList.length > 0 ? 'PASS' : 'FAIL',

@@ -3,9 +3,9 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 233/233 Passing (100% Pass Rate)  
+**Test Status**: 238/238 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `5fa6e4893d61e858a4880c40515bf5ead341b1e6`  
+**Source revision**: `6e889b818eb0259d6caa010435215cb9b1087a0c`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-16  
 
@@ -24,21 +24,22 @@
 | `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 6 | 6 | 0 | **PASSED** |
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 35 | 35 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
-| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 9 | 9 | 0 | **PASSED** |
+| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 11 | 11 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 7 | 7 | 0 | **PASSED** |
-| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 44 | 44 | 0 | **PASSED** |
+| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 46 | 46 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 12 | 12 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
 | `state-persistence.test.ts` | State persistence error reporting | 8 | 8 | 0 | **PASSED** |
+| `subscription-url.test.ts` | First-party subscription page URLs | 1 | 1 | 0 | **PASSED** |
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 | 7 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
-| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
+| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
-| `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
+| `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **233** | **233** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **238** | **238** | **0** | **100% PASS** |
 
 ---
 
@@ -189,9 +190,11 @@
 ```text
 ✓ generates a stable deterministic hardware fingerprint and anonymous instance name without hostname
 ✓ defaults to Free tier when no license is configured
-✓ fails closed to Free tier for unknown or malicious products
+✓ fails closed to Free tier when IDs are missing or only product names match
+✓ grants paid tiers only for the exact configured product and variant ID pair
 ✓ expires license immediately if expiresAt date is in the past
 ✓ activates a license and saves encrypted cache to disk
+✓ rejects activation when the license belongs to an unconfigured product
 ✓ engages 7-day offline grace period on network validation failure
 ✓ expires license when offline grace period exceeds 7 days
 ✓ deactivates license and purges local license cache file
@@ -243,6 +246,8 @@
 ✓ fails closed in production if secure OS-backed storage is unavailable
 ✓ strictly rejects test key fallback in production even if TEST or SESSION_ENCRYPTION_KEY is set
 ✓ strictly rejects test key fallback and custom keys when app.isPackaged is true
+✓ asynchronously initializes master key via initStorageEncryptionAsync and strictly fails closed in packaged mode
+✓ checks async safe storage availability across platforms
 ✓ accepts HTTPS production endpoints
 ✓ accepts local loopback HTTP for Ollama offline inference
 ✓ rejects external insecure HTTP endpoints
@@ -291,7 +296,12 @@
 ✓ suppresses active session and knowledge documents from disk when enterpriseMode is active
 ```
 
-### 16. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
+### 16. First-party subscription page URLs (`tests/subscription-url.test.ts`)
+```text
+✓ opens the Scandium pricing page with the selected plan highlighted
+```
+
+### 17. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
 ```text
 ✓ provides verified registry of open-weight GGML Whisper models with exact SHA-256 hashes
 ✓ tracks active model selection safely
@@ -302,7 +312,7 @@
 ✓ gracefully serializes concurrent overlapping audio streams without crashing or process starvation
 ```
 
-### 17. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
+### 18. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
 ```text
 ✓ clears closed control/chat references and recreates both windows on reinitialization
 ✓ keeps initialization idempotent and does not register duplicate state listeners
@@ -310,14 +320,6 @@
 ✓ moveControlWindow rounds fractional coordinates and syncs visible chat window
 ✓ moveControlWindow does not reposition chat window when chat is hidden
 ✓ moveControlWindow safely ignores invalid or NaN deltas
-```
-
-### 18. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
 ```
 
 ### 19. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
@@ -338,21 +340,20 @@
 ✓ hides incomplete context preamble while streaming so it does not flicker on screen
 ```
 
-### 20. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+### 20. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+```text
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
+```
+
+### 21. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
 ```text
 ✓ parses empty or missing hash as default "all" view
 ✓ parses direct routes without query parameters
 ✓ correctly extracts route and tab query parameters from complex hashes
 ✓ handles leading slash with query parameters
-```
-
-### 21. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
-```text
-✓ passes unscaled bounds when screen resolution <= 1920x1080
-✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
-✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
-✓ preserves aspect ratio when height is greater than width (portrait display)
-✓ handles boundary 1x1 minimal screen dimension safely
 ```
 
 ### 22. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
@@ -364,7 +365,16 @@
 ✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
-### 23. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
+### 23. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+```text
+✓ passes unscaled bounds when screen resolution <= 1920x1080
+✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
+✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
+✓ preserves aspect ratio when height is greater than width (portrait display)
+✓ handles boundary 1x1 minimal screen dimension safely
+```
+
+### 24. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
 ```text
 ✓ Spawns Electron with ELECTRON_RUN_AS_NODE removed
 ✓ Loads the control/chat windows and mounts the real Dashboard renderer

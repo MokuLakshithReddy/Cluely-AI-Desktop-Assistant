@@ -13,13 +13,13 @@ Complete this section for each validation campaign. Do not reuse a result after 
 | Field | Value |
 |---|---|
 | Release candidate version | `1.0.2` |
-| Git commit SHA | [`e5a58b4dc4558d35fd2698f297d26910921dff99`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/e5a58b4dc4558d35fd2698f297d26910921dff99) |
-| CI workflow run URL | [CI Verification Suite #207 (run 43707962654)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654) |
+| Git commit SHA | [`6e889b8`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/6e889b8) |
+| CI workflow run URL | [CI Verification Suite (run 43867460803)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43867460803) |
 | Artifact name | `Scandium-1.0.2-Windows-x64.exe` / `Scandium-1.0.2-macOS-arm64.dmg` / `Scandium-1.0.2-Linux-x64.AppImage` |
 | Artifact SHA-256 | Windows: `79427f908256dfbdeb8c1175303d80404213d2afaf19ae561405568c4447da6c`<br>macOS: `9656724abca26d61c45050463dfe8b97b8ae14f1d5e88208d89080f8b72d8e82`<br>Linux: `8851bc81d049705a746de89b3bc1ed02331a992a36dffe2a323efed8056db2e8` |
 | Electron version | `45.2.3` |
 | Node.js CI version | `24.22.2` |
-| Test operator | Physical Hardware Operator (NarraShiva workstation) |
+| Test operator | Physical Hardware Operator (Windows 11 workstation) |
 | Test date and timezone | 2026-11-16T17:50:00+05:30 (IST) |
 | Evidence folder / artifact URL | [`DEVICE_EVIDENCE_RUN.json`](./DEVICE_EVIDENCE_RUN.json) |
 
@@ -114,10 +114,10 @@ Also test the control window, chat window, and dashboard independently. Document
 
 ## 4. Per-test execution record
 
-Windows 11 physical hardware verification executed on NarraShiva workstation (`DEVICE_EVIDENCE_RUN.json`):
+Windows 11 physical hardware verification executed on Windows 11 workstation (`DEVICE_EVIDENCE_RUN.json`):
 - All 7 core hardware tests (DPAPI encryption, display geometry, stealth protection, window architecture, encrypted state persistence, credential vault lifecycle, and physical audio devices) passed with 100% verified status.
 - Local Whisper speech recognition verified via native `whisper-cli.exe` with `jfk.wav` fixture in 1,164ms.
-- 235/235 automated unit/integration/E2E smoke checks passing with 0 errors.
+- 238/238 automated unit/integration/E2E smoke checks passing with 0 errors.
 
 ## 5. Release sign-off table
 

@@ -1,11 +1,11 @@
 # Scandium: Zero-Cost Commercial Desktop AI Assistant
 
-[![Stars](https://img.shields.io/github/stars/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/stargazers) [![Forks](https://img.shields.io/github/forks/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/forks) [![Open Issues](https://img.shields.io/github/issues/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues) [![Last Commit](https://img.shields.io/github/last-commit/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commits/main)
+[![Stars](https://img.shields.io/github/stars/MokuLakshithReddy/Scandium-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Scandium-Assistant/stargazers) [![Forks](https://img.shields.io/github/forks/MokuLakshithReddy/Scandium-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Scandium-Assistant/forks) [![Open Issues](https://img.shields.io/github/issues/MokuLakshithReddy/Scandium-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues) [![Last Commit](https://img.shields.io/github/last-commit/MokuLakshithReddy/Scandium-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Scandium-Assistant/commits/main)
 
 
-[![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
-[![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-233%2F233%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
+[![CI Verification Suite](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Scandium-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-238%2F238%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (233/233 Passing)](#6-automated-verification--test-suites-233233-passing)
+6. [Automated Verification & Test Suites (238/238 Passing)](#6-automated-verification--test-suites-238238-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -311,11 +311,11 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 ---
 
-## 6. Automated Verification & Test Suites (233/233 Passing)
+## 6. Automated Verification & Test Suites (238/238 Passing)
 
-The latest verified CI run recorded **233 passing automated checks**: 232 Vitest tests across 22 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The latest verified CI run recorded **238 passing automated checks**: 237 Vitest tests across 23 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
-Evidence: [CI run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)  
+Evidence: [CI run 43867460803](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |
@@ -329,21 +329,22 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 6 |
 | `ipc-security.test.ts` | Sender validation, request identity and payload limits | 35 |
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
-| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 9 |
+| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 11 |
 | `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 7 |
-| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 44 |
+| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 46 |
 | `session-archive.test.ts` | Session archive persistence and path containment | 12 |
 | `state-broadcast.test.ts` | Shared-state renderer updates | 2 |
 | `state-persistence.test.ts` | Persistence error reporting and recovery | 8 |
+| `subscription-url.test.ts` | First-party subscription page URLs | 1 |
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
-| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `ai-context.test.ts` | AI context assembly and operating modes | 14 |
+| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
-| `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
+| `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **22 Vitest suites + 1 Electron smoke check** | **233** |
+| **Total** | **23 Vitest suites + 1 Electron smoke check** | **238** |
 
 The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
@@ -383,14 +384,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 232 Vitest unit & integration tests
+# Run the 237 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (233 total verified checks)
+# Generate the automated test results markdown report (238 total verified checks)
 npm run test:report
 ```
 

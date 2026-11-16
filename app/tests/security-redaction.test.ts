@@ -27,6 +27,8 @@ import {
 } from '../electron/services/session-repository';
 import {
   isSecureStorageBackendAvailable,
+  isAsyncSafeStorageAvailable,
+  initStorageEncryptionAsync,
   getMasterEncryptionKey,
   setMasterEncryptionKey,
 } from '../electron/services/storage-encryption';
@@ -718,6 +720,32 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
         (app as any).isPackaged = origPackaged;
         setMasterEncryptionKey(null);
       }
+    });
+
+    it('asynchronously initializes master key via initStorageEncryptionAsync and strictly fails closed in packaged mode', async () => {
+      const origPackaged = (app as any).isPackaged;
+      try {
+        setMasterEncryptionKey(null);
+        // In test runner mode, initStorageEncryptionAsync should resolve 32-byte key
+        const key = await initStorageEncryptionAsync();
+        expect(key).toBeInstanceOf(Buffer);
+        expect(key.length).toBe(32);
+
+        // When packaged, initStorageEncryptionAsync must fail closed if secure storage is unavailable
+        setMasterEncryptionKey(null);
+        (app as any).isPackaged = true;
+        await expect(initStorageEncryptionAsync()).rejects.toThrow(
+          /Packaged application persistence requires a supported hardware\/OS key store/
+        );
+      } finally {
+        (app as any).isPackaged = origPackaged;
+        setMasterEncryptionKey(null);
+      }
+    });
+
+    it('checks async safe storage availability across platforms', async () => {
+      const avail = await isAsyncSafeStorageAvailable();
+      expect(typeof avail).toBe('boolean');
     });
   });
 
