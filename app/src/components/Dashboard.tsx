@@ -33,6 +33,7 @@ import {
 import { SharedState, KnowledgeDoc, SessionSummary, SessionRecord } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
 import { createKnowledgeDoc, parseDocumentFile } from '../lib/knowledge';
+import { getSubscriptionPageUrl } from '../lib/subscription';
 
 type DashboardTab = 'models' | 'hardware' | 'subscription' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security';
 
@@ -623,7 +624,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                 Activate License Key
               </h4>
               <p className="text-xs text-slate-400">
-                Purchased a subscription via Lemon Squeezy? Paste your license key below to activate premium entitlements on this machine.
+                Already purchased a Scandium subscription? Paste your license key below to activate premium entitlements on this machine.
               </p>
 
               <form onSubmit={handleActivateLicense} className="flex gap-2">
@@ -658,7 +659,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
               )}
             </div>
 
-            {/* Plan Comparison & Hosted Checkout */}
+            {/* Plan Comparison & First-Party Pricing Page */}
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
                 Available Subscription Plans
@@ -699,10 +700,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     </ul>
                   </div>
                   <button
-                    onClick={() => window.open('https://scandium.lemonsqueezy.com/buy/plus', '_blank')}
+                    onClick={() => window.open(getSubscriptionPageUrl('plus'), '_blank', 'noopener,noreferrer')}
                     className="text-center py-1.5 rounded-lg text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-all shadow-sm"
                   >
-                    Subscribe ($19/mo)
+                    View Plus Plan
                   </button>
                 </div>
 
@@ -720,14 +721,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     </ul>
                   </div>
                   <button
-                    onClick={() => window.open('https://scandium.lemonsqueezy.com/buy/pro', '_blank')}
+                    onClick={() => window.open(getSubscriptionPageUrl('pro'), '_blank', 'noopener,noreferrer')}
                     className="text-center py-1.5 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-sm"
                   >
-                    Subscribe ($49/mo)
+                    View Pro Plan
                   </button>
                 </div>
               </div>
             </div>
+
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              Paid checkout is not enabled yet. These buttons open the official Scandium pricing page. Purchases will be enabled only after the real store products, variants and secure checkout links are configured.
+            </p>
 
             {/* Offline Grace Information */}
             <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl text-xs text-slate-400 space-y-1.5">

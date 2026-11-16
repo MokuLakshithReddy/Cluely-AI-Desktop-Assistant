@@ -28,6 +28,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     if (fs.existsSync(testLicenseDir)) {
       try { fs.rmdirSync(testLicenseDir); } catch {}
     }
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -50,13 +51,26 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(status.status).toBe('none');
   });
 
-  it('fails closed to Free tier for unknown or malicious products', () => {
+  it('fails closed to Free tier when IDs are missing or only product names match', () => {
     const fn = (manager as any).resolveTierFromMeta.bind(manager);
     expect(fn({ product_name: 'Unknown Random Product' })).toBe('free');
     expect(fn({ product_name: 'Photoshop License' })).toBe('free');
+    expect(fn({ product_name: 'Scandium Plus', variant_name: 'Plus Monthly' })).toBe('free');
+    expect(fn({ product_name: 'Scandium Pro', variant_name: 'Pro Monthly' })).toBe('free');
     expect(fn(null)).toBe('free');
-    expect(fn({ product_name: 'Scandium Plus' })).toBe('plus');
-    expect(fn({ product_name: 'Scandium Pro' })).toBe('pro');
+  });
+
+  it('grants paid tiers only for the exact configured product and variant ID pair', () => {
+    vi.stubEnv('LEMON_PLUS_PRODUCT_ID', 'plus-product-123');
+    vi.stubEnv('LEMON_PLUS_VARIANT_ID', 'plus-variant-456');
+    vi.stubEnv('LEMON_PRO_PRODUCT_ID', 'pro-product-789');
+    vi.stubEnv('LEMON_PRO_VARIANT_ID', 'pro-variant-012');
+
+    const fn = (manager as any).resolveTierFromMeta.bind(manager);
+    expect(fn({ product_name: 'Renamed Product', product_id: 'plus-product-123', variant_id: 'plus-variant-456' })).toBe('plus');
+    expect(fn({ product_name: 'Renamed Product', product_id: 'pro-product-789', variant_id: 'pro-variant-012' })).toBe('pro');
+    expect(fn({ product_name: 'Scandium Pro', product_id: 'plus-product-123', variant_id: 'pro-variant-012' })).toBe('free');
+    expect(fn({ product_name: 'Scandium Plus', product_id: 'plus-product-123', variant_id: 'wrong-variant' })).toBe('free');
   });
 
   it('expires license immediately if expiresAt date is in the past', () => {
@@ -76,6 +90,9 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
   });
 
   it('activates a license and saves encrypted cache to disk', async () => {
+    vi.stubEnv('LEMON_PLUS_PRODUCT_ID', 'plus-product-123');
+    vi.stubEnv('LEMON_PLUS_VARIANT_ID', 'plus-variant-456');
+
     const mockApiResponse = {
       activated: true,
       license_key: {
@@ -89,7 +106,9 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
         name: manager.getInstanceName(),
       },
       meta: {
-        product_name: 'Scandium Plus Monthly',
+        product_id: 'plus-product-123',
+        variant_id: 'plus-variant-456',
+        product_name: 'Renamed Product',
         customer_name: 'Jane Doe',
         customer_email: 'jane@example.com',
       },
@@ -108,6 +127,21 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(status.hasLicense).toBe(true);
     expect(status.tier).toBe('plus');
     expect(status.licenseKeyMasked).toBe('ABCD...5678');
+  });
+
+  it('rejects activation when the license belongs to an unconfigured product', async () => {
+    vi.spyOn(manager as any, 'postLemonSqueezy').mockResolvedValue({
+      activated: true,
+      license_key: { status: 'active', activation_limit: 2, activation_usage: 1 },
+      instance: { id: 'inst_unconfigured' },
+      meta: { product_name: 'Scandium Plus', variant_name: 'Plus Monthly' },
+    });
+
+    await expect(manager.activateLicense('UNCONFIGURED-KEY')).rejects.toThrow(
+      'does not match a configured Scandium Plus or Pro product'
+    );
+    expect(fs.existsSync(testLicenseFile)).toBe(false);
+    expect(manager.getCurrentTier()).toBe('free');
   });
 
   it('engages 7-day offline grace period on network validation failure', async () => {

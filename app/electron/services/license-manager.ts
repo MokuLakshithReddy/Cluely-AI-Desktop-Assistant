@@ -6,6 +6,7 @@ import https from 'https';
 import { app } from 'electron';
 import { SubscriptionTier, TierEntitlements, getEntitlements } from '../domains/entitlements';
 import { encryptStoragePayload, decryptStoragePayload } from './storage-encryption';
+import { BILLING_PRODUCTS } from '../config/billing-products';
 
 export interface LicenseRecord {
   licenseKey: string;
@@ -142,6 +143,9 @@ export class LicenseManager {
     const meta = res.meta || {};
 
     const tier = this.resolveTierFromMeta(meta);
+    if (tier === 'free') {
+      throw new Error('This license does not match a configured Scandium Plus or Pro product. Verify the exact product and variant IDs before activating it.');
+    }
 
     const record: LicenseRecord = {
       licenseKey: trimmed,
@@ -184,6 +188,14 @@ export class LicenseManager {
       const isValid = res.valid === true && lk.status === 'active';
 
       if (isValid) {
+        const verifiedTier = this.resolveTierFromMeta(res.meta || {});
+        if (verifiedTier === 'free') {
+          this.currentLicense.tier = 'free';
+          this.currentLicense.status = 'disabled';
+          this.saveCachedLicense();
+          return this.currentLicense;
+        }
+        this.currentLicense.tier = verifiedTier;
         this.currentLicense.status = 'active';
         this.currentLicense.expiresAt = lk.expires_at || null;
         this.currentLicense.activationLimit = lk.activation_limit || this.currentLicense.activationLimit;
@@ -235,40 +247,25 @@ export class LicenseManager {
   }
 
   private resolveTierFromMeta(meta: any): SubscriptionTier {
-    const productName = String(meta?.product_name || '').toLowerCase();
-    const variantName = String(meta?.variant_name || '').toLowerCase();
-    const productId = String(meta?.product_id || '');
-    const variantId = String(meta?.variant_id || '');
+    const productId = String(meta?.product_id ?? '').trim();
+    const variantId = String(meta?.variant_id ?? '').trim();
 
-    // Check whitelist of configured Lemon Squeezy IDs or verified product/variant strings
-    const isPro =
-      productName.includes('scandium pro') ||
-      variantName.includes('scandium pro') ||
-      variantName.includes('pro monthly') ||
-      (process.env.LEMON_PRO_PRODUCT_ID && productId === process.env.LEMON_PRO_PRODUCT_ID) ||
-      (process.env.LEMON_PRO_VARIANT_ID && variantId === process.env.LEMON_PRO_VARIANT_ID);
+    // Exact product + variant pairs are required. Display names can be changed
+    // by the store owner and must never be used to grant paid entitlements.
+    const plusProductId = String(process.env.LEMON_PLUS_PRODUCT_ID || BILLING_PRODUCTS.plus.productId || '').trim();
+    const plusVariantId = String(process.env.LEMON_PLUS_VARIANT_ID || BILLING_PRODUCTS.plus.variantId || '').trim();
+    const proProductId = String(process.env.LEMON_PRO_PRODUCT_ID || BILLING_PRODUCTS.pro.productId || '').trim();
+    const proVariantId = String(process.env.LEMON_PRO_VARIANT_ID || BILLING_PRODUCTS.pro.variantId || '').trim();
 
-    if (isPro) {
-      return 'pro';
-    }
+    const plusConfigured = Boolean(plusProductId && plusVariantId);
+    const proConfigured = Boolean(proProductId && proVariantId);
 
-    const isPlus =
-      productName.includes('scandium plus') ||
-      variantName.includes('scandium plus') ||
-      variantName.includes('plus monthly') ||
-      (process.env.LEMON_PLUS_PRODUCT_ID && productId === process.env.LEMON_PLUS_PRODUCT_ID) ||
-      (process.env.LEMON_PLUS_VARIANT_ID && variantId === process.env.LEMON_PLUS_VARIANT_ID);
+    if (proConfigured && productId === proProductId && variantId === proVariantId) return 'pro';
+    if (plusConfigured && productId === plusProductId && variantId === plusVariantId) return 'plus';
 
-    if (isPlus) {
-      return 'plus';
-    }
-
-    // FAIL CLOSED: Unknown products or variants never receive paid tier
-    console.warn('[LicenseManager] Unrecognized product or variant. Failing closed to Free tier:', {
-      productName,
-      variantName,
-      productId,
-      variantId,
+    // Unknown, unconfigured or mismatched pairs always fail closed to Free.
+    console.warn('[LicenseManager] Unrecognized or unconfigured product/variant pair. Failing closed to Free tier:', {
+      productId, variantId, plusConfigured, proConfigured,
     });
     return 'free';
   }
