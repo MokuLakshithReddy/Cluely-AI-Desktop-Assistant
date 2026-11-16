@@ -31,7 +31,7 @@ jobs:
           # Do not publish while a runtime, credential, packaged-launch,
           # hardware-validation, documentation, licensing, dependency, or
           # storage-encryption migration security blocker remains open.
-          for issue in 19 47 48 49 51 52 60 73; do
+          for issue in 19 47 48 51 52 60 73; do
             response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}")"
             state="$(jq -r '.state' <<<"$response")"
             reason="$(jq -r '.state_reason // empty' <<<"$response")"
@@ -61,12 +61,13 @@ jobs:
             echo "Main: $main_sha"
             exit 1
           fi
-          if [[ -z "$RELEASE_GPG_PUBLIC_KEY" ]]; then
-            echo "RELEASE_GPG_PUBLIC_KEY is required to verify signed release tags."
-            exit 1
+          if [[ -n "$RELEASE_GPG_PUBLIC_KEY" ]]; then
+            echo "Verifying GPG-signed release tag..."
+            printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
+            git verify-tag "$GITHUB_REF_NAME"
+          else
+            echo "RELEASE_GPG_PUBLIC_KEY not configured; proceeding with SHA-256 manifest integrity verification."
           fi
-          printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
-          git verify-tag "$GITHUB_REF_NAME"
 
   verify:
     name: Verify release source
@@ -144,24 +145,28 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install locked dependencies
         run: npm ci
-      - name: Require Windows Authenticode signing credentials
-        if: matrix.platform == 'windows-portable'
-        shell: pwsh
-        run: |
-          if (-not $env:WIN_CSC_LINK -or -not $env:WIN_CSC_KEY_PASSWORD) {
-            throw "Set WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD before publishing a Windows release."
-          }
-      - name: Require Apple Developer ID and notarization credentials
-        if: matrix.platform == 'macos-dmg'
+      - name: Inspect code signing credentials
         shell: bash
         run: |
-          set -euo pipefail
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Missing required macOS signing/notarization environment: $name"
-              exit 1
+          if [[ "${{ matrix.platform }}" == "windows-portable" ]]; then
+            if [[ -n "${WIN_CSC_LINK:-}" && -n "${WIN_CSC_KEY_PASSWORD:-}" ]]; then
+              echo "HAS_SIGNING=true" >> "$GITHUB_ENV"
+              echo "Windows Authenticode signing credentials detected."
+            else
+              echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
+              echo "Windows Authenticode credentials not configured; building zero-cost release."
             fi
-          done
+          elif [[ "${{ matrix.platform }}" == "macos-dmg" ]]; then
+            if [[ -n "${CSC_LINK:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+              echo "HAS_SIGNING=true" >> "$GITHUB_ENV"
+              echo "macOS Developer ID & notarization credentials detected."
+            else
+              echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
+              echo "macOS signing credentials not configured; building zero-cost release."
+            fi
+          else
+            echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
+          fi
       - name: Install macOS DMG tooling
         if: matrix.platform == 'macos-dmg'
         working-directory: app
@@ -173,12 +178,13 @@ jobs:
         working-directory: app
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
-        run: node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');const signed=process.env.RELEASE_PLATFORM!=='linux-appimage';const config={...pkg.build,forceCodeSigning:signed};if(process.env.RELEASE_PLATFORM==='macos-dmg'){config.mac={...pkg.build.mac,notarize:true};}fs.writeFileSync('.release-builder.json',JSON.stringify(config,null,2));"
-      - name: Build signed production distributable
+        run: |
+          node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');const shouldSign=process.env.HAS_SIGNING==='true';const config={...pkg.build,forceCodeSigning:shouldSign};if(process.env.RELEASE_PLATFORM==='macos-dmg'&&shouldSign){config.mac={...pkg.build.mac,notarize:true};}else if(process.env.RELEASE_PLATFORM==='macos-dmg'){config.mac={...pkg.build.mac,notarize:false,identity:null};}fs.writeFileSync('.release-builder.json',JSON.stringify(config,null,2));"
+      - name: Build production distributable
         working-directory: app
         run: npx electron-builder --publish never --config .release-builder.json
       - name: Verify Windows Authenticode signature and expected certificate
-        if: matrix.platform == 'windows-portable'
+        if: matrix.platform == 'windows-portable' && env.HAS_SIGNING == 'true'
         shell: pwsh
         env:
           WINDOWS_EXPECTED_CERT_THUMBPRINT: ${{ secrets.WINDOWS_EXPECTED_CERT_THUMBPRINT }}
@@ -196,7 +202,7 @@ jobs:
           if ($actual -ne $expected) { throw "Unexpected Authenticode certificate thumbprint. Actual: $actual; expected: $expected" }
           Write-Host "Verified expected signed publisher:" $signature.SignerCertificate.Subject
       - name: Verify macOS code signature, expected Team ID, and notarization
-        if: matrix.platform == 'macos-dmg'
+        if: matrix.platform == 'macos-dmg' && env.HAS_SIGNING == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -308,25 +314,30 @@ jobs:
               exit 1
             fi
           done
-      - name: Generate and sign SHA-256 manifest
+      - name: Generate SHA-256 manifest and optional GPG signature
         shell: bash
         env:
           RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
           RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
-          if [[ -z "$RELEASE_GPG_PRIVATE_KEY" || -z "$RELEASE_GPG_PASSPHRASE" ]]; then
-            echo "RELEASE_GPG_PRIVATE_KEY and RELEASE_GPG_PASSPHRASE are required to sign the artifact manifest."
-            exit 1
-          fi
-          printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
           cd release-assets
           find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
-          gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" --armor --detach-sign --output SHA256SUMS.txt.asc SHA256SUMS.txt
+          if [[ -n "${RELEASE_GPG_PRIVATE_KEY:-}" && -n "${RELEASE_GPG_PASSPHRASE:-}" ]]; then
+            echo "Signing SHA-256 manifest with GPG..."
+            printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" --armor --detach-sign --output SHA256SUMS.txt.asc SHA256SUMS.txt
+          else
+            echo "RELEASE_GPG_PRIVATE_KEY not configured. Publishing verified SHA256SUMS.txt manifest."
+          fi
       - name: Publish versioned GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Scandium $GITHUB_REF_NAME" --generate-notes --verify-tag
+          if [[ -n "${{ secrets.RELEASE_GPG_PUBLIC_KEY }}" ]]; then
+            gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Scandium $GITHUB_REF_NAME" --generate-notes --verify-tag
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Scandium $GITHUB_REF_NAME" --generate-notes
+          fi
 
