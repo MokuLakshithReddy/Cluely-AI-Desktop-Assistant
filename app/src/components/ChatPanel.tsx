@@ -149,7 +149,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 >
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="font-semibold uppercase tracking-wider text-cyan-400">
-                      {msg.role === 'user' ? 'You' : 'Cluely Copilot'}
+                      {msg.role === 'user' ? 'You' : 'Scandium'}
                     </span>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-slate-500">

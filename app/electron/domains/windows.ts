@@ -55,7 +55,7 @@ export class WindowCoordinator {
     const initialY = 24;
 
     this.controlWin = new BrowserWindow({
-      title: 'Cluely Copilot',
+      title: 'Scandium',
       width: winWidth,
       height: winHeight,
       x: initialX,
@@ -264,7 +264,7 @@ export class WindowCoordinator {
       height: 650,
       minWidth: 800,
       minHeight: 550,
-      title: 'Cluely Copilot - Dashboard & Settings',
+      title: 'Scandium - Dashboard & Settings',
       show: false,
       autoHideMenuBar: true,
       webPreferences: {

@@ -237,7 +237,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     },
     quitApp: () => {
       console.log('[WebBridge] quitApp called');
-      if (typeof window !== 'undefined' && window.confirm('Exit Cluely Copilot?')) {
+      if (typeof window !== 'undefined' && window.confirm('Exit Scandium?')) {
         window.close();
       }
     },
@@ -402,7 +402,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
 
         if (!apiKey && providerName !== 'ollama') {
           const demoResponse =
-            `**Cluely Copilot (${mode.toUpperCase()} Mode)**\n\n` +
+            `**Scandium (${mode.toUpperCase()} Mode)**\n\n` +
             `• **Screen Context**: ${cleanScreenshot ? 'Visible screenshot analyzed' : 'No screen attached'}\n` +
             `• **Conversation Context**: ${cleanTranscript.length} live speech items referenced\n` +
             `• **Grounded Knowledge**: ${cleanPassages?.length || 0} reference passages retrieved\n\n` +

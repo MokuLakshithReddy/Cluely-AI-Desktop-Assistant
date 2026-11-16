@@ -228,10 +228,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md">
-                C
+                S
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-100">Cluely Copilot</h2>
+                <h2 className="text-sm font-bold text-slate-100">Scandium</h2>
                 <p className="text-[10px] text-slate-500">v{state.appVersion} • Web Verified</p>
               </div>
             </div>
@@ -748,10 +748,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
           <div className="max-w-2xl space-y-6">
             <div>
               <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                <Monitor className="w-5 h-5 text-cyan-400" /> Cluely Copilot Desktop Application
+                <Monitor className="w-5 h-5 text-cyan-400" /> Scandium Desktop Application
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                Cluely Copilot is designed as an independent native desktop AI assistant with advanced capabilities. Anyone can download, build, and run this application on Windows, macOS, or Linux.
+                Scandium is designed as an independent native desktop AI assistant with advanced capabilities. Anyone can download, build, and run this application on Windows, macOS, or Linux.
               </p>
             </div>
 
@@ -1049,7 +1049,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     Telemetry & Usage Diagnostics
                   </h4>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Cluely operates under a strict privacy-first default: telemetry is completely OFF.
+                    Scandium operates under a strict privacy-first default: telemetry is completely OFF.
                   </p>
                 </div>
               </div>

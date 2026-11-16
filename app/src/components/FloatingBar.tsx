@@ -266,7 +266,7 @@ export const FloatingBar: React.FC<FloatingBarProps> = ({
             <button
               onClick={handleClose}
               className="p-1.5 rounded-full hover:bg-rose-500/20 hover:text-rose-400 transition-colors"
-              title="Close Cluely Copilot"
+              title="Close Scandium"
             >
               <X className="w-3.5 h-3.5" />
             </button>
