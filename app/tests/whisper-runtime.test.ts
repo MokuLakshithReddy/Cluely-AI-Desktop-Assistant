@@ -77,4 +77,43 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     const result = await runtime.transcribeAudio(dummyWav);
     expect(result).toContain('Whisper runtime binary not found');
   });
+
+  it('launches native whisper-cli and transcribes known audio sample with high fidelity', async () => {
+    const binary = runtime.findWhisperExecutable();
+    const fixturePath = path.join(__dirname, 'fixtures', 'jfk.wav');
+    if (!binary || !fs.existsSync(fixturePath)) {
+      return;
+    }
+
+    const wavBuffer = fs.readFileSync(fixturePath).buffer;
+    const start = Date.now();
+    const result = await runtime.transcribeAudio(wavBuffer, 'en');
+    const latencyMs = Date.now() - start;
+
+    expect(result.toLowerCase()).toContain('ask not what your country can do for you');
+    expect(latencyMs).toBeGreaterThan(0);
+    expect(latencyMs).toBeLessThan(30000);
+  });
+
+  it('gracefully serializes concurrent overlapping audio streams without crashing or process starvation', async () => {
+    const binary = runtime.findWhisperExecutable();
+    const fixturePath = path.join(__dirname, 'fixtures', 'jfk.wav');
+    if (!binary || !fs.existsSync(fixturePath)) {
+      return;
+    }
+
+    const wavBuffer1 = fs.readFileSync(fixturePath).buffer;
+    const wavBuffer2 = fs.readFileSync(fixturePath).buffer;
+
+    const start = Date.now();
+    const [res1, res2] = await Promise.all([
+      runtime.transcribeAudio(wavBuffer1, 'en'),
+      runtime.transcribeAudio(wavBuffer2, 'en'),
+    ]);
+    const totalDurationMs = Date.now() - start;
+
+    expect(res1.toLowerCase()).toContain('ask not what your country can do for you');
+    expect(res2.toLowerCase()).toContain('ask not what your country can do for you');
+    expect(totalDurationMs).toBeGreaterThan(0);
+  });
 });

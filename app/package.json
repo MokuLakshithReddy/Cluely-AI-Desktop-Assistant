@@ -28,26 +28,40 @@
       "dist-electron/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "resources/whisper",
-        "to": "whisper",
-        "filter": ["**/*"]
-      }
-    ],
     "win": {
       "target": [
         "portable"
+      ],
+      "extraResources": [
+        {
+          "from": "resources/whisper",
+          "to": "whisper",
+          "filter": ["*.exe", "*.dll", "*.md"]
+        }
       ]
     },
     "mac": {
       "target": [
         "dmg"
+      ],
+      "extraResources": [
+        {
+          "from": "resources/whisper",
+          "to": "whisper",
+          "filter": ["whisper-cli", "*.dylib", "*.metal", "*.md"]
+        }
       ]
     },
     "linux": {
       "target": [
         "AppImage"
+      ],
+      "extraResources": [
+        {
+          "from": "resources/whisper",
+          "to": "whisper",
+          "filter": ["whisper-cli", "*.so*", "*.md"]
+        }
       ]
     }
   },

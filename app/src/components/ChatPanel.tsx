@@ -136,6 +136,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 <p className="text-xs max-w-[280px]">
                   Press <kbd className="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300 font-mono text-[10px]">Ctrl+Enter</kbd> or click Ask AI to interpret the active screen & conversation.
                 </p>
+                {state.privacyMode === 'local' && (
+                  <button
+                    onClick={() => window.desktopBridge?.openDashboard('hardware')}
+                    className="mt-2 px-3 py-1 bg-cyan-950/80 hover:bg-cyan-900/80 border border-cyan-800/60 rounded-full text-[11px] text-cyan-300 font-medium transition-all flex items-center gap-1.5"
+                  >
+                    <span>⚡ Local AI & Models Setup</span>
+                  </button>
+                )}
               </div>
             ) : (
               messages.map(msg => (

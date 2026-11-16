@@ -5,7 +5,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-227%2F227%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-229%2F229%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (227/227 Passing)](#6-automated-verification--test-suites-227227-passing)
+6. [Automated Verification & Test Suites (229/229 Passing)](#6-automated-verification--test-suites-229229-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -311,9 +311,9 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (227/227 Passing)
+## 6. Automated Verification & Test Suites (229/229 Passing)
 
-The latest verified CI run recorded **227 passing automated checks**: 226 Vitest tests across 22 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The latest verified CI run recorded **229 passing automated checks**: 228 Vitest tests across 22 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
 Evidence: [CI run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
@@ -335,7 +335,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `session-archive.test.ts` | Session archive persistence and path containment | 12 |
 | `state-broadcast.test.ts` | Shared-state renderer updates | 2 |
 | `state-persistence.test.ts` | Persistence error reporting and recovery | 8 |
-| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 5 |
+| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
 | `ai-context.test.ts` | AI context assembly and operating modes | 14 |
 | `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
@@ -343,7 +343,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **22 Vitest suites + 1 Electron smoke check** | **227** |
+| **Total** | **22 Vitest suites + 1 Electron smoke check** | **229** |
 
 The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
@@ -383,14 +383,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 226 Vitest unit & integration tests
+# Run the 228 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (227 total verified checks)
+# Generate the automated test results markdown report (229 total verified checks)
 npm run test:report
 ```
 

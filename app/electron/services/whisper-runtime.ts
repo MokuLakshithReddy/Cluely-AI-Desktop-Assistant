@@ -42,6 +42,14 @@ export class WhisperRuntime {
   private activeModelId = 'ggml-tiny.en';
   private downloadingModelId: string | null = null;
   private downloadProgress = 0;
+  private transcriptionQueue: Array<{
+    wavBuffer: ArrayBuffer;
+    language: string;
+    signal?: AbortSignal;
+    resolve: (text: string) => void;
+    reject: (err: any) => void;
+  }> = [];
+  private isProcessingQueue = false;
 
   constructor() {
     const baseDir = app?.getPath ? app.getPath('userData') : path.join(process.cwd(), '.scandium');
@@ -222,7 +230,48 @@ export class WhisperRuntime {
     });
   }
 
-  public async transcribeAudio(
+  public transcribeAudio(
+    wavBuffer: ArrayBuffer,
+    language = 'en',
+    signal?: AbortSignal
+  ): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      this.transcriptionQueue.push({
+        wavBuffer,
+        language,
+        signal,
+        resolve,
+        reject,
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue) return;
+    this.isProcessingQueue = true;
+
+    while (this.transcriptionQueue.length > 0) {
+      const task = this.transcriptionQueue.shift();
+      if (!task) break;
+
+      if (task.signal?.aborted) {
+        task.reject(new Error('Transcription cancelled'));
+        continue;
+      }
+
+      try {
+        const text = await this.executeTranscription(task.wavBuffer, task.language, task.signal);
+        task.resolve(text);
+      } catch (err) {
+        task.reject(err);
+      }
+    }
+
+    this.isProcessingQueue = false;
+  }
+
+  private async executeTranscription(
     wavBuffer: ArrayBuffer,
     language = 'en',
     signal?: AbortSignal
@@ -244,6 +293,7 @@ export class WhisperRuntime {
 
     return new Promise<string>((resolve, reject) => {
       let isAborted = false;
+      const binaryDir = path.dirname(whisperBinary);
       const child = spawn(
         whisperBinary,
         [
@@ -253,7 +303,14 @@ export class WhisperRuntime {
           '-nt', // no timestamps
           '-otxt', // output text
         ],
-        { stdio: ['ignore', 'pipe', 'pipe'] }
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            LD_LIBRARY_PATH: binaryDir + (process.env.LD_LIBRARY_PATH ? ':' + process.env.LD_LIBRARY_PATH : ''),
+            DYLD_LIBRARY_PATH: binaryDir + (process.env.DYLD_LIBRARY_PATH ? ':' + process.env.DYLD_LIBRARY_PATH : ''),
+          },
+        }
       );
 
       const abortHandler = () => {

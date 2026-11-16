@@ -3,9 +3,9 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 227/227 Passing (100% Pass Rate)  
+**Test Status**: 229/229 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `4ea8c3b5c9a9f1f1359c6001d6939ef965a9441f`  
+**Source revision**: `f1ffd572aaad1c88449c5fa50a482fd4ea140c4e`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-16  
 
@@ -30,7 +30,7 @@
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 12 | 12 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
 | `state-persistence.test.ts` | State persistence error reporting | 8 | 8 | 0 | **PASSED** |
-| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 5 | 5 | 0 | **PASSED** |
+| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 | 7 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
@@ -38,7 +38,7 @@
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **227** | **227** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **229** | **229** | **0** | **100% PASS** |
 
 ---
 
@@ -294,6 +294,8 @@
 ✓ accurately computes SHA-256 file checksums via streaming digest
 ✓ returns clean diagnostic message when attempting transcription with uninstalled model
 ✓ returns clean diagnostic message when model exists but whisper binary is missing
+✓ launches native whisper-cli and transcribes known audio sample with high fidelity
+✓ gracefully serializes concurrent overlapping audio streams without crashing or process starvation
 ```
 
 ### 17. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)

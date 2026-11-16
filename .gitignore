@@ -20,6 +20,7 @@ cluely_domains_extracted/
 *.log
 *.bin
 *.wav
+!app/tests/fixtures/*.wav
 
 # Environment variables & secrets
 .env

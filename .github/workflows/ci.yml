@@ -64,6 +64,14 @@ jobs:
           path: npm-audit.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Cache or download whisper model for automated test
+        shell: bash
+        run: |
+          mkdir -p app/resources/whisper
+          if [ ! -f "app/resources/whisper/ggml-tiny.en.bin" ]; then
+            echo "Fetching ggml-tiny.en.bin model for automated transcription verification..."
+            curl -L -s -o app/resources/whisper/ggml-tiny.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin
+          fi
       - name: Run Type Check & Lint
         run: npm run lint
       - name: Run Vitest Suite
@@ -154,6 +162,27 @@ jobs:
       - name: Remove unused PDF.js optional Node canvas stub before packaging
         working-directory: app
         run: node -e "const fs=require('node:fs');const p='node_modules/pdfjs-dist/node_modules/@napi-rs/canvas';if(fs.existsSync(p)||fs.lstatSync(p,{throwIfNoEntry:false})){fs.rmSync(p,{recursive:true,force:true});console.log('Removed PDF.js optional Node canvas stub; renderer uses the browser build.')}else{console.log('No optional Node canvas stub present.')}"
+      - name: Provision native macOS Whisper.cpp binary
+        if: matrix.platform == 'macos-dmg'
+        run: |
+          mkdir -p app/resources/whisper
+          echo "Building lightweight native whisper-cli for macOS..."
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git /tmp/whisper-src
+          cmake -B /tmp/whisper-src/build -S /tmp/whisper-src -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          cmake --build /tmp/whisper-src/build --config Release --target whisper-cli -j4
+          cp /tmp/whisper-src/build/bin/whisper-cli app/resources/whisper/whisper-cli
+          chmod +x app/resources/whisper/whisper-cli
+
+      - name: Provision native Linux Whisper.cpp binary
+        if: matrix.platform == 'linux-appimage'
+        run: |
+          mkdir -p app/resources/whisper
+          echo "Downloading official Ubuntu x64 whisper.cpp binary..."
+          curl -L -s https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz | tar -xz -C /tmp
+          cp /tmp/whisper-bin-ubuntu-x64/whisper-cli app/resources/whisper/
+          cp -a /tmp/whisper-bin-ubuntu-x64/*.so* app/resources/whisper/
+          chmod +x app/resources/whisper/whisper-cli
+
       - name: Create unsigned electron-builder CI configuration
         working-directory: app
         run: node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');fs.writeFileSync('.electron-builder-ci.json',JSON.stringify({...pkg.build,forceCodeSigning:false},null,2))"
