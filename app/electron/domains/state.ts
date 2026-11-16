@@ -17,9 +17,20 @@ function getApplicationVersion(): string {
 
 function getStateFile(): string {
   try {
-    return path.join(app.getPath('userData'), 'cluely-shared-state.json');
+    const userData = app.getPath('userData');
+    const scandiumPath = path.join(userData, 'scandium-shared-state.json');
+    const legacyPath = path.join(userData, 'cluely-shared-state.json');
+    if (!fs.existsSync(scandiumPath) && fs.existsSync(legacyPath)) {
+      return legacyPath;
+    }
+    return scandiumPath;
   } catch {
-    return path.join(process.cwd(), 'cluely-shared-state.json');
+    const scandiumPath = path.join(process.cwd(), 'scandium-shared-state.json');
+    const legacyPath = path.join(process.cwd(), 'cluely-shared-state.json');
+    if (!fs.existsSync(scandiumPath) && fs.existsSync(legacyPath)) {
+      return legacyPath;
+    }
+    return scandiumPath;
   }
 }
 

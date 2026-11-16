@@ -1,24 +1,24 @@
-PROPRIETARY SOFTWARE — ALL RIGHTS RESERVED
+PROPRIETARY COMMERCIAL SOFTWARE — ALL RIGHTS RESERVED
 
 Copyright (c) 2026 Lakshith Reddy. All rights reserved.
 
 This notice applies only to original source code, documentation, configuration,
-and other materials authored for Cluely Copilot and owned by the copyright holder.
+and other materials authored for Scandium Desktop Assistant and owned by the copyright holder.
 
 No license or other permission is granted to any person to use, reproduce, copy,
 modify, adapt, translate, create derivative works from, publish, distribute,
 sublicense, sell, rent, or otherwise exploit the covered materials, in whole or
-in part, unless the copyright holder grants prior written permission.
+in part, unless the copyright holder grants prior written permission or issues
+a valid commercial end-user license.
 
 Access to this repository, including access granted to collaborators or evaluators,
 does not by itself grant permission to reuse or redistribute the covered materials.
 All rights not expressly granted in a separate written agreement are reserved.
 
-Third-party libraries, tools, fonts, icons, assets, and other components included
-with or used by the project are not relicensed by this notice. They remain subject
-to their respective copyright notices, license terms, and attribution obligations.
-Review the applicable upstream license and notice files before redistributing any
-build that includes third-party components.
+Third-party open-weight AI runtimes (e.g. Ollama, whisper.cpp) and open-source
+dependencies included with or used by the project are not relicensed by this notice.
+They remain subject to their respective upstream licenses (e.g. MIT, Apache 2.0,
+Llama Community License).
 
 THE COVERED MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 OR IMPLIED, TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW.

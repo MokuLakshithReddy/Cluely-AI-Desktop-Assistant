@@ -33,6 +33,25 @@ const desktopBridge: DesktopBridge = {
   purgeAllPastSessions: () => ipcRenderer.invoke('session-purge-all'),
   purgeAllData: () => ipcRenderer.invoke('purge-all-data'),
 
+  // Hardware & Local Model Management
+  getHardwareProfile: (forceRefresh?: boolean) => ipcRenderer.invoke('hardware-get-profile', { forceRefresh }),
+  getOllamaStatus: () => ipcRenderer.invoke('ollama-status'),
+  listOllamaModels: () => ipcRenderer.invoke('ollama-list-models'),
+  getOllamaCatalog: () => ipcRenderer.invoke('ollama-catalog'),
+  pullOllamaModel: (modelName: string) => ipcRenderer.invoke('ollama-pull-model', { modelName }),
+  deleteOllamaModel: (modelName: string) => ipcRenderer.invoke('ollama-delete-model', { modelName }),
+
+  // Local Whisper STT Management
+  getWhisperModels: () => ipcRenderer.invoke('whisper-models-list'),
+  downloadWhisperModel: (modelId: string) => ipcRenderer.invoke('whisper-model-download', { modelId }),
+  setActiveWhisperModel: (modelId: string) => ipcRenderer.invoke('whisper-model-set-active', { modelId }),
+
+  // Licensing & Subscription (Lemon Squeezy)
+  getLicenseStatus: () => ipcRenderer.invoke('license-get-status'),
+  activateLicense: (key: string) => ipcRenderer.invoke('license-activate', { licenseKey: key }),
+  validateLicense: () => ipcRenderer.invoke('license-validate'),
+  deactivateLicense: () => ipcRenderer.invoke('license-deactivate'),
+
   // Event Subscriptions
   onSharedStateUpdated: (callback: (state: SharedState) => void) => {
     const handler = (_event: any, state: SharedState) => callback(state);

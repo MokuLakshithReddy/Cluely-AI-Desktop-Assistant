@@ -1,7 +1,7 @@
 {
-  "name": "app",
+  "name": "scandium",
   "version": "1.0.2",
-  "description": "Evidence-driven independent desktop AI assistant with real-time screen and audio understanding",
+  "description": "Scandium: Zero-cost commercial desktop AI assistant with local LLM, local Whisper STT, and BYOK cloud support",
   "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -17,7 +17,7 @@
     "dist:win": "npm run build && electron-builder --win portable"
   },
   "build": {
-    "appId": "com.cluely.copilot",
+    "appId": "com.scandium.desktop",
     "forceCodeSigning": true,
     "productName": "Scandium",
     "directories": {

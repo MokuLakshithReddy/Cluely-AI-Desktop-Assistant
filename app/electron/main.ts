@@ -163,7 +163,7 @@ if (!gotSingleInstanceLock) {
     if (process.env.SMOKE_TEST_MODE === 'packaged') {
       writePackagedSmokeStatus({ appReady: true });
     }
-    console.log('[APP_READY] Cluely Desktop Coordinator Ready');
+    console.log('[APP_READY] Scandium Desktop Coordinator Ready');
 
     if (process.env.SMOKE_TEST === 'true') {
       if (process.env.SMOKE_TEST_MODE === 'packaged') {

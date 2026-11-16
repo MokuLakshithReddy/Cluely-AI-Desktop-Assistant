@@ -98,33 +98,7 @@ export function useAudioCapture(
 
     const currentState = getLatestState();
     if (currentState.isPurging) return;
-    const hasSttKey = currentState.hasApiKeys.groq || currentState.hasApiKeys.openai;
-
-    if (!hasSttKey) {
-      // Diagnostic mode: Do NOT inject fake conversation transcripts!
-      // Mark as error with clear actionable reason
-      await patchState(prev => {
-        if (!prev.session || prev.isPurging) return {};
-        return {
-          session: {
-            ...prev.session,
-            transcript: prev.session.transcript.map(item =>
-              item.id === transcriptId
-                ? {
-                    ...item,
-                    status: 'error',
-                    error: 'No STT key configured. Add Groq or OpenAI key in Settings.',
-                    text: '[Speech detected - Configure STT Key in Settings]',
-                  }
-                : item
-            ),
-          },
-        };
-      });
-      return;
-    }
-
-    // Call real transcription API via secure main process bridge
+    // Call real transcription engine (Local Whisper.cpp or Customer BYOK)
     try {
       const wavBase64 = arrayBufferToBase64(wavBuffer);
       let recognizedText = '';
@@ -135,6 +109,24 @@ export function useAudioCapture(
           language: currentState.session?.audioInputLanguage || 'en',
         });
         recognizedText = res.text?.trim() || '';
+      }
+
+      if (recognizedText.startsWith('[Local Whisper STT:')) {
+        // Model not yet installed or runtime missing - provide actionable guidance
+        await patchState(prev => {
+          if (!prev.session || prev.isPurging) return {};
+          return {
+            session: {
+              ...prev.session,
+              transcript: prev.session.transcript.map(item =>
+                item.id === transcriptId
+                  ? { ...item, status: 'error', error: recognizedText, text: recognizedText }
+                  : item
+              ),
+            },
+          };
+        });
+        return;
       }
 
       if (!recognizedText) {

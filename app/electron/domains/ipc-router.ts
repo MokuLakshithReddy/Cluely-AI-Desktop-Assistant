@@ -11,6 +11,11 @@ import { SharedState } from '../../src/lib/types';
 import { broadcastSharedStateToAppWindows } from './state-broadcast';
 import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio, cleanAssistantSolution } from '../../src/lib/providers';
 import { inspectAndSanitizeOutboundPayload, containsSensitiveData, sanitizeScreenshot } from '../../src/lib/redaction';
+import { hardwareDetector } from '../services/hardware-detector';
+import { whisperRuntime } from '../services/whisper-runtime';
+import { modelManager } from '../services/model-manager';
+import { licenseManager } from '../services/license-manager';
+import { isModeAllowed, canUseByokProvider } from './entitlements';
 
 const BOOLEAN_STATE_KEYS = new Set([
   'showChat',
@@ -937,6 +942,22 @@ export class IpcRouter {
         else if (model && model.includes('ollama')) providerName = 'ollama';
 
         const currentState = stateManager.getState();
+        const currentTier = licenseManager.getCurrentTier();
+
+        // Enforce main-process mode entitlement
+        if (mode && !isModeAllowed(currentTier, mode)) {
+          throw new Error(
+            `[Subscription Required] The "${mode.toUpperCase()}" mode requires a Scandium Plus or Pro subscription. Activate your license in Dashboard -> Subscriptions.`
+          );
+        }
+
+        // Enforce BYOK tier access
+        if (providerName !== 'ollama' && !canUseByokProvider(currentTier, providerName)) {
+          throw new Error(
+            `[Subscription Required] Cloud BYOK with "${providerName.toUpperCase()}" requires an active Scandium Plus or Pro subscription. Upgrade in Dashboard -> Subscriptions or switch to Local Mode.`
+          );
+        }
+
         // Local-Only Privacy Mode enforcement
         if (currentState.privacyMode === 'local' && providerName !== 'ollama') {
           throw new Error(
@@ -1158,34 +1179,33 @@ export class IpcRouter {
         throw new Error('Audio payload is not valid base64');
       }
 
-      const groqKey = await credentialVault.getKey('groq');
-      const openaiKey = await credentialVault.getKey('openai');
-      const activeKey = groqKey || openaiKey;
-      const provider = groqKey ? 'groq' : 'openai';
-
-      const state = stateManager.getState();
-      if (state.privacyMode === 'local') {
-        throw new Error(
-          '[Privacy Mode: LOCAL] Cloud audio transcription is blocked. Audio processing remains strictly on-device.'
-        );
-      }
-
-      if (!activeKey) throw new Error('No Speech-to-Text key configured. Set Groq or OpenAI key in Settings.');
-      if (state.isPurging) throw new Error('Data purge is in progress; transcription is blocked.');
-
       const buf = this.validateSttAudioPayload(wavBase64);
       const audioBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
       const controller = new AbortController();
       this.activeTranscriptionControllers.add(controller);
-      const task = transcribeAudio(audioBuffer, activeKey, provider, language || 'en', controller.signal);
-      this.activeTranscriptionTasks.add(task);
+
       try {
+        const groqKey = await credentialVault.getKey('groq');
+        const openaiKey = await credentialVault.getKey('openai');
+        const activeKey = groqKey || openaiKey;
+        const provider = groqKey ? 'groq' : 'openai';
+        const state = stateManager.getState();
+
+        // Zero-Cost Local Mode / Default Local Whisper STT
+        if (state.privacyMode === 'local' || !activeKey) {
+          const text = await whisperRuntime.transcribeAudio(audioBuffer, language || 'en', controller.signal);
+          if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
+          return { text };
+        }
+
+        // Customer BYOK Cloud Transcription
+        const task = transcribeAudio(audioBuffer, activeKey, provider, language || 'en', controller.signal);
+        this.activeTranscriptionTasks.add(task);
         const text = await task;
         if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
         return { text };
       } finally {
         this.activeTranscriptionControllers.delete(controller);
-        this.activeTranscriptionTasks.delete(task);
       }
     });
 
@@ -1220,6 +1240,90 @@ export class IpcRouter {
     ipcMain.handle('session-purge-all', async event => {
       this.validateOrigin(event);
       await sessionRepository.purgeAll();
+    });
+
+    // 12. Hardware Detection ($0 Cost Architecture)
+    ipcMain.handle('hardware-get-profile', async (event, options?: { forceRefresh?: boolean }) => {
+      this.validateOrigin(event);
+      return await hardwareDetector.getProfile(options?.forceRefresh);
+    });
+
+    // 13. Local Ollama Model Management ($0 Cost Local LLM)
+    ipcMain.handle('ollama-status', async event => {
+      this.validateOrigin(event);
+      return await modelManager.getStatus();
+    });
+
+    ipcMain.handle('ollama-list-models', async event => {
+      this.validateOrigin(event);
+      return await modelManager.listInstalledModels();
+    });
+
+    ipcMain.handle('ollama-catalog', async event => {
+      this.validateOrigin(event);
+      const hw = await hardwareDetector.getProfile();
+      return modelManager.getCatalog(hw);
+    });
+
+    ipcMain.handle('ollama-pull-model', async (event, { modelName }: any) => {
+      this.validateOrigin(event);
+      if (!modelName || typeof modelName !== 'string') throw new Error('Missing modelName');
+      return await modelManager.pullModel(modelName, p => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('ollama-pull-progress', p);
+        }
+      });
+    });
+
+    ipcMain.handle('ollama-delete-model', async (event, { modelName }: any) => {
+      this.validateOrigin(event);
+      if (!modelName || typeof modelName !== 'string') throw new Error('Missing modelName');
+      return await modelManager.deleteModel(modelName);
+    });
+
+    // 14. Local Whisper STT Model Management ($0 Cost Local Speech)
+    ipcMain.handle('whisper-models-list', async event => {
+      this.validateOrigin(event);
+      return whisperRuntime.getModels();
+    });
+
+    ipcMain.handle('whisper-model-download', async (event, { modelId }: any) => {
+      this.validateOrigin(event);
+      if (!modelId || typeof modelId !== 'string') throw new Error('Missing modelId');
+      return await whisperRuntime.downloadModel(modelId, percent => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('whisper-download-progress', { modelId, percent });
+        }
+      });
+    });
+
+    ipcMain.handle('whisper-model-set-active', async (event, { modelId }: any) => {
+      this.validateOrigin(event);
+      if (!modelId || typeof modelId !== 'string') throw new Error('Missing modelId');
+      whisperRuntime.setActiveModel(modelId);
+      return { success: true, activeModelId: whisperRuntime.getActiveModelId() };
+    });
+
+    // 15. Lemon Squeezy Commercial Subscription & Licensing
+    ipcMain.handle('license-get-status', async event => {
+      this.validateOrigin(event);
+      return licenseManager.getLicenseStatus();
+    });
+
+    ipcMain.handle('license-activate', async (event, { licenseKey }: any) => {
+      this.validateOrigin(event);
+      return await licenseManager.activateLicense(licenseKey);
+    });
+
+    ipcMain.handle('license-validate', async event => {
+      this.validateOrigin(event);
+      return await licenseManager.validateLicense();
+    });
+
+    ipcMain.handle('license-deactivate', async event => {
+      this.validateOrigin(event);
+      await licenseManager.deactivateLicense();
+      return { success: true };
     });
 
     // Broadcast state updates to windows

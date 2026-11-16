@@ -18,8 +18,10 @@ import {
 } from './redaction';
 
 // Sessions storage key (non-secret session summaries & notes)
-const SESSIONS_STORAGE_KEY = 'cluely_past_sessions';
-const SHARED_STATE_STORAGE_KEY = 'cluely_shared_state';
+const SESSIONS_STORAGE_KEY = 'scandium_past_sessions';
+const LEGACY_SESSIONS_STORAGE_KEY = 'cluely_past_sessions';
+const SHARED_STATE_STORAGE_KEY = 'scandium_shared_state';
+const LEGACY_SHARED_STATE_STORAGE_KEY = 'cluely_shared_state';
 
 // Ephemeral IN-MEMORY vault keys for Web Mode.
 // Secrets are NEVER stored in unencrypted browser localStorage.
@@ -245,6 +247,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     openDashboard: (tab?: string) => {
       window.location.hash = tab ? `dashboard?tab=${tab}` : 'dashboard';
       if (tab) {
+        window.dispatchEvent(new CustomEvent('scandium-dashboard-tab', { detail: tab }));
         window.dispatchEvent(new CustomEvent('cluely-dashboard-tab', { detail: tab }));
       }
     },
@@ -558,6 +561,64 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
       setStoredSessions([]);
     },
 
+    getHardwareProfile: async () => ({
+      os: 'Web Runtime',
+      platform: 'browser',
+      arch: 'wasm',
+      cpuModel: 'Host CPU',
+      cpuCores: navigator.hardwareConcurrency || 4,
+      totalRamMb: 16384,
+      availableRamMb: 8192,
+      totalDiskMb: 100000,
+      freeDiskMb: 50000,
+      gpus: [{ name: 'WebGPU Display', vendor: 'intel' }],
+      primaryGpu: { name: 'WebGPU Display', vendor: 'intel' },
+      isNvidiaCuda: false,
+      isAppleSilicon: false,
+      isIntelArc: true,
+      recommendedTextModel: 'llama3.2:3b',
+      recommendedVisionModel: 'llava:7b',
+      recommendedSttModel: 'ggml-base.en',
+      warnings: [],
+    }),
+
+    getOllamaStatus: async () => ({
+      isRunning: false,
+      endpoint: 'http://localhost:11434',
+    }),
+
+    listOllamaModels: async () => [],
+    getOllamaCatalog: async () => [],
+    pullOllamaModel: async () => {},
+    deleteOllamaModel: async () => {},
+
+    getWhisperModels: async () => [
+      { id: 'ggml-tiny.en', name: 'Whisper Tiny (English, ~75MB)', filename: 'ggml-tiny.en.bin', sizeBytes: 77705139, isDownloaded: true },
+      { id: 'ggml-base.en', name: 'Whisper Base (English, ~142MB)', filename: 'ggml-base.en.bin', sizeBytes: 147964211, isDownloaded: false },
+    ],
+    downloadWhisperModel: async () => true,
+    setActiveWhisperModel: async () => {},
+
+    getLicenseStatus: async () => ({
+      hasLicense: false,
+      tier: 'free',
+      status: 'none',
+      instanceName: 'Scandium-Web',
+    }),
+    activateLicense: async (key: string) => ({
+      licenseKey: key,
+      instanceId: 'web-inst-1',
+      instanceName: 'Scandium-Web',
+      status: 'active',
+      tier: 'plus',
+      activationLimit: 2,
+      activationUsage: 1,
+      expiresAt: null,
+      lastValidatedAt: Date.now(),
+    }),
+    validateLicense: async () => null,
+    deactivateLicense: async () => {},
+
     purgeAllData: async () => {
       setStoredSessions([]);
       // Clear in-memory keys
@@ -565,6 +626,8 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
         delete inMemoryVaultKeys[k];
       }
       localStorage.removeItem(SHARED_STATE_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_SHARED_STATE_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
       await bridge.patchSharedState({
         session: null,
         knowledgeDocs: [],

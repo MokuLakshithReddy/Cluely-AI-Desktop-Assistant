@@ -108,6 +108,17 @@ export interface SharedState {
   redactSensitiveData: boolean;
   blockOutboundSecrets: boolean;
   encryptedStorageEnabled: boolean;
+  licenseStatus?: {
+    tier: 'free' | 'plus' | 'pro';
+    status: 'active' | 'inactive' | 'expired' | 'disabled' | 'grace_period' | 'none';
+    licenseKeyMasked?: string;
+    expiresAt?: string | null;
+    customerEmail?: string;
+    activationLimit?: number;
+    activationUsage?: number;
+    graceRemainingDays?: number;
+    instanceName: string;
+  };
   hasApiKeys: {
     gemini: boolean;
     openai: boolean;
@@ -176,6 +187,25 @@ export interface DesktopBridge {
   deletePastSession: (id: string) => Promise<boolean>;
   purgeAllPastSessions: () => Promise<void>;
   purgeAllData?: () => Promise<void>;
+
+  // Hardware & Local Model Management ($0 Owner Cost)
+  getHardwareProfile?: (forceRefresh?: boolean) => Promise<any>;
+  getOllamaStatus?: () => Promise<{ isRunning: boolean; version?: string; endpoint: string }>;
+  listOllamaModels?: () => Promise<any[]>;
+  getOllamaCatalog?: () => Promise<any[]>;
+  pullOllamaModel?: (modelName: string) => Promise<void>;
+  deleteOllamaModel?: (modelName: string) => Promise<void>;
+
+  // Local Whisper STT Management ($0 Owner Cost)
+  getWhisperModels?: () => Promise<any[]>;
+  downloadWhisperModel?: (modelId: string) => Promise<boolean>;
+  setActiveWhisperModel?: (modelId: string) => Promise<void>;
+
+  // Commercial Subscription & Licensing (Lemon Squeezy)
+  getLicenseStatus?: () => Promise<any>;
+  activateLicense?: (key: string) => Promise<any>;
+  validateLicense?: () => Promise<any>;
+  deactivateLicense?: () => Promise<void>;
 
   // Event Subscriptions
   onSharedStateUpdated: (callback: (state: SharedState) => void) => () => void;

@@ -98,7 +98,7 @@ export function getMasterEncryptionKey(): Buffer {
     (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
 
   if (isExplicitUnitTestRunner) {
-    activeMasterKey = crypto.createHash('sha256').update('cluely-local-storage-test-key').digest();
+    activeMasterKey = crypto.createHash('sha256').update('scandium-local-storage-test-key').digest();
     return activeMasterKey;
   }
 

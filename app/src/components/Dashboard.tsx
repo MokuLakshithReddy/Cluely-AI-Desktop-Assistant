@@ -23,19 +23,27 @@ import {
   EyeOff,
   Database,
   Radio,
+  CreditCard,
+  Sparkles,
+  CheckCircle2,
+  HardDrive,
+  Gauge,
+  Terminal,
 } from 'lucide-react';
 import { SharedState, KnowledgeDoc, SessionSummary, SessionRecord } from '../lib/types';
 import { StateUpdater } from '../hooks/useSharedState';
 import { createKnowledgeDoc, parseDocumentFile } from '../lib/knowledge';
 
+type DashboardTab = 'models' | 'hardware' | 'subscription' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security';
+
 interface DashboardProps {
   state: SharedState;
   patchState: (updater: StateUpdater) => Promise<SharedState>;
-  initialTab?: 'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security';
+  initialTab?: DashboardTab;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initialTab }) => {
-  const [activeTab, setActiveTab] = useState<'models' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security'>(
+  const [activeTab, setActiveTab] = useState<DashboardTab>(
     initialTab || 'models'
   );
 
@@ -46,22 +54,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
   }, [initialTab]);
 
   useEffect(() => {
-    const unsubscribe = window.desktopBridge?.onDashboardSwitchTab?.(tab => {
-      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop' || tab === 'security') {
-        setActiveTab(tab);
-      }
+    const unsubscribe = window.desktopBridge?.onDashboardSwitchTab?.((tab: any) => {
+      setActiveTab(tab);
     });
 
     const handleCustomEvent = (e: any) => {
       const tab = e.detail;
-      if (tab === 'models' || tab === 'knowledge' || tab === 'shortcuts' || tab === 'history' || tab === 'desktop' || tab === 'security') {
-        setActiveTab(tab);
-      }
+      if (tab) setActiveTab(tab);
     };
+    window.addEventListener('scandium-dashboard-tab', handleCustomEvent as EventListener);
     window.addEventListener('cluely-dashboard-tab', handleCustomEvent as EventListener);
 
     return () => {
       unsubscribe?.();
+      window.removeEventListener('scandium-dashboard-tab', handleCustomEvent as EventListener);
       window.removeEventListener('cluely-dashboard-tab', handleCustomEvent as EventListener);
     };
   }, []);
@@ -86,9 +92,158 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
   const [pastSessions, setPastSessions] = useState<SessionSummary[]>([]);
   const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
 
+  // Subscription & Licensing State
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const [licenseInput, setLicenseInput] = useState('');
+  const [licenseLoading, setLicenseLoading] = useState(false);
+  const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+
+  // Hardware & Local Models State
+  const [hardwareProfile, setHardwareProfile] = useState<any>(null);
+  const [ollamaStatus, setOllamaStatus] = useState<{ isRunning: boolean; version?: string; endpoint: string } | null>(null);
+  const [installedOllamaModels, setInstalledOllamaModels] = useState<any[]>([]);
+  const [catalogModels, setCatalogModels] = useState<any[]>([]);
+  const [pullingModelName, setPullingModelName] = useState<string | null>(null);
+  const [pullProgress, setPullProgress] = useState<string | null>(null);
+  const [whisperModels, setWhisperModels] = useState<any[]>([]);
+  const [downloadingWhisperId, setDownloadingWhisperId] = useState<string | null>(null);
+  const [whisperProgress, setWhisperProgress] = useState<number>(0);
+
   useEffect(() => {
     loadSessions();
+    loadLicense();
+    loadHardwareAndModels();
   }, [activeTab]);
+
+  const loadLicense = async () => {
+    if (window.desktopBridge?.getLicenseStatus) {
+      try {
+        const s = await window.desktopBridge.getLicenseStatus();
+        setLicenseStatus(s);
+      } catch (e) {
+        console.warn('Failed to load license status:', e);
+      }
+    }
+  };
+
+  const loadHardwareAndModels = async () => {
+    if (window.desktopBridge?.getHardwareProfile) {
+      try {
+        const hw = await window.desktopBridge.getHardwareProfile();
+        setHardwareProfile(hw);
+      } catch (e) {
+        console.warn('Failed to load hardware:', e);
+      }
+    }
+    if (window.desktopBridge?.getOllamaStatus) {
+      try {
+        const st = await window.desktopBridge.getOllamaStatus();
+        setOllamaStatus(st);
+      } catch (e) {
+        console.warn('Failed to load Ollama status:', e);
+      }
+    }
+    if (window.desktopBridge?.listOllamaModels) {
+      try {
+        const list = await window.desktopBridge.listOllamaModels();
+        setInstalledOllamaModels(list);
+      } catch (e) {
+        console.warn('Failed to list Ollama models:', e);
+      }
+    }
+    if (window.desktopBridge?.getOllamaCatalog) {
+      try {
+        const cat = await window.desktopBridge.getOllamaCatalog();
+        setCatalogModels(cat);
+      } catch (e) {
+        console.warn('Failed to get catalog:', e);
+      }
+    }
+    if (window.desktopBridge?.getWhisperModels) {
+      try {
+        const wModels = await window.desktopBridge.getWhisperModels();
+        setWhisperModels(wModels);
+      } catch (e) {
+        console.warn('Failed to get whisper models:', e);
+      }
+    }
+  };
+
+  const handleActivateLicense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!licenseInput.trim() || !window.desktopBridge?.activateLicense) return;
+    setLicenseLoading(true);
+    setLicenseError(null);
+    setLicenseMessage(null);
+    try {
+      const rec = await window.desktopBridge.activateLicense(licenseInput.trim());
+      setLicenseMessage(`License successfully activated! Tier: ${rec.tier.toUpperCase()}`);
+      setLicenseInput('');
+      await loadLicense();
+    } catch (err: any) {
+      setLicenseError(err?.message || 'Failed to activate license');
+    } finally {
+      setLicenseLoading(false);
+    }
+  };
+
+  const handleDeactivateLicense = async () => {
+    if (!window.desktopBridge?.deactivateLicense) return;
+    if (!confirm('Are you sure you want to deactivate your license on this device?')) return;
+    setLicenseLoading(true);
+    setLicenseError(null);
+    try {
+      await window.desktopBridge.deactivateLicense();
+      setLicenseMessage('License deactivated on this device.');
+      await loadLicense();
+    } catch (err: any) {
+      setLicenseError(err?.message || 'Failed to deactivate license');
+    } finally {
+      setLicenseLoading(false);
+    }
+  };
+
+  const handlePullModel = async (modelTag: string) => {
+    if (!window.desktopBridge?.pullOllamaModel) return;
+    setPullingModelName(modelTag);
+    setPullProgress('Starting download...');
+    try {
+      await window.desktopBridge.pullOllamaModel(modelTag);
+      setPullProgress('Download complete!');
+      await loadHardwareAndModels();
+    } catch (err: any) {
+      alert(`Model download error: ${err?.message || String(err)}`);
+    } finally {
+      setPullingModelName(null);
+      setPullProgress(null);
+    }
+  };
+
+  const handleDeleteModel = async (modelTag: string) => {
+    if (!window.desktopBridge?.deleteOllamaModel) return;
+    if (!confirm(`Delete model ${modelTag} from local disk?`)) return;
+    try {
+      await window.desktopBridge.deleteOllamaModel(modelTag);
+      await loadHardwareAndModels();
+    } catch (err: any) {
+      alert(`Failed to delete model: ${err?.message || String(err)}`);
+    }
+  };
+
+  const handleDownloadWhisperModel = async (modelId: string) => {
+    if (!window.desktopBridge?.downloadWhisperModel) return;
+    setDownloadingWhisperId(modelId);
+    setWhisperProgress(0);
+    try {
+      await window.desktopBridge.downloadWhisperModel(modelId);
+      await loadHardwareAndModels();
+    } catch (err: any) {
+      alert(`Failed to download speech model: ${err?.message || String(err)}`);
+    } finally {
+      setDownloadingWhisperId(null);
+    }
+  };
 
   const loadSessions = async () => {
     if (window.desktopBridge?.listPastSessions) {
@@ -248,6 +403,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
 
           <nav className="space-y-1">
             <button
+              onClick={() => setActiveTab('subscription')}
+              className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                activeTab === 'subscription'
+                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <CreditCard className="w-4 h-4 text-cyan-400" />
+                <span>Subscription & License</span>
+              </div>
+              <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60">
+                {licenseStatus?.tier || 'Free'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('hardware')}
+              className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                activeTab === 'hardware'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <Cpu className="w-4 h-4 text-indigo-400" />
+              <span>Local AI & Hardware</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('models')}
               className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'models'
@@ -256,7 +440,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
               }`}
             >
               <Key className="w-4 h-4" />
-              <span>Models & Vault</span>
+              <span>Cloud BYOK Keys</span>
             </button>
 
             <button
@@ -342,6 +526,404 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
             <span>{state.persistenceError}</span>
           </div>
         )}
+
+        {/* 1. Subscription & Licensing Pane */}
+        {activeTab === 'subscription' && (
+          <div className="max-w-2xl space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-cyan-400" /> Subscription & Device Licensing
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Scandium is a commercial desktop software licensed via monthly subscriptions. All local AI and transcription execute on your hardware without owner-hosted cloud fees.
+              </p>
+            </div>
+
+            {/* Current Status Card */}
+            <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Active Plan</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <h4 className="text-base font-bold text-slate-100">
+                      {licenseStatus?.tier === 'pro' ? 'Scandium Pro' : licenseStatus?.tier === 'plus' ? 'Scandium Plus' : 'Scandium Free'}
+                    </h4>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wider ${
+                      licenseStatus?.status === 'active'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : licenseStatus?.status === 'grace_period'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {licenseStatus?.status === 'grace_period'
+                        ? `Grace Period (${licenseStatus.graceRemainingDays} days left)`
+                        : licenseStatus?.status || 'Active'}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Device Slots</span>
+                  <p className="text-sm font-mono text-slate-200 mt-0.5">
+                    {licenseStatus?.activationUsage || 1} / {licenseStatus?.activationLimit || (licenseStatus?.tier === 'pro' ? 5 : licenseStatus?.tier === 'plus' ? 2 : 1)}
+                  </p>
+                </div>
+              </div>
+
+              {licenseStatus?.licenseKeyMasked && (
+                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-mono">Key: {licenseStatus.licenseKeyMasked}</span>
+                  {licenseStatus.expiresAt && (
+                    <span className="text-slate-500 text-[11px]">Renewal: {new Date(licenseStatus.expiresAt).toLocaleDateString()}</span>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-2 text-[11px] text-slate-400 flex items-center justify-between">
+                <span>Machine ID: <code className="text-slate-300 font-mono">{licenseStatus?.instanceName || 'Scandium-Host'}</code></span>
+                {licenseStatus?.hasLicense && (
+                  <button
+                    onClick={handleDeactivateLicense}
+                    disabled={licenseLoading}
+                    className="text-rose-400 hover:text-rose-300 underline font-medium"
+                  >
+                    Deactivate this Device
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* License Activation Form */}
+            <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
+              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                Activate License Key
+              </h4>
+              <p className="text-xs text-slate-400">
+                Purchased a subscription via Lemon Squeezy? Paste your license key below to activate premium entitlements on this machine.
+              </p>
+
+              <form onSubmit={handleActivateLicense} className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Paste Lemon Squeezy License Key..."
+                  value={licenseInput}
+                  onChange={e => setLicenseInput(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                />
+                <button
+                  type="submit"
+                  disabled={licenseLoading || !licenseInput.trim()}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-lg text-xs font-semibold shadow-md disabled:opacity-50 transition-all"
+                >
+                  {licenseLoading ? 'Validating...' : 'Activate'}
+                </button>
+              </form>
+
+              {licenseMessage && (
+                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>{licenseMessage}</span>
+                </div>
+              )}
+
+              {licenseError && (
+                <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{licenseError}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Plan Comparison & Hosted Checkout */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                Available Subscription Plans
+              </h4>
+
+              <div className="grid grid-cols-3 gap-3">
+                {/* Free Tier */}
+                <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h5 className="font-bold text-slate-100 text-sm">Scandium Free</h5>
+                    <p className="text-lg font-bold text-cyan-400 mt-1">$0 <span className="text-xs text-slate-400 font-normal">/ mo</span></p>
+                    <ul className="mt-3 space-y-1.5 text-[11px] text-slate-300">
+                      <li>• Local AI (up to 3B models)</li>
+                      <li>• Copilot Assistant Mode</li>
+                      <li>• 1 Device Activation</li>
+                      <li>• Zero Cloud Fees</li>
+                    </ul>
+                  </div>
+                  <span className="text-center py-1.5 rounded-lg text-xs bg-slate-800 text-slate-400 font-medium">
+                    Current Baseline
+                  </span>
+                </div>
+
+                {/* Plus Tier */}
+                <div className="p-4 bg-slate-900 border border-cyan-500/40 rounded-xl space-y-3 flex flex-col justify-between relative shadow-sm">
+                  <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-cyan-500 text-slate-950">
+                    Popular
+                  </span>
+                  <div>
+                    <h5 className="font-bold text-slate-100 text-sm">Scandium Plus</h5>
+                    <p className="text-lg font-bold text-cyan-400 mt-1">$19 <span className="text-xs text-slate-400 font-normal">/ mo</span></p>
+                    <ul className="mt-3 space-y-1.5 text-[11px] text-slate-300">
+                      <li>• Local Whisper Speech-to-Text</li>
+                      <li>• Full Local Vision & OCR</li>
+                      <li>• Personal Knowledge Base RAG</li>
+                      <li>• Standard BYOK (Gemini, Groq)</li>
+                      <li>• 2 Device Activations</li>
+                    </ul>
+                  </div>
+                  <button
+                    onClick={() => window.open('https://scandium.lemonsqueezy.com', '_blank')}
+                    className="text-center py-1.5 rounded-lg text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-all shadow-sm"
+                  >
+                    Subscribe ($19/mo)
+                  </button>
+                </div>
+
+                {/* Pro Tier */}
+                <div className="p-4 bg-slate-900 border border-indigo-500/40 rounded-xl space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h5 className="font-bold text-slate-100 text-sm">Scandium Pro</h5>
+                    <p className="text-lg font-bold text-indigo-400 mt-1">$49 <span className="text-xs text-slate-400 font-normal">/ mo</span></p>
+                    <ul className="mt-3 space-y-1.5 text-[11px] text-slate-300">
+                      <li>• Interview & Coding Copilots</li>
+                      <li>• Full BYOK (OpenAI, Claude 3.5)</li>
+                      <li>• Priority Whisper Base STT</li>
+                      <li>• 100 Document Indexing Limit</li>
+                      <li>• 5 Device Activations</li>
+                    </ul>
+                  </div>
+                  <button
+                    onClick={() => window.open('https://scandium.lemonsqueezy.com', '_blank')}
+                    className="text-center py-1.5 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-sm"
+                  >
+                    Subscribe ($49/mo)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Offline Grace Information */}
+            <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl text-xs text-slate-400 space-y-1.5">
+              <span className="font-semibold text-slate-300">7-Day Offline Tolerance</span>
+              <p className="leading-relaxed">
+                Scandium validates your subscription every 24 hours. If you travel or work without an active internet connection, Scandium continues operating in full premium mode for up to 7 consecutive offline days.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Hardware Profile & Local AI Engine Pane */}
+        {activeTab === 'hardware' && (
+          <div className="max-w-2xl space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <Cpu className="w-5 h-5 text-indigo-400" /> Hardware Profile & Local AI Engine
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Scandium executes open-weight AI models locally on your computer. Zero audio, transcripts, or screenshots leave your machine in Local Mode.
+              </p>
+            </div>
+
+            {/* Hardware Profile Specs */}
+            {hardwareProfile && (
+              <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                  <Gauge className="w-4 h-4 text-cyan-400" /> Detected Hardware Specifications
+                </h4>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Processor & Architecture</span>
+                    <p className="text-slate-200 font-medium truncate">{hardwareProfile.cpuModel}</p>
+                    <p className="text-[11px] text-slate-400">{hardwareProfile.cpuCores} cores • {hardwareProfile.arch} ({hardwareProfile.platform})</p>
+                  </div>
+
+                  <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">System Memory (RAM)</span>
+                    <p className="text-slate-200 font-medium">{Math.round(hardwareProfile.totalRamMb / 1024)} GB Total ({Math.round(hardwareProfile.availableRamMb / 1024)} GB Free)</p>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
+                      <div
+                        className="bg-cyan-500 h-full rounded-full"
+                        style={{ width: `${Math.min(100, Math.round(((hardwareProfile.totalRamMb - hardwareProfile.availableRamMb) / hardwareProfile.totalRamMb) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Graphics Acceleration (GPU)</span>
+                    <p className="text-slate-200 font-medium truncate">{hardwareProfile.primaryGpu?.name || 'Integrated Graphics'}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {hardwareProfile.isIntelArc ? 'Intel Arc Architecture (DirectML / OpenVINO)' : hardwareProfile.isAppleSilicon ? 'Apple Silicon (Metal)' : hardwareProfile.isNvidiaCuda ? 'NVIDIA (CUDA)' : 'Standard Display'}
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Storage Capacity</span>
+                    <p className="text-slate-200 font-medium">{Math.round(hardwareProfile.freeDiskMb / 1024)} GB Free / {Math.round(hardwareProfile.totalDiskMb / 1024)} GB Total</p>
+                    <p className="text-[11px] text-slate-400">Ample storage for quantized weights</p>
+                  </div>
+                </div>
+
+                {hardwareProfile.warnings?.length > 0 && (
+                  <div className="space-y-1.5">
+                    {hardwareProfile.warnings.map((w: string, idx: number) => (
+                      <div key={idx} className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                        <span>{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Local Whisper Speech-to-Text Section */}
+            <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-emerald-400" /> Local Speech-to-Text (whisper.cpp)
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Transcribes live microphone & system audio locally on your CPU/iGPU. \$0 cloud cost.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {whisperModels.map(m => (
+                  <div key={m.id} className="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-semibold text-slate-200">{m.name}</span>
+                      <p className="text-[11px] text-slate-500">{Math.round(m.sizeBytes / (1024 * 1024))} MB • Quantized GGML</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {m.isDownloaded ? (
+                        <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Ready
+                        </span>
+                      ) : downloadingWhisperId === m.id ? (
+                        <span className="text-[11px] text-cyan-400 font-semibold">Downloading...</span>
+                      ) : (
+                        <button
+                          onClick={() => handleDownloadWhisperModel(m.id)}
+                          className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-semibold"
+                        >
+                          Download
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Local Ollama LLM Runtime Section */}
+            <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-indigo-400" /> Ollama Local LLM Runtime
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Endpoint: <code className="text-slate-300 font-mono">http://127.0.0.1:11434</code>
+                  </p>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wider ${
+                  ollamaStatus?.isRunning
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                }`}>
+                  {ollamaStatus?.isRunning ? `Running (v${ollamaStatus.version || '0.4'})` : 'Offline'}
+                </span>
+              </div>
+
+              {!ollamaStatus?.isRunning && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 space-y-1">
+                  <span className="font-semibold">Ollama Service Not Detected:</span>
+                  <p className="text-[11px] text-amber-200 leading-relaxed">
+                    Start Ollama on your system or run <code className="font-mono bg-amber-950/60 px-1 rounded">ollama serve</code> in a terminal. Once running, local inference activates automatically.
+                  </p>
+                </div>
+              )}
+
+              {/* Installed Models */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Installed Local Models</span>
+                {installedOllamaModels.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic p-2 bg-slate-950 rounded border border-slate-800/60">
+                    No models installed in Ollama yet. Select a recommended model below to download.
+                  </p>
+                ) : (
+                  installedOllamaModels.map(m => (
+                    <div key={m.name} className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-semibold text-slate-200">{m.name}</span>
+                        <span className="ml-2 text-[11px] text-slate-500 font-mono">({(m.sizeBytes / (1024 * 1024 * 1024)).toFixed(1)} GB)</span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteModel(m.name)}
+                        className="text-slate-500 hover:text-rose-400 p-1"
+                        title="Delete model"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Curated Catalog */}
+              <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Recommended Models for Your Hardware</span>
+                <div className="space-y-2">
+                  {catalogModels.map(c => {
+                    const isInstalled = installedOllamaModels.some(m => m.name.startsWith(c.tag) || m.tag.startsWith(c.tag));
+                    return (
+                      <div key={c.tag} className="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-200">{c.name}</span>
+                            <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/60 px-1 rounded border border-cyan-800/40">{c.tag}</span>
+                            {c.isRecommended && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                Recommended
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-tight">{c.description}</p>
+                          <p className="text-[10px] text-slate-500 font-mono">Size: ~{c.diskSizeGb} GB • Requires: {c.minRamGb} GB RAM</p>
+                        </div>
+
+                        <div>
+                          {isInstalled ? (
+                            <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Installed
+                            </span>
+                          ) : pullingModelName === c.tag ? (
+                            <span className="text-[11px] text-cyan-400 font-semibold animate-pulse">{pullProgress || 'Downloading...'}</span>
+                          ) : (
+                            <button
+                              onClick={() => handlePullModel(c.tag)}
+                              disabled={!ollamaStatus?.isRunning}
+                              className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium border border-slate-700 disabled:opacity-40"
+                            >
+                              Download
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'models' && (
           <div className="max-w-xl space-y-6">
             <div>
