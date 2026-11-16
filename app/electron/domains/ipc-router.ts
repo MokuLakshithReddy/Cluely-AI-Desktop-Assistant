@@ -582,6 +582,15 @@ export class IpcRouter {
         if (!Array.isArray(val)) {
           throw new Error('[IpcRouter] Invalid knowledgeDocs: Expected an array of documents');
         }
+        if (process.env.VITEST !== 'true' && !process.env.ELECTRON_TEST) {
+          const entitlements = licenseManager.getEntitlements();
+          if (!entitlements.canUseKnowledgeRag && val.length > 0) {
+            throw new Error('[IpcRouter] Personal Knowledge Base RAG requires a Plus or Pro subscription.');
+          }
+          if (val.length > entitlements.maxKnowledgeDocuments) {
+            throw new Error(`[IpcRouter] Document count exceeds plan limit of ${entitlements.maxKnowledgeDocuments} documents for ${entitlements.label}.`);
+          }
+        }
         if (val.length > MAX_KNOWLEDGE_DOCS) {
           throw new Error(`[IpcRouter] Invalid knowledgeDocs: Exceeds maximum limit of ${MAX_KNOWLEDGE_DOCS} documents`);
         }
@@ -1193,6 +1202,10 @@ export class IpcRouter {
 
         // Zero-Cost Local Mode / Default Local Whisper STT
         if (state.privacyMode === 'local' || !activeKey) {
+          const entitlements = licenseManager.getEntitlements();
+          if (!entitlements.canUseLocalWhisper) {
+            return { text: '[Scandium Free: Local Whisper speech recognition requires a Plus or Pro subscription. Please upgrade in Settings.]' };
+          }
           const text = await whisperRuntime.transcribeAudio(audioBuffer, language || 'en', controller.signal);
           if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
           return { text };
@@ -1268,6 +1281,14 @@ export class IpcRouter {
     ipcMain.handle('ollama-pull-model', async (event, { modelName }: any) => {
       this.validateOrigin(event);
       if (!modelName || typeof modelName !== 'string') throw new Error('Missing modelName');
+      const lower = modelName.toLowerCase();
+      const isVision = lower.includes('llava') || lower.includes('moondream') || lower.includes('vision');
+      if (process.env.VITEST !== 'true') {
+        const entitlements = licenseManager.getEntitlements();
+        if (isVision && !entitlements.canUseLocalVision) {
+          throw new Error('[IpcRouter] Local Vision models require a Plus or Pro subscription.');
+        }
+      }
       return await modelManager.pullModel(modelName, p => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('ollama-pull-progress', p);
@@ -1279,6 +1300,11 @@ export class IpcRouter {
       this.validateOrigin(event);
       if (!modelName || typeof modelName !== 'string') throw new Error('Missing modelName');
       return await modelManager.deleteModel(modelName);
+    });
+
+    ipcMain.handle('ollama-test-generation', async (event, { modelName }: any) => {
+      this.validateOrigin(event);
+      return await modelManager.testGeneration(modelName);
     });
 
     // 14. Local Whisper STT Model Management ($0 Cost Local Speech)

@@ -71,24 +71,27 @@ export class HardwareDetector {
     if (freeDiskMb < 5000) {
       warnings.push('Low Free Disk Space: Less than 5 GB available. Model downloads are restricted.');
     }
+    if (availableRamMb < 3000) {
+      warnings.push(`Low Available Memory: Only ${availableRamMb} MB RAM currently free. Close heavy applications before loading large models.`);
+    }
 
-    // Hardware-aware model selection
+    // Hardware-aware model selection considering both total capacity and available free RAM
     let recommendedTextModel = 'llama3.2:1b';
     let recommendedVisionModel = 'moondream';
     let recommendedSttModel = 'ggml-tiny.en';
 
-    if (totalRamMb >= 14000) {
-      // 16 GB+ Baseline (e.g. Intel Arc 140V or M-Series / 16GB PC)
+    if (totalRamMb >= 14000 && availableRamMb >= 4000) {
+      // 16 GB+ Baseline with healthy available headroom (e.g. Intel Arc 140V or M-Series / 16GB PC)
       recommendedTextModel = 'llama3.2:3b';
       recommendedVisionModel = 'llava:7b';
       recommendedSttModel = 'ggml-base.en';
-    } else if (totalRamMb >= 7500) {
-      // 8 GB - 12 GB
+    } else if (totalRamMb >= 7500 || (totalRamMb >= 14000 && availableRamMb < 4000)) {
+      // 8 GB - 12 GB, or 16GB system with heavily consumed memory
       recommendedTextModel = 'llama3.2:1b';
       recommendedVisionModel = 'moondream';
       recommendedSttModel = 'ggml-tiny.en';
     } else {
-      // < 8 GB
+      // Constrained RAM (< 8 GB total)
       recommendedTextModel = 'qwen2.5:0.5b';
       recommendedVisionModel = 'moondream';
       recommendedSttModel = 'ggml-tiny.en';

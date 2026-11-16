@@ -12,7 +12,7 @@ export interface WhisperModelInfo {
   filename: string;
   sizeBytes: number;
   url: string;
-  sha256?: string;
+  sha256: string;
   isDownloaded: boolean;
 }
 
@@ -21,9 +21,9 @@ export const WHISPER_MODELS: Record<string, WhisperModelInfo> = {
     id: 'ggml-tiny.en',
     name: 'Whisper Tiny (English, ~75MB)',
     filename: 'ggml-tiny.en.bin',
-    sizeBytes: 77705139,
+    sizeBytes: 77704715,
     url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin',
-    sha256: 'bd577a113a864445d4c299885e8ebd97d4ec1e98b15f66e03e0f69b48db29239',
+    sha256: '921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f',
     isDownloaded: false,
   },
   'ggml-base.en': {
@@ -32,7 +32,7 @@ export const WHISPER_MODELS: Record<string, WhisperModelInfo> = {
     filename: 'ggml-base.en.bin',
     sizeBytes: 147964211,
     url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin',
-    sha256: '46514b5d2077e3f88591a27196f7c63c509c0fa91fb0f2496a75a74e0d4c8b82',
+    sha256: 'a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002',
     isDownloaded: false,
   },
 };
@@ -57,8 +57,7 @@ export class WhisperRuntime {
 
   public getModels(): WhisperModelInfo[] {
     return Object.values(WHISPER_MODELS).map(m => {
-      const filePath = path.join(this.modelsDir, m.filename);
-      const exists = fs.existsSync(filePath) && fs.statSync(filePath).size > 1000000;
+      const exists = this.isModelDownloaded(m.id);
       return { ...m, isDownloaded: exists };
     });
   }
@@ -73,11 +72,32 @@ export class WhisperRuntime {
     }
   }
 
-  public isModelDownloaded(modelId: string): boolean {
+  public resolveModelPath(modelId: string): string | null {
     const info = WHISPER_MODELS[modelId];
-    if (!info) return false;
-    const filePath = path.join(this.modelsDir, info.filename);
-    return fs.existsSync(filePath) && fs.statSync(filePath).size > 1000000;
+    if (!info) return null;
+
+    const candidates = [
+      path.join(this.modelsDir, info.filename),
+      path.join(process.cwd(), 'resources', 'whisper', info.filename),
+      path.join(process.cwd(), 'app', 'resources', 'whisper', info.filename),
+      path.join(__dirname, '..', '..', 'resources', 'whisper', info.filename),
+    ];
+
+    if ((process as any).resourcesPath) {
+      candidates.unshift(path.join((process as any).resourcesPath, 'whisper', info.filename));
+    }
+
+    for (const c of candidates) {
+      if (fs.existsSync(c) && fs.statSync(c).size > 1000000) {
+        return c;
+      }
+    }
+
+    return null;
+  }
+
+  public isModelDownloaded(modelId: string): boolean {
+    return this.resolveModelPath(modelId) !== null;
   }
 
   public getDownloadStatus() {
@@ -109,10 +129,18 @@ export class WhisperRuntime {
         onProgress?.(percent);
       });
 
-      // Verify file size and rename
+      // Verify file size
       const stats = fs.statSync(tempPath);
       if (stats.size < 1000000) {
         throw new Error('Downloaded model file is suspiciously small or corrupted');
+      }
+
+      // Verify SHA-256 checksum
+      if (info.sha256) {
+        const computedSha256 = await this.computeFileSha256(tempPath);
+        if (computedSha256.toLowerCase() !== info.sha256.toLowerCase()) {
+          throw new Error(`Model SHA-256 verification failed (expected: ${info.sha256}, got: ${computedSha256})`);
+        }
       }
 
       fs.renameSync(tempPath, destPath);
@@ -126,6 +154,16 @@ export class WhisperRuntime {
       }
       throw err;
     }
+  }
+
+  public computeFileSha256(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const hash = crypto.createHash('sha256');
+      const stream = fs.createReadStream(filePath);
+      stream.on('data', chunk => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
+    });
   }
 
   private downloadFile(
@@ -189,10 +227,9 @@ export class WhisperRuntime {
     language = 'en',
     signal?: AbortSignal
   ): Promise<string> {
-    const modelInfo = WHISPER_MODELS[this.activeModelId] || WHISPER_MODELS['ggml-tiny.en'];
-    const modelPath = path.join(this.modelsDir, modelInfo.filename);
+    const modelPath = this.resolveModelPath(this.activeModelId) || this.resolveModelPath('ggml-tiny.en');
 
-    if (!fs.existsSync(modelPath)) {
+    if (!modelPath) {
       return '[Local Whisper STT: Model not installed. Download speech model in Settings -> Local Hardware & Models]';
     }
 
@@ -247,7 +284,6 @@ export class WhisperRuntime {
 
         if (code !== 0) {
           console.warn('[WhisperRuntime] Exit code:', code, stderr);
-          // Check if txt file was output by whisper
           const txtPath = tempAudioPath + '.txt';
           if (fs.existsSync(txtPath)) {
             const text = fs.readFileSync(txtPath, 'utf8').trim();
@@ -275,7 +311,7 @@ export class WhisperRuntime {
     });
   }
 
-  private findWhisperExecutable(): string | null {
+  public findWhisperExecutable(): string | null {
     const isWindows = process.platform === 'win32';
     const binaryName = isWindows ? 'whisper-cli.exe' : 'whisper-cli';
 
@@ -284,10 +320,17 @@ export class WhisperRuntime {
       return process.env.WHISPER_CLI_PATH;
     }
 
-    // 2. Packaged / app resources directory
+    // 2. Electron packaged resourcesPath (production distribution)
+    if ((process as any).resourcesPath) {
+      const prodPath = path.join((process as any).resourcesPath, 'whisper', binaryName);
+      if (fs.existsSync(prodPath)) return prodPath;
+    }
+
+    // 3. Development / app resources directory
     const candidates = [
       path.join(process.cwd(), 'resources', 'whisper', binaryName),
       path.join(process.cwd(), 'app', 'resources', 'whisper', binaryName),
+      path.join(__dirname, '..', '..', 'resources', 'whisper', binaryName),
       path.join(this.modelsDir, binaryName),
       path.join(os.homedir(), '.scandium', 'bin', binaryName),
     ];

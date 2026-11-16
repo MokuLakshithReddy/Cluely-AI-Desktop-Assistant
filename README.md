@@ -1,19 +1,23 @@
-# Cluely Copilot: Reverse-Engineered Desktop AI Assistant
+# Scandium: Zero-Cost Commercial Desktop AI Assistant
 
 [![Stars](https://img.shields.io/github/stars/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/stargazers) [![Forks](https://img.shields.io/github/forks/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/forks) [![Open Issues](https://img.shields.io/github/issues/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues) [![Last Commit](https://img.shields.io/github/last-commit/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?style=flat-square)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commits/main)
 
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-192%2F192%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-227%2F227%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
-[![REA Verified](https://img.shields.io/badge/REA-Evidence%20Grounded-purple)](docs/reverse-engineering/CLUELY_ANALYSIS.md)
+[![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
+[![Zero-Cost Local Architecture](https://img.shields.io/badge/Architecture-$0%20Owner%20Inference-emerald)](PRIVACY.md)
 
-An evidence-driven, clean-room desktop AI assistant reverse-engineered from **Cluely** using **REA (Reverse Engineer Anything)**. Engineered with **TypeScript**, **Electron**, **React**, and **Tailwind CSS**, it operates alongside daily desktop workflows (video meetings, coding sessions, technical interviews, sales calls, and presentations).
+**Scandium** is an independent, commercial desktop AI assistant engineered for privacy, zero owner infrastructure costs, and subscription-based monetization. Built with **TypeScript**, **Electron**, **React**, and **Tailwind CSS**, it operates alongside daily desktop workflows (meetings, technical interviews, live coding, and presentations).
 
-Unlike basic chatbots or meeting-note takers, Cluely Copilot continuously perceives both **what is happening on your screen** and **what is being spoken in live conversations**, fusing these inputs with instructions, personal knowledge documents, and conversation history to provide real-time, context-grounded AI guidance.
+### Core Architectural Principles
+1. **$0 Owner-Paid AI Infrastructure**: Language inference runs locally via **Ollama** and speech recognition runs locally via **whisper.cpp**. The software author pays \$0 for customer tokens or cloud transcription.
+2. **Customer BYOK (Bring Your Own Key)**: Customers requiring cloud LLMs (Gemini, OpenAI, Claude, Groq) configure their own personal credentials stored in OS-backed hardware keychains (Windows DPAPI, macOS Keychain).
+3. **Turnkey Commercial Monetization**: Integrated with **Lemon Squeezy** as Merchant of Record with automated public license validation, hardware-based instance binding, and a 7-day offline grace period.
+4. **Privacy-First Desktop Understanding**: Dual-channel audio loopback and opt-in desktop screen analysis with client-side sensitive content redaction. No pixels or audio leave your computer in Local Mode.
 
 ---
 
@@ -54,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (192/192 Passing)](#6-automated-verification--test-suites-192192-passing)
+6. [Automated Verification & Test Suites (227/227 Passing)](#6-automated-verification--test-suites-227227-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -307,11 +311,11 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (192/192 Passing)
+## 6. Automated Verification & Test Suites (227/227 Passing)
 
-The latest verified CI run recorded **192 passing automated checks**: 191 Vitest tests across 18 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The latest verified CI run recorded **227 passing automated checks**: 226 Vitest tests across 22 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
-Evidence: [CI run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654)  
+Evidence: [CI run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |
@@ -321,21 +325,25 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `credential-vault.test.ts` | Async safeStorage, legacy ciphertext, key rotation and concurrency | 14 |
 | `device-evidence-validator.test.ts` | device evidence campaign validator | 13 |
 | `e2e-desktop-session.test.ts` | Synthetic pipeline integration with mocked hardware/provider inputs | 6 |
+| `entitlements.test.ts` | Commercial Subscription & Entitlements Matrix | 6 |
+| `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 6 |
 | `ipc-security.test.ts` | Sender validation, request identity and payload limits | 33 |
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
+| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 8 |
 | `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 7 |
 | `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 43 |
 | `session-archive.test.ts` | Session archive persistence and path containment | 12 |
 | `state-broadcast.test.ts` | Shared-state renderer updates | 2 |
 | `state-persistence.test.ts` | Persistence error reporting and recovery | 8 |
-| `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 3 |
-| `ai-context.test.ts` | AI context assembly and operating modes | 7 |
+| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 5 |
+| `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
+| `ai-context.test.ts` | AI context assembly and operating modes | 14 |
+| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
 | `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
-| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **18 Vitest suites + 1 Electron smoke check** | **192** |
+| **Total** | **22 Vitest suites + 1 Electron smoke check** | **227** |
 
 The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
@@ -375,14 +383,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 191 Vitest unit & integration tests
+# Run the 226 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (192 total verified checks)
+# Generate the automated test results markdown report (227 total verified checks)
 npm run test:report
 ```
 

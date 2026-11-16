@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LicenseManager, LicenseRecord } from '../electron/services/license-manager';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
   let manager: LicenseManager;
@@ -16,7 +17,6 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
       fs.unlinkSync(testLicenseFile);
     }
     manager = new LicenseManager();
-    // Point internal licenseFile to our isolated test file
     (manager as any).licenseFile = testLicenseFile;
     (manager as any).currentLicense = null;
   });
@@ -31,15 +31,15 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     vi.restoreAllMocks();
   });
 
-  it('generates a stable deterministic hardware fingerprint and instance name', () => {
+  it('generates a stable deterministic hardware fingerprint and anonymous instance name without hostname', () => {
     const fp1 = manager.getHardwareFingerprint();
     const fp2 = manager.getHardwareFingerprint();
     expect(fp1).toBe(fp2);
     expect(fp1.length).toBe(16);
 
     const instanceName = manager.getInstanceName();
-    expect(instanceName.startsWith('Scandium-')).toBe(true);
-    expect(instanceName).toContain(fp1.slice(0, 6));
+    expect(instanceName.startsWith(`Scandium-${os.platform()}-`)).toBe(true);
+    expect(instanceName).toContain(fp1.slice(0, 8));
   });
 
   it('defaults to Free tier when no license is configured', () => {
@@ -50,6 +50,31 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(status.status).toBe('none');
   });
 
+  it('fails closed to Free tier for unknown or malicious products', () => {
+    const fn = (manager as any).resolveTierFromMeta.bind(manager);
+    expect(fn({ product_name: 'Unknown Random Product' })).toBe('free');
+    expect(fn({ product_name: 'Photoshop License' })).toBe('free');
+    expect(fn(null)).toBe('free');
+    expect(fn({ product_name: 'Scandium Plus' })).toBe('plus');
+    expect(fn({ product_name: 'Scandium Pro' })).toBe('pro');
+  });
+
+  it('expires license immediately if expiresAt date is in the past', () => {
+    const record: LicenseRecord = {
+      licenseKey: 'PLUS-EXPIRED-KEY',
+      instanceId: 'inst_exp',
+      instanceName: manager.getInstanceName(),
+      status: 'active',
+      tier: 'plus',
+      activationLimit: 2,
+      activationUsage: 1,
+      expiresAt: '2020-01-01T00:00:00Z',
+      lastValidatedAt: Date.now(),
+    };
+    (manager as any).currentLicense = record;
+    expect(manager.getCurrentTier()).toBe('free');
+  });
+
   it('activates a license and saves encrypted cache to disk', async () => {
     const mockApiResponse = {
       activated: true,
@@ -57,7 +82,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
         status: 'active',
         activation_limit: 2,
         activation_usage: 1,
-        expires_at: '2026-12-31T23:59:59Z',
+        expires_at: '2028-12-31T23:59:59Z',
       },
       instance: {
         id: 'inst_12345',
@@ -86,7 +111,6 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
   });
 
   it('engages 7-day offline grace period on network validation failure', async () => {
-    // Inject active license record
     const record: LicenseRecord = {
       licenseKey: 'PRO-9999-XXXX-YYYY',
       instanceId: 'inst_99',
@@ -101,7 +125,6 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     (manager as any).currentLicense = record;
     (manager as any).saveCachedLicense();
 
-    // Mock network failure
     vi.spyOn(manager as any, 'postLemonSqueezy').mockRejectedValue(new Error('ENOTFOUND api.lemonsqueezy.com'));
 
     const validated = await manager.validateLicense();
@@ -109,7 +132,6 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(validated.graceRemainingDays).toBeGreaterThanOrEqual(4);
     expect(validated.graceRemainingDays).toBeLessThanOrEqual(5);
 
-    // Entitlement tier remains Pro during grace period
     expect(manager.getCurrentTier()).toBe('pro');
   });
 
@@ -131,7 +153,6 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
 
     const validated = await manager.validateLicense();
     expect(validated.status).toBe('expired');
-    // Tier falls back to free once grace period expires
     expect(manager.getCurrentTier()).toBe('free');
   });
 

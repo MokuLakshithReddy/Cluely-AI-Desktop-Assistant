@@ -28,6 +28,13 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/whisper",
+        "to": "whisper",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": [
         "portable"

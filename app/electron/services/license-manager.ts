@@ -46,13 +46,21 @@ export class LicenseManager {
   }
 
   public getInstanceName(): string {
-    const hostname = os.hostname() || 'Desktop';
     const fp = this.getHardwareFingerprint();
-    return `Scandium-${hostname}-${fp.slice(0, 6)}`;
+    return `Scandium-${os.platform()}-${fp.slice(0, 8)}`;
   }
 
   public getCurrentTier(): SubscriptionTier {
     if (!this.currentLicense) return 'free';
+
+    // Verify expiration timestamp independently against wall clock
+    if (this.currentLicense.expiresAt) {
+      const expTime = new Date(this.currentLicense.expiresAt).getTime();
+      if (!isNaN(expTime) && expTime < Date.now()) {
+        this.currentLicense.status = 'expired';
+        return 'free';
+      }
+    }
 
     const status = this.currentLicense.status;
     if (status === 'active') return this.currentLicense.tier;
@@ -229,14 +237,40 @@ export class LicenseManager {
   private resolveTierFromMeta(meta: any): SubscriptionTier {
     const productName = String(meta?.product_name || '').toLowerCase();
     const variantName = String(meta?.variant_name || '').toLowerCase();
+    const productId = String(meta?.product_id || '');
+    const variantId = String(meta?.variant_id || '');
 
-    if (productName.includes('pro') || variantName.includes('pro')) {
+    // Check whitelist of configured Lemon Squeezy IDs or verified product/variant strings
+    const isPro =
+      productName.includes('scandium pro') ||
+      variantName.includes('scandium pro') ||
+      variantName.includes('pro monthly') ||
+      (process.env.LEMON_PRO_PRODUCT_ID && productId === process.env.LEMON_PRO_PRODUCT_ID) ||
+      (process.env.LEMON_PRO_VARIANT_ID && variantId === process.env.LEMON_PRO_VARIANT_ID);
+
+    if (isPro) {
       return 'pro';
     }
-    if (productName.includes('plus') || variantName.includes('plus')) {
+
+    const isPlus =
+      productName.includes('scandium plus') ||
+      variantName.includes('scandium plus') ||
+      variantName.includes('plus monthly') ||
+      (process.env.LEMON_PLUS_PRODUCT_ID && productId === process.env.LEMON_PLUS_PRODUCT_ID) ||
+      (process.env.LEMON_PLUS_VARIANT_ID && variantId === process.env.LEMON_PLUS_VARIANT_ID);
+
+    if (isPlus) {
       return 'plus';
     }
-    return 'plus'; // Default paid tier is Plus
+
+    // FAIL CLOSED: Unknown products or variants never receive paid tier
+    console.warn('[LicenseManager] Unrecognized product or variant. Failing closed to Free tier:', {
+      productName,
+      variantName,
+      productId,
+      variantId,
+    });
+    return 'free';
   }
 
   private saveCachedLicense() {

@@ -1,5 +1,11 @@
 {
-  "name": "Cluely Copilot",
-  "description": "Evidence-driven desktop & web AI copilot with real-time screen and audio understanding",
-  "capabilities": []
+  "name": "Scandium Desktop Assistant",
+  "description": "Commercial zero-cost desktop AI assistant with local LLM, local Whisper speech-to-text, and customer BYOK cloud options",
+  "capabilities": [
+    "local_llm_inference",
+    "local_whisper_stt",
+    "desktop_screen_understanding",
+    "customer_byok_cloud",
+    "authenticated_aes256gcm_vault"
+  ]
 }

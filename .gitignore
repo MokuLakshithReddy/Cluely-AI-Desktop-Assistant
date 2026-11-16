@@ -14,8 +14,12 @@ build/
 extracted_cluely/
 cluely_domains_extracted/
 *.exe
+!resources/whisper/*.exe
+!app/resources/whisper/*.exe
 *.asar
 *.log
+*.bin
+*.wav
 
 # Environment variables & secrets
 .env

@@ -3,11 +3,11 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 192/192 Passing (100% Pass Rate)  
+**Test Status**: 227/227 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: [`e5a58b4dc4558d35fd2698f297d26910921dff99`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/e5a58b4dc4558d35fd2698f297d26910921dff99)  
-**Workflow run**: [CI Verification Suite — run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654)  
-**Verification Date**: 2026-11-15  
+**Source revision**: `4ea8c3b5c9a9f1f1359c6001d6939ef965a9441f`  
+**Workflow run**: Local execution  
+**Verification Date**: 2026-11-16  
 
 ---
 
@@ -20,21 +20,25 @@
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 14 | 14 | 0 | **PASSED** |
 | `device-evidence-validator.test.ts` | device evidence campaign validator | 13 | 13 | 0 | **PASSED** |
 | `e2e-desktop-session.test.ts` | Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs) | 6 | 6 | 0 | **PASSED** |
+| `entitlements.test.ts` | Commercial Subscription & Entitlements Matrix | 6 | 6 | 0 | **PASSED** |
+| `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 6 | 6 | 0 | **PASSED** |
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 33 | 33 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
+| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 8 | 8 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 7 | 7 | 0 | **PASSED** |
 | `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 43 | 43 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 12 | 12 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
 | `state-persistence.test.ts` | State persistence error reporting | 8 | 8 | 0 | **PASSED** |
-| `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 3 | 3 | 0 | **PASSED** |
-| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 7 | 7 | 0 | **PASSED** |
+| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 5 | 5 | 0 | **PASSED** |
+| `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
+| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
+| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
-| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **192** | **192** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **227** | **227** | **0** | **100% PASS** |
 
 ---
 
@@ -106,7 +110,27 @@
 ✓ Stage 6: Saves a synthetic session, strips screenshot data, and deletes the repository record
 ```
 
-### 6. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
+### 6. Commercial Subscription & Entitlements Matrix (`tests/entitlements.test.ts`)
+```text
+✓ correctly maps Free tier restrictions
+✓ correctly maps Plus tier capabilities
+✓ correctly maps Pro tier capabilities
+✓ enforces mode gating across tiers
+✓ enforces BYOK provider gating across tiers
+✓ keeps client frontend entitlements in exact sync with main process rules
+```
+
+### 7. Hardware Compatibility Subsystem & Model Recommendation (`tests/hardware-detector.test.ts`)
+```text
+✓ detects system hardware profile and provides valid defaults
+✓ caches the hardware profile within TTL and dynamic RAM updates
+✓ recommends tier-appropriate models for 16GB+ baseline hardware with healthy free RAM
+✓ falls back to 1B model when available free RAM is constrained despite 16GB total RAM
+✓ recommends lightweight 1B models and warns when RAM is constrained (<8GB)
+✓ classifies GPU vendors accurately
+```
+
+### 8. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
 ```text
 ✓ accepts exact aggregate document/chunk and AI query limits
 ✓ rejects one-over aggregate document, chunk, AI query and audio duration limits
@@ -143,7 +167,7 @@
 ✓ validates microphone and system-audio readiness as bounded finite states
 ```
 
-### 7. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
+### 9. Knowledge Base & Document Retrieval (RAG) Subsystem (`tests/knowledge-rag.test.ts`)
 ```text
 ✓ chunks documents with overlapping windows respecting paragraph breaks
 ✓ creates KnowledgeDoc record with correct metadata and chunks
@@ -159,7 +183,19 @@
 ✓ ranks chunks using term frequency and inverse document frequency
 ```
 
-### 8. AI Provider Model Propagation and Multi-Turn Serialization (`tests/provider-models.test.ts`)
+### 10. Lemon Squeezy Licensing & Offline Grace Subsystem (`tests/license-manager.test.ts`)
+```text
+✓ generates a stable deterministic hardware fingerprint and anonymous instance name without hostname
+✓ defaults to Free tier when no license is configured
+✓ fails closed to Free tier for unknown or malicious products
+✓ expires license immediately if expiresAt date is in the past
+✓ activates a license and saves encrypted cache to disk
+✓ engages 7-day offline grace period on network validation failure
+✓ expires license when offline grace period exceeds 7 days
+✓ deactivates license and purges local license cache file
+```
+
+### 11. AI Provider Model Propagation and Multi-Turn Serialization (`tests/provider-models.test.ts`)
 ```text
 ✓ streamGemini defaults to gemini-3.6-flash, routes URL correctly and serializes multi-turn history
 ✓ streamGemini provides diagnostic guidance on 403 / 404 model errors without retrying a different model
@@ -170,7 +206,7 @@
 ✓ buildContextPrompt excludes transcribing and error items from transcript context
 ```
 
-### 9. Security, Privacy & Sensitive-Content Hardening Subsystem (`tests/security-redaction.test.ts`)
+### 12. Security, Privacy & Sensitive-Content Hardening Subsystem (`tests/security-redaction.test.ts`)
 ```text
 ✓ redacts OpenAI API keys
 ✓ redacts AWS Access Key IDs
@@ -217,7 +253,7 @@
 ✓ permits local screenshot processing on-device when provider is local ollama
 ```
 
-### 10. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
+### 13. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
 ```text
 ✓ saves and reads a full session record with transcripts and messages
 ✓ restricts session directory and archive file access on POSIX
@@ -233,13 +269,13 @@
 ✓ locks repository and fails closed if getSession encounters a migration re-write error
 ```
 
-### 11. Shared-state renderer broadcast (`tests/state-broadcast.test.ts`)
+### 14. Shared-state renderer broadcast (`tests/state-broadcast.test.ts`)
 ```text
 ✓ updates control, chat, and Dashboard windows
 ✓ skips missing or destroyed windows without preventing other updates
 ```
 
-### 12. State persistence error reporting (`tests/state-persistence.test.ts`)
+### 15. State persistence error reporting (`tests/state-persistence.test.ts`)
 ```text
 ✓ does not restore stale transient persistence warnings from older state files
 ✓ ignores stale persisted app versions and does not persist runtime version metadata
@@ -251,14 +287,26 @@
 ✓ suppresses active session and knowledge documents from disk when enterpriseMode is active
 ```
 
-### 13. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
+### 16. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
+```text
+✓ provides verified registry of open-weight GGML Whisper models with exact SHA-256 hashes
+✓ tracks active model selection safely
+✓ accurately computes SHA-256 file checksums via streaming digest
+✓ returns clean diagnostic message when attempting transcription with uninstalled model
+✓ returns clean diagnostic message when model exists but whisper binary is missing
+```
+
+### 17. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
 ```text
 ✓ clears closed control/chat references and recreates both windows on reinitialization
 ✓ keeps initialization idempotent and does not register duplicate state listeners
 ✓ returns null for destroyed windows even before their closed event is delivered
+✓ moveControlWindow rounds fractional coordinates and syncs visible chat window
+✓ moveControlWindow does not reposition chat window when chat is hidden
+✓ moveControlWindow safely ignores invalid or NaN deltas
 ```
 
-### 14. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
+### 18. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
 ```text
 ✓ builds context prompt including speaker-attributed transcripts
 ✓ filters out error and incomplete transcript segments from prompt context
@@ -267,9 +315,24 @@
 ✓ handles empty query gracefully with contextual default instruction
 ✓ verifies system prompt presence across all 5 defined assistance modes
 ✓ formats user request cleanly when query contains multiline strings
+✓ strips Context description and Draft Response headers to return only direct solutions
+✓ strips markdown **Context:** blocks and returns the direct answer
+✓ leaves direct solutions completely untouched
+✓ strips standalone Draft Response: or Suggested Response: prefixes
+✓ strips bulleted Context and Draft Response preambles cleanly
+✓ strips dashed Context and Answer preambles cleanly
+✓ hides incomplete context preamble while streaming so it does not flicker on screen
 ```
 
-### 15. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+### 19. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+```text
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
+```
+
+### 20. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
 ```text
 ✓ parses empty or missing hash as default "all" view
 ✓ parses direct routes without query parameters
@@ -277,7 +340,7 @@
 ✓ handles leading slash with query parameters
 ```
 
-### 16. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 21. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
@@ -286,7 +349,7 @@
 ✓ handles boundary 1x1 minimal screen dimension safely
 ```
 
-### 17. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+### 22. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
 ```text
 ✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
 ✓ purgeAllData wipes in-memory vault keys and stored session archives
@@ -295,15 +358,7 @@
 ✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
-### 18. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
-```
-
-### 19. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
+### 23. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
 ```text
 ✓ Spawns Electron with ELECTRON_RUN_AS_NODE removed
 ✓ Loads the control/chat windows and mounts the real Dashboard renderer

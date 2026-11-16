@@ -195,6 +195,7 @@ export interface DesktopBridge {
   getOllamaCatalog?: () => Promise<any[]>;
   pullOllamaModel?: (modelName: string) => Promise<void>;
   deleteOllamaModel?: (modelName: string) => Promise<void>;
+  testOllamaGeneration?: (modelName?: string) => Promise<{ success: boolean; text: string; latencyMs: number; error?: string }>;
 
   // Local Whisper STT Management ($0 Owner Cost)
   getWhisperModels?: () => Promise<any[]>;

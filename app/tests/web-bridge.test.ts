@@ -132,7 +132,7 @@ describe('WebBridge Security and Memory Architecture', () => {
   });
 
   it('abortAiStream returns false for unknown requestId without aborting other requests', async () => {
-    const bridge = initWebBridge();
+    const bridge = initWebBridge({ privacyMode: 'cloud' });
     const activeReqId = 'req_active_123';
 
     // Start request

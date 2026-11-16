@@ -54,7 +54,7 @@ export const INITIAL_STATE: SharedState = {
   isEmergencyStopping: false,
   micActive: false,
   systemAudioActive: false,
-  privacyMode: (process.env.PRIVACY_MODE === 'LOCAL' || process.env.ENTERPRISE_MODE === 'true') ? 'local' : 'cloud',
+  privacyMode: 'local', // Default execution mode: LOCAL-FIRST ($0 owner cost)
   meetingConsent: process.env.SMOKE_TEST === 'true' ? 'always_allowed' : 'prompt',
   telemetryEnabled: false,
   enterpriseMode: process.env.ENTERPRISE_MODE === 'true',
@@ -62,13 +62,13 @@ export const INITIAL_STATE: SharedState = {
   blockOutboundSecrets: false,
   encryptedStorageEnabled: true,
   activeMode: 'copilot',
-  activeModel: 'gemini-3.5-flash-lite',
+  activeModel: 'ollama', // Default LLM: Local Ollama
   hasApiKeys: {
     gemini: false,
     openai: false,
     anthropic: false,
     groq: false,
-    ollama: false,
+    ollama: true, // Local execution enabled by default
   },
   shortcuts: {
     toggleVisibility: 'CommandOrControl+Shift+Space',

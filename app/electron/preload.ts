@@ -40,6 +40,7 @@ const desktopBridge: DesktopBridge = {
   getOllamaCatalog: () => ipcRenderer.invoke('ollama-catalog'),
   pullOllamaModel: (modelName: string) => ipcRenderer.invoke('ollama-pull-model', { modelName }),
   deleteOllamaModel: (modelName: string) => ipcRenderer.invoke('ollama-delete-model', { modelName }),
+  testOllamaGeneration: (modelName?: string) => ipcRenderer.invoke('ollama-test-generation', { modelName }),
 
   // Local Whisper STT Management
   getWhisperModels: () => ipcRenderer.invoke('whisper-models-list'),

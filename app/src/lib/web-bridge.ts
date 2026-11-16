@@ -75,7 +75,58 @@ function setStoredSessions(sessions: SessionRecord[]): void {
   }
 }
 
-export function initWebBridge(defaultState: SharedState): DesktopBridge {
+const DEFAULT_WEB_STATE: SharedState = {
+  appVersion: '1.0.2',
+  isControlWindowLoaded: true,
+  isChatWindowLoaded: true,
+  isDashboardWindowLoaded: false,
+  showChat: true,
+  showDashboard: false,
+  chatWindowIsExpanded: true,
+  isStealthMode: false,
+  meHasVoiceActivity: false,
+  themHasVoiceActivity: false,
+  isCapturingScreenshot: false,
+  isRecording: false,
+  microphoneCaptureStatus: 'idle',
+  systemAudioCaptureStatus: 'idle',
+  captureWarning: null,
+  isPurging: false,
+  isEmergencyStopping: false,
+  micActive: false,
+  systemAudioActive: false,
+  privacyMode: 'local',
+  meetingConsent: 'prompt',
+  telemetryEnabled: false,
+  enterpriseMode: false,
+  redactSensitiveData: true,
+  blockOutboundSecrets: false,
+  encryptedStorageEnabled: true,
+  activeMode: 'copilot',
+  activeModel: 'ollama',
+  hasApiKeys: {
+    gemini: false,
+    openai: false,
+    anthropic: false,
+    groq: false,
+    ollama: true,
+  },
+  shortcuts: {
+    toggleVisibility: 'CommandOrControl+Shift+Space',
+    ask: 'CommandOrControl+Enter',
+    clear: 'Escape',
+    emergencyStop: 'CommandOrControl+Shift+Escape',
+    toggleSession: 'CommandOrControl+Shift+X',
+    moveUp: 'CommandOrControl+Up',
+    moveDown: 'CommandOrControl+Down',
+    moveLeft: 'CommandOrControl+Left',
+    moveRight: 'CommandOrControl+Right',
+  },
+  session: null,
+  knowledgeDocs: [],
+};
+
+export function initWebBridge(defaultState?: Partial<SharedState>): DesktopBridge {
   const initialHasKeys = {
     gemini: !!inMemoryVaultKeys.gemini,
     openai: !!inMemoryVaultKeys.openai,
@@ -85,6 +136,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
   };
 
   let currentState: SharedState = {
+    ...DEFAULT_WEB_STATE,
     ...defaultState,
     hasApiKeys: initialHasKeys,
   };
@@ -591,6 +643,7 @@ export function initWebBridge(defaultState: SharedState): DesktopBridge {
     getOllamaCatalog: async () => [],
     pullOllamaModel: async () => {},
     deleteOllamaModel: async () => {},
+    testOllamaGeneration: async () => ({ success: true, text: 'Scandium local AI engine is online and operational.', latencyMs: 24 }),
 
     getWhisperModels: async () => [
       { id: 'ggml-tiny.en', name: 'Whisper Tiny (English, ~75MB)', filename: 'ggml-tiny.en.bin', sizeBytes: 77705139, isDownloaded: true },

@@ -6,6 +6,7 @@ import { shortcutManager } from './domains/shortcuts';
 import { ipcRouter } from './domains/ipc-router';
 import { stateManager } from './domains/state';
 import { sessionRepository } from './services/session-repository';
+import { licenseManager } from './services/license-manager';
 
 process.on('uncaughtException', (error) => {
   console.error('[MAIN_UNCAUGHT_EXCEPTION]', error?.stack || error);
@@ -158,6 +159,29 @@ if (!gotSingleInstanceLock) {
       stateManager.patchState({
         persistenceError: `Critical: Local storage migration failed (${migErr?.message || migErr}). In-memory state purged and session repository locked.`,
       });
+    }
+
+    // Validate stored subscription license at startup and schedule background checks
+    if (process.env.SMOKE_TEST !== 'true') {
+      const initialStatus = licenseManager.getLicenseStatus();
+      if (initialStatus.hasLicense) {
+        licenseManager.validateLicense().then(() => {
+          stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
+        }).catch(err => {
+          console.warn('[Startup] License validation engaged offline grace:', err?.message || err);
+        });
+      }
+
+      // Schedule periodic background license revalidation every 12 hours
+      setInterval(() => {
+        if (licenseManager.getLicenseStatus().hasLicense) {
+          licenseManager.validateLicense().then(() => {
+            stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
+          }).catch(err => {
+            console.warn('[Background] License revalidation check:', err?.message || err);
+          });
+        }
+      }, 12 * 60 * 60 * 1000);
     }
 
     if (process.env.SMOKE_TEST_MODE === 'packaged') {

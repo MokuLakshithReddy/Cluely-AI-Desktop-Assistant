@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { HardwareDetector, hardwareDetector } from '../electron/services/hardware-detector';
+import { HardwareDetector } from '../electron/services/hardware-detector';
 import os from 'os';
 
 describe('Hardware Compatibility Subsystem & Model Recommendation', () => {
@@ -37,16 +37,28 @@ describe('Hardware Compatibility Subsystem & Model Recommendation', () => {
     expect(second.platform).toBe(first.platform);
   });
 
-  it('recommends tier-appropriate models for 16GB+ baseline hardware', async () => {
+  it('recommends tier-appropriate models for 16GB+ baseline hardware with healthy free RAM', async () => {
     const customDetector = new HardwareDetector();
     vi.spyOn(os, 'totalmem').mockReturnValue(16 * 1024 * 1024 * 1024); // 16 GB
-    vi.spyOn(os, 'freemem').mockReturnValue(8 * 1024 * 1024 * 1024);
+    vi.spyOn(os, 'freemem').mockReturnValue(8 * 1024 * 1024 * 1024); // 8 GB free
 
     const profile = await customDetector.getProfile(true);
     expect(profile.recommendedTextModel).toBe('llama3.2:3b');
     expect(profile.recommendedVisionModel).toBe('llava:7b');
     expect(profile.recommendedSttModel).toBe('ggml-base.en');
     expect(profile.warnings).toHaveLength(0);
+
+    vi.restoreAllMocks();
+  });
+
+  it('falls back to 1B model when available free RAM is constrained despite 16GB total RAM', async () => {
+    const customDetector = new HardwareDetector();
+    vi.spyOn(os, 'totalmem').mockReturnValue(16 * 1024 * 1024 * 1024); // 16 GB total
+    vi.spyOn(os, 'freemem').mockReturnValue(2 * 1024 * 1024 * 1024); // 2 GB free
+
+    const profile = await customDetector.getProfile(true);
+    expect(profile.recommendedTextModel).toBe('llama3.2:1b');
+    expect(profile.warnings.some(w => w.includes('Low Available Memory'))).toBe(true);
 
     vi.restoreAllMocks();
   });

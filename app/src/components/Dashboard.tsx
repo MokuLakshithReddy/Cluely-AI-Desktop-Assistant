@@ -109,6 +109,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
   const [whisperModels, setWhisperModels] = useState<any[]>([]);
   const [downloadingWhisperId, setDownloadingWhisperId] = useState<string | null>(null);
   const [whisperProgress, setWhisperProgress] = useState<number>(0);
+  const [testGenLoading, setTestGenLoading] = useState(false);
+  const [testGenResult, setTestGenResult] = useState<{ success: boolean; text: string; latencyMs: number; error?: string } | null>(null);
 
   useEffect(() => {
     loadSessions();
@@ -121,6 +123,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
       try {
         const s = await window.desktopBridge.getLicenseStatus();
         setLicenseStatus(s);
+        // Automatically validate license against Lemon Squeezy if currently cached
+        if (s?.hasLicense && window.desktopBridge?.validateLicense) {
+          window.desktopBridge.validateLicense().then((val: any) => {
+            if (val) {
+              window.desktopBridge?.getLicenseStatus?.().then((latest: any) => setLicenseStatus(latest));
+            }
+          }).catch(() => {});
+        }
       } catch (e) {
         console.warn('Failed to load license status:', e);
       }
@@ -228,6 +238,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
       await loadHardwareAndModels();
     } catch (err: any) {
       alert(`Failed to delete model: ${err?.message || String(err)}`);
+    }
+  };
+
+  const handleTestOllama = async (modelTag?: string) => {
+    if (!window.desktopBridge?.testOllamaGeneration) return;
+    setTestGenLoading(true);
+    setTestGenResult(null);
+    try {
+      const targetModel = modelTag || installedOllamaModels[0]?.name || 'llama3.2:1b';
+      const res = await window.desktopBridge.testOllamaGeneration(targetModel);
+      setTestGenResult(res);
+    } catch (err: any) {
+      setTestGenResult({ success: false, text: '', latencyMs: 0, error: err?.message || String(err) });
+    } finally {
+      setTestGenLoading(false);
     }
   };
 
@@ -674,7 +699,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     </ul>
                   </div>
                   <button
-                    onClick={() => window.open('https://scandium.lemonsqueezy.com', '_blank')}
+                    onClick={() => window.open('https://scandium.lemonsqueezy.com/buy/plus', '_blank')}
                     className="text-center py-1.5 rounded-lg text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-all shadow-sm"
                   >
                     Subscribe ($19/mo)
@@ -695,7 +720,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     </ul>
                   </div>
                   <button
-                    onClick={() => window.open('https://scandium.lemonsqueezy.com', '_blank')}
+                    onClick={() => window.open('https://scandium.lemonsqueezy.com/buy/pro', '_blank')}
                     className="text-center py-1.5 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-sm"
                   >
                     Subscribe ($49/mo)
@@ -841,12 +866,92 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                 </span>
               </div>
 
-              {!ollamaStatus?.isRunning && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 space-y-1">
-                  <span className="font-semibold">Ollama Service Not Detected:</span>
-                  <p className="text-[11px] text-amber-200 leading-relaxed">
-                    Start Ollama on your system or run <code className="font-mono bg-amber-950/60 px-1 rounded">ollama serve</code> in a terminal. Once running, local inference activates automatically.
+              {!ollamaStatus?.isRunning ? (
+                <div className="p-4 bg-slate-950/80 border border-amber-500/30 rounded-xl text-xs space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold text-amber-200">First-Run Setup: Local Ollama Runtime Required</span>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        To maintain \$0 cloud cost, Scandium runs language models on your computer using the open-source Ollama runtime. Follow these steps to activate local AI:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 space-y-2 text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center text-[10px]">1</span>
+                      <span className="text-slate-200">Download and install Ollama from the official release:</span>
+                    </div>
+                    <div className="pl-6">
+                      <button
+                        onClick={() => window.open('https://ollama.com/download', '_blank')}
+                        className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-semibold text-xs transition-colors"
+                      >
+                        Download Ollama (Official Installer)
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center text-[10px]">2</span>
+                      <span className="text-slate-200">Start Ollama or execute in a terminal:</span>
+                    </div>
+                    <div className="pl-6">
+                      <code className="bg-slate-950 px-2 py-1 rounded text-cyan-300 font-mono text-[10px] border border-slate-800">
+                        ollama run llama3.2:1b
+                      </code>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center text-[10px]">3</span>
+                      <span className="text-slate-200">Verify connection once Ollama is active:</span>
+                    </div>
+                    <div className="pl-6">
+                      <button
+                        onClick={loadHardwareAndModels}
+                        className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded font-medium text-xs border border-slate-700 transition-colors"
+                      >
+                        Check Connection
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Hardware acceleration: Intel Arc, NVIDIA, or Apple GPUs are automatically utilized. Systems without dedicated accelerators seamlessly fall back to multi-threaded CPU execution.
                   </p>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Test Local Generation
+                    </span>
+                    <button
+                      onClick={() => handleTestOllama()}
+                      disabled={testGenLoading || installedOllamaModels.length === 0}
+                      className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-[11px] font-semibold disabled:opacity-40 transition-colors"
+                    >
+                      {testGenLoading ? 'Generating...' : 'Run Generation Test'}
+                    </button>
+                  </div>
+                  {testGenResult && (
+                    <div className={`p-2 rounded text-[11px] font-mono leading-relaxed border ${
+                      testGenResult.success
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                        : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                    }`}>
+                      {testGenResult.success ? (
+                        <>
+                          <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-0.5">
+                            Verified ({testGenResult.latencyMs} ms latency)
+                          </div>
+                          <p>{testGenResult.text}</p>
+                        </>
+                      ) : (
+                        <div>Test failed: {testGenResult.error}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

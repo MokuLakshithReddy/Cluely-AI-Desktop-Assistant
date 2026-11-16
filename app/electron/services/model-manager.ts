@@ -210,6 +210,65 @@ export class ModelManager {
     });
   }
 
+  public async testGeneration(modelName = 'llama3.2:1b'): Promise<{ success: boolean; text: string; latencyMs: number; error?: string }> {
+    const t0 = Date.now();
+    try {
+      const postData = JSON.stringify({
+        model: modelName,
+        prompt: 'Say: "Scandium local AI engine is online and operational."',
+        stream: false,
+      });
+
+      const res = await new Promise<any>((resolve, reject) => {
+        const req = http.request(
+          {
+            hostname: this.ollamaHost,
+            port: this.ollamaPort,
+            path: '/api/generate',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData),
+            },
+            timeout: 15000,
+          },
+          response => {
+            let data = '';
+            response.on('data', chunk => (data += chunk));
+            response.on('end', () => {
+              try {
+                resolve(JSON.parse(data));
+              } catch (e) {
+                reject(e);
+              }
+            });
+          }
+        );
+        req.on('error', reject);
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Generation test timed out'));
+        });
+        req.write(postData);
+        req.end();
+      });
+
+      const latencyMs = Date.now() - t0;
+      return {
+        success: true,
+        text: res.response?.trim() || 'OK',
+        latencyMs,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        text: '',
+        latencyMs: Date.now() - t0,
+        error: err?.message || String(err),
+      };
+    }
+  }
+
   private httpGetJson<T>(urlStr: string): Promise<T> {
     return new Promise((resolve, reject) => {
       const parsed = new URL(urlStr);

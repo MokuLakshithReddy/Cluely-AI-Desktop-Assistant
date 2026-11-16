@@ -22,7 +22,7 @@ export const FALLBACK_STATE: SharedState = {
   isEmergencyStopping: false,
   micActive: false,
   systemAudioActive: false,
-  privacyMode: 'cloud',
+  privacyMode: 'local',
   meetingConsent: 'prompt',
   telemetryEnabled: false,
   enterpriseMode: false,
@@ -30,13 +30,13 @@ export const FALLBACK_STATE: SharedState = {
   blockOutboundSecrets: false,
   encryptedStorageEnabled: true,
   activeMode: 'copilot',
-  activeModel: 'gemini-3.5-flash-lite',
+  activeModel: 'ollama',
   hasApiKeys: {
     gemini: false,
     openai: false,
     anthropic: false,
     groq: false,
-    ollama: false,
+    ollama: true,
   },
   shortcuts: {
     toggleVisibility: 'CommandOrControl+Shift+Space',
@@ -67,8 +67,8 @@ export function useSharedState() {
   }, [state]);
 
   const migrateState = (s: SharedState): SharedState => {
-    if (s && ((s.activeModel as string) === 'gemini-2.5-flash' || (s.activeModel as string) === 'gemini-3.8-flash' || !s.activeModel)) {
-      return { ...s, activeModel: 'gemini-3.5-flash-lite' };
+    if (s && !s.activeModel) {
+      return { ...s, activeModel: 'ollama', privacyMode: 'local' };
     }
     return s;
   };

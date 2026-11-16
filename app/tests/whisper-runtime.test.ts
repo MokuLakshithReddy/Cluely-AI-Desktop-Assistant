@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WhisperRuntime, WHISPER_MODELS } from '../electron/services/whisper-runtime';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
   let runtime: WhisperRuntime;
@@ -23,18 +24,19 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     }
   });
 
-  it('provides verified registry of open-weight GGML Whisper models', () => {
+  it('provides verified registry of open-weight GGML Whisper models with exact SHA-256 hashes', () => {
     const tiny = WHISPER_MODELS['ggml-tiny.en'];
     expect(tiny).toBeDefined();
     expect(tiny.filename).toBe('ggml-tiny.en.bin');
-    expect(tiny.sizeBytes).toBeGreaterThan(70000000);
+    expect(tiny.sizeBytes).toBe(77704715);
     expect(tiny.url.startsWith('https://huggingface.co/')).toBe(true);
-    expect(tiny.sha256).toBeDefined();
+    expect(tiny.sha256).toBe('921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f');
 
     const base = WHISPER_MODELS['ggml-base.en'];
     expect(base).toBeDefined();
     expect(base.filename).toBe('ggml-base.en.bin');
-    expect(base.sizeBytes).toBeGreaterThan(140000000);
+    expect(base.sizeBytes).toBe(147964211);
+    expect(base.sha256).toBe('a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002');
   });
 
   it('tracks active model selection safely', () => {
@@ -48,31 +50,28 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     expect(runtime.getActiveModelId()).toBe('ggml-base.en');
   });
 
-  it('accurately reports model downloaded state based on file existence and size', () => {
-    expect(runtime.isModelDownloaded('ggml-tiny.en')).toBe(false);
+  it('accurately computes SHA-256 file checksums via streaming digest', async () => {
+    const testFile = path.join(testModelsDir, 'checksum-test.txt');
+    const content = 'scandium-whisper-test-payload-12345';
+    fs.writeFileSync(testFile, content);
 
-    // Create a mock model file > 1MB
-    const mockFilePath = path.join(testModelsDir, 'ggml-tiny.en.bin');
-    const dummyBuffer = Buffer.alloc(1024 * 1024 + 100);
-    fs.writeFileSync(mockFilePath, dummyBuffer);
-
-    expect(runtime.isModelDownloaded('ggml-tiny.en')).toBe(true);
-
-    const models = runtime.getModels();
-    const tiny = models.find(m => m.id === 'ggml-tiny.en');
-    expect(tiny?.isDownloaded).toBe(true);
+    const expectedDigest = crypto.createHash('sha256').update(content).digest('hex');
+    const digest = await runtime.computeFileSha256(testFile);
+    expect(digest).toBe(expectedDigest);
   });
 
-  it('returns clean diagnostic message when attempting transcription without installed model', async () => {
+  it('returns clean diagnostic message when attempting transcription with uninstalled model', async () => {
+    runtime.setActiveModel('ggml-base.en');
+    vi.spyOn(runtime, 'resolveModelPath').mockReturnValue(null);
+
     const dummyWav = new ArrayBuffer(1024);
     const result = await runtime.transcribeAudio(dummyWav);
     expect(result).toContain('Local Whisper STT: Model not installed');
   });
 
   it('returns clean diagnostic message when model exists but whisper binary is missing', async () => {
-    // Create mock model file
-    const mockFilePath = path.join(testModelsDir, 'ggml-tiny.en.bin');
-    fs.writeFileSync(mockFilePath, Buffer.alloc(1024 * 1024 + 100));
+    vi.spyOn(runtime, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(runtime, 'findWhisperExecutable').mockReturnValue(null);
 
     const dummyWav = new ArrayBuffer(1024);
     const result = await runtime.transcribeAudio(dummyWav);
