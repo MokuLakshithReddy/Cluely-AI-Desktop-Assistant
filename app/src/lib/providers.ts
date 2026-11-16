@@ -162,12 +162,12 @@ export function buildContextPrompt(
 
   // 3. User request
   const defaultQuery =
-    'Based on the screen and recent conversation, provide the next helpful answer or solution. Solve the questions displayed on screen directly. Do NOT describe the screen context or write "Context:". Output only the direct solutions.';
+    'Based on the screen and recent conversation, provide the next helpful answer or solution. Solve the questions displayed on screen directly. If fill-in-the-blank or missing-letter boxes (C-test) are visible, identify every box sequentially in reading order and output the exact missing letters to type along with the full word. Do NOT describe the screen context or write "Context:". Output only the direct solutions.';
 
   if (!query || !query.trim()) {
     prompt += `### USER REQUEST\n${defaultQuery}`;
   } else {
-    prompt += `### USER REQUEST\n${query.trim()}\n(Provide only the direct solution/answer. Do NOT describe what is visible on screen or output "Context:" or "Draft Response:").`;
+    prompt += `### USER REQUEST\n${query.trim()}\n(Provide only the direct solution/answer. If fill-in-the-blank/missing-letter boxes are shown, output every blank sequentially in reading order with the exact missing letters to type and the full word. Do NOT describe what is visible on screen or output "Context:" or "Draft Response:").`;
   }
 
   return prompt;

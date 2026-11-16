@@ -159,11 +159,18 @@ describe('WindowCoordinator macOS close-all recovery', () => {
 
     coordinator.moveControlWindow({ x: 12.7, y: -4.3 });
 
-    expect(control.setPosition).toHaveBeenCalledWith(Math.round(100 + 12.7), Math.round(24 - 4.3));
-    expect(chat.setPosition).toHaveBeenCalled();
-    const [chatX, chatY] = chat.setPosition.mock.calls[0];
-    expect(Number.isInteger(chatX)).toBe(true);
-    expect(Number.isInteger(chatY)).toBe(true);
+    expect(control.setBounds).toHaveBeenCalledWith({
+      x: Math.round(100 + 12.7),
+      y: Math.round(24 - 4.3),
+      width: 620,
+      height: 58,
+    });
+    expect(chat.setBounds).toHaveBeenCalled();
+    const [bounds] = chat.setBounds.mock.calls[0];
+    expect(Number.isInteger(bounds.x)).toBe(true);
+    expect(Number.isInteger(bounds.y)).toBe(true);
+    expect(bounds.width).toBe(620);
+    expect(Number.isInteger(bounds.height)).toBe(true);
   });
 
   it('moveControlWindow does not reposition chat window when chat is hidden', () => {
@@ -174,7 +181,7 @@ describe('WindowCoordinator macOS close-all recovery', () => {
     chat.visible = false;
 
     coordinator.moveControlWindow({ x: 10, y: 10 });
-    expect(chat.setPosition).not.toHaveBeenCalled();
+    expect(chat.setBounds).not.toHaveBeenCalled();
   });
 
   it('moveControlWindow safely ignores invalid or NaN deltas', () => {
@@ -183,6 +190,6 @@ describe('WindowCoordinator macOS close-all recovery', () => {
 
     const control = coordinator.getControlWindow() as any;
     coordinator.moveControlWindow({ x: NaN, y: 10 });
-    expect(control.setPosition).not.toHaveBeenCalled();
+    expect(control.setBounds).not.toHaveBeenCalled();
   });
 });

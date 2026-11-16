@@ -65,6 +65,7 @@ export class WindowCoordinator {
       alwaysOnTop: true,
       skipTaskbar: false,
       resizable: false,
+      maximizable: false,
       show: false,
       hasShadow: false,
       webPreferences: {
@@ -122,13 +123,21 @@ export class WindowCoordinator {
         const bY = Number.isFinite(bounds?.y) ? bounds.y : 0;
         const bWidth = Number.isFinite(bounds?.width) ? bounds.width : 620;
         const bHeight = Number.isFinite(bounds?.height) ? bounds.height : 58;
-        const cWidth = Number.isFinite(chatBounds?.width) ? chatBounds.width : 620;
+        const targetWidth = 620;
+        const currentHeight = Number.isFinite(chatBounds?.height)
+          ? Math.min(750, Math.max(260, Math.round(chatBounds.height)))
+          : 540;
 
-        const chatX = Math.round(bX + (bWidth - cWidth) / 2);
+        const chatX = Math.round(bX + (bWidth - targetWidth) / 2);
         const chatY = Math.round(bY + bHeight + 8);
 
         if (Number.isFinite(chatX) && Number.isFinite(chatY)) {
-          this.chatWin.setPosition(chatX, chatY);
+          this.chatWin.setBounds({
+            x: chatX,
+            y: chatY,
+            width: targetWidth,
+            height: currentHeight,
+          });
         }
       } catch (err) {
         console.warn('[WindowCoordinator] Suppressed position sync error in move listener:', err);
@@ -165,9 +174,11 @@ export class WindowCoordinator {
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: true,
-      minWidth: 360,
+      minWidth: 620,
+      maxWidth: 620,
       minHeight: 260,
       maxHeight: 750,
+      maximizable: false,
       show: false,
       hasShadow: true,
       webPreferences: {
@@ -181,6 +192,20 @@ export class WindowCoordinator {
     });
 
     this.attachSecurityGuards(this.chatWin);
+
+    this.chatWin.on('resize', () => {
+      if (this.isSynchronizingWindows) return;
+      if (!this.chatWin || this.chatWin.isDestroyed()) return;
+      try {
+        const bounds = this.chatWin.getBounds();
+        if (bounds && bounds.width !== 620) {
+          const clampedH = Math.min(750, Math.max(260, bounds.height));
+          this.chatWin.setSize(620, clampedH);
+        }
+      } catch (err) {
+        console.warn('[WindowCoordinator] Suppressed resize clamp error:', err);
+      }
+    });
 
     const chatWindow = this.chatWin;
     chatWindow?.on('closed', () => {
@@ -297,24 +322,37 @@ export class WindowCoordinator {
       const bounds = this.controlWin.getBounds();
       const bX = Number.isFinite(bounds?.x) ? bounds.x : 0;
       const bY = Number.isFinite(bounds?.y) ? bounds.y : 0;
-      const bWidth = Number.isFinite(bounds?.width) ? bounds.width : 620;
-      const bHeight = Number.isFinite(bounds?.height) ? bounds.height : 58;
+      const bWidth = 620;
+      const bHeight = 58;
 
       const newX = Math.round(bX + dx);
       const newY = Math.round(bY + dy);
 
       if (Number.isFinite(newX) && Number.isFinite(newY)) {
-        this.controlWin.setPosition(newX, newY);
+        this.controlWin.setBounds({
+          x: newX,
+          y: newY,
+          width: bWidth,
+          height: bHeight,
+        });
       }
 
       // Synchronize chat window position if visible
       if (this.chatWin && !this.chatWin.isDestroyed() && this.chatWin.isVisible()) {
         const chatBounds = this.chatWin.getBounds();
-        const cWidth = Number.isFinite(chatBounds?.width) ? chatBounds.width : 620;
-        const chatX = Math.round(newX + (bWidth - cWidth) / 2);
+        const targetWidth = 620;
+        const currentHeight = Number.isFinite(chatBounds?.height)
+          ? Math.min(750, Math.max(260, Math.round(chatBounds.height)))
+          : 540;
+        const chatX = Math.round(newX + (bWidth - targetWidth) / 2);
         const chatY = Math.round(newY + bHeight + 8);
         if (Number.isFinite(chatX) && Number.isFinite(chatY)) {
-          this.chatWin.setPosition(chatX, chatY);
+          this.chatWin.setBounds({
+            x: chatX,
+            y: chatY,
+            width: targetWidth,
+            height: currentHeight,
+          });
         }
       }
     } catch (err) {
