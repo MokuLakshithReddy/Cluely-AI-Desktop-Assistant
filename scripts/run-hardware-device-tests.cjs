@@ -28,7 +28,7 @@ app.whenReady().then(async () => {
   };
 
   console.log('====================================================');
-  console.log('   CLUELY COPILOT REAL-DEVICE HARDWARE VALIDATION   ');
+  console.log('      SCANDIUM REAL-DEVICE HARDWARE VALIDATION      ');
   console.log('====================================================');
   console.log(`OS: Windows ${os.release()} (${process.arch})`);
   console.log(`CPU: ${results.system.cpus} (${results.system.cpuCount} cores)`);
@@ -38,7 +38,7 @@ app.whenReady().then(async () => {
   // TEST 1: Windows DPAPI Hardware-Backed Encryption (safeStorage)
   try {
     const isEncAvailable = safeStorage.isEncryptionAvailable();
-    const testPlaintext = 'cluely-hardware-test-secret-' + Date.now();
+    const testPlaintext = 'scandium-hardware-test-secret-' + Date.now();
     const cipherBuffer = safeStorage.encryptString(testPlaintext);
     const decrypted = safeStorage.decryptString(cipherBuffer);
     const pass = isEncAvailable && decrypted === testPlaintext;

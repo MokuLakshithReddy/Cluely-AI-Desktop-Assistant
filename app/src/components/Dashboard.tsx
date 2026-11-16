@@ -1077,9 +1077,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                   <option value="gemini-3.1-pro-preview">Google Gemini 3.1 Pro Preview (Deep Complex Reasoning)</option>
                   <option value="gpt-4o">OpenAI GPT-4o (Multimodal Vision)</option>
                   <option value="gpt-4o-mini">OpenAI GPT-4o Mini (Fast & Cost Efficient)</option>
-                  <option value="claude-sonnet-5-5">Anthropic Claude Sonnet 5.5 (Recommended Balanced Claude)</option>
-                  <option value="claude-haiku-5-5">Anthropic Claude Haiku 5.5 (Fastest / Low Latency)</option>
-                  <option value="claude-opus-5-5">Anthropic Claude Opus 5.5 (Complex Agentic Coding)</option>
+                  <option value="claude-sonnet-5">Anthropic Claude Sonnet 5 (Recommended Balanced Claude)</option>
+                  <option value="claude-haiku-4-5-20251001">Anthropic Claude Haiku 4.5 (Fastest / Low Latency)</option>
+                  <option value="claude-opus-5">Anthropic Claude Opus 5 (Complex Agentic Coding)</option>
                   <option value="ollama">Local Ollama (Offline - localhost:11434)</option>
                 </select>
               </div>

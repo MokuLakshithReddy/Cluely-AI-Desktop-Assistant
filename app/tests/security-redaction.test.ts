@@ -236,12 +236,21 @@ describe('Security, Privacy & Sensitive-Content Hardening Subsystem', () => {
     });
 
     it('redacts MFA/OTP authentication codes', () => {
-      const text = 'Your verification code is 849201 for Cluely';
+      const text = 'Your verification code is 849201 for Scandium';
       const result = redactSensitiveText(text);
       expect(result.redactedCount).toBe(1);
       expect(result.categories).toContain('mfa_code');
       expect(result.sanitized).toContain('[REDACTED_MFA_CODE]');
       expect(result.sanitized).not.toContain('849201');
+    });
+
+    it('redacts Social Security Numbers (SSN)', () => {
+      const text = 'Applicant SSN: 123-45-6789 on the document';
+      const result = redactSensitiveText(text);
+      expect(result.redactedCount).toBe(1);
+      expect(result.categories).toContain('ssn');
+      expect(result.sanitized).toContain('[REDACTED_SSN]');
+      expect(result.sanitized).not.toContain('123-45-6789');
     });
 
     it('redacts Email addresses', () => {

@@ -48,6 +48,9 @@ export const PATTERN_MFA_CODE = /\b(?:mfa|otp|2fa|verification[ _-]?code)\s*(?:[
 // 7. Email Addresses
 export const PATTERN_EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b/g;
 
+// 8. Social Security Numbers (US SSN)
+export const PATTERN_SSN = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/g;
+
 /**
  * Mathematical Paeth predictor for PNG scanlines (RFC 2083 / W3C PNG Specification).
  */
@@ -244,6 +247,7 @@ function resetRegexes(): void {
   PATTERN_PASSWORD_FIELD.lastIndex = 0;
   PATTERN_MFA_CODE.lastIndex = 0;
   PATTERN_EMAIL.lastIndex = 0;
+  PATTERN_SSN.lastIndex = 0;
 }
 
 /**
@@ -265,6 +269,7 @@ export function detectSensitiveData(text: string): { hasSensitiveData: boolean; 
   if (PATTERN_SLACK_TOKEN.test(text)) { detections.push('Slack Token'); categories.push('slack_token'); }
   if (PATTERN_JWT.test(text)) { detections.push('JSON Web Token (JWT)'); categories.push('jwt_token'); }
   if (PATTERN_CREDIT_CARD.test(text) || PATTERN_FORMATTED_CARD.test(text)) { detections.push('Payment Card Number'); categories.push('credit_card'); }
+  if (PATTERN_SSN.test(text)) { detections.push('Social Security Number (SSN)'); categories.push('ssn'); }
   if (PATTERN_PASSWORD_FIELD.test(text)) { detections.push('Plaintext Password/Secret'); categories.push('password_field'); }
   if (PATTERN_MFA_CODE.test(text)) { detections.push('MFA/OTP Authentication Code'); categories.push('mfa_code'); }
   if (PATTERN_EMAIL.test(text)) { detections.push('Email Address'); categories.push('email_address'); }
@@ -374,6 +379,14 @@ export function redactSensitiveText(text: string): RedactionResult {
     detections.push('Credit Card');
     categories.push('credit_card');
     return '[REDACTED_CREDIT_CARD]';
+  });
+
+  // 5b. Social Security Numbers
+  sanitized = sanitized.replace(PATTERN_SSN, () => {
+    redactedCount++;
+    detections.push('Social Security Number (SSN)');
+    categories.push('ssn');
+    return '[REDACTED_SSN]';
   });
 
   // 6. Passwords

@@ -32,7 +32,8 @@ Scandium operates with **$0 owner backend infrastructure**:
 
 Scandium provides real-time audio and screen contextual understanding capabilities.
 - **Audio Recording Consent**: Users are responsible for complying with applicable wiretapping, recording, and privacy laws in their jurisdiction (including two-party or all-party consent states/countries) before activating microphone or system audio capture during multi-party calls or meetings.
-- **Screen Capture Awareness**: Scandium provides automatic client-side sensitive content redaction (filtering credit cards, social security numbers, and bearer tokens), but users should remain mindful of sensitive or confidential material visible on screen.
+- **Sensitive Text Redaction**: Scandium automatically sanitizes passwords, API keys (OpenAI, Anthropic, Gemini, AWS, Slack, GitHub), cryptographic private keys, bearer tokens, credit cards, Social Security Numbers (SSNs), and emails from user prompts, conversation histories, transcripts, and notes prior to model dispatch.
+- **Screen Capture Privacy & Local-First Boundaries**: Scandium inspects screenshot metadata and embedded text chunks for sensitive credentials, provides coordinate/region overlay masking, and applies a strict fail-closed outbound block when sensitive strings are detected. Because Scandium does not perform arbitrary pixel-level optical character recognition (OCR) across full desktop rasters, users should keep sensitive windows obscured or enable **Local AI Mode** (where desktop screenshots are processed exclusively on `localhost` and never leave your computer).
 
 ---
 

@@ -1146,6 +1146,8 @@ export class IpcRouter {
           ...Array.from(this.activeAiTasks),
           ...Array.from(this.activeTranscriptionTasks),
         ]);
+        this.activeTranscriptionTasks.clear();
+        this.activeTranscriptionControllers.clear();
         await credentialVault.deleteAllKeys();
         await sessionRepository.purgeAll();
 
@@ -1206,17 +1208,35 @@ export class IpcRouter {
           if (!entitlements.canUseLocalWhisper) {
             return { text: '[Scandium Free: Local Whisper speech recognition requires a Plus or Pro subscription. Please upgrade in Settings.]' };
           }
-          const text = await whisperRuntime.transcribeAudio(audioBuffer, language || 'en', controller.signal);
-          if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
-          return { text };
+          const task = whisperRuntime.transcribeAudio(audioBuffer, language || 'en', controller.signal);
+          this.activeTranscriptionTasks.add(task);
+          try {
+            const text = await task;
+            if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
+            return { text };
+          } finally {
+            this.activeTranscriptionTasks.delete(task);
+          }
         }
 
         // Customer BYOK Cloud Transcription
+        const currentTier = licenseManager.getCurrentTier();
+        if (!canUseByokProvider(currentTier, provider)) {
+          const requiredTier = provider === 'openai' ? 'Pro' : 'Plus or Pro';
+          return {
+            text: `[Scandium ${currentTier.toUpperCase()}: ${provider.toUpperCase()} cloud transcription requires a ${requiredTier} subscription. Please upgrade in Settings or use Local Whisper.]`,
+          };
+        }
+
         const task = transcribeAudio(audioBuffer, activeKey, provider, language || 'en', controller.signal);
         this.activeTranscriptionTasks.add(task);
-        const text = await task;
-        if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
-        return { text };
+        try {
+          const text = await task;
+          if (stateManager.getState().isPurging) throw new Error('Transcription discarded because data purge started.');
+          return { text };
+        } finally {
+          this.activeTranscriptionTasks.delete(task);
+        }
       } finally {
         this.activeTranscriptionControllers.delete(controller);
       }

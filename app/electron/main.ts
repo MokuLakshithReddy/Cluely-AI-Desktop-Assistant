@@ -153,6 +153,8 @@ if (!gotSingleInstanceLock) {
     try {
       stateManager.reloadFromDisk();
       await sessionRepository.migrateAllLegacySessions();
+      licenseManager.init();
+      stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
     } catch (migErr: any) {
       console.error('[Startup] Critical migration failure:', migErr);
       sessionRepository.lock(migErr?.message || 'Startup migration failure');

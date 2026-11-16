@@ -156,8 +156,8 @@ describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
     });
 
     const result = await streamClaude({
-      model: 'claude-sonnet-5-5',
-      apiKey: 'sk-ant-claude55',
+      model: 'claude-sonnet-5',
+      apiKey: 'sk-ant-claude5',
       mode: 'interview',
       query: 'Solve this dynamic programming problem',
       recentTranscript: [],
@@ -168,8 +168,8 @@ describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
     });
 
     expect(result).toBe('Claude Sonnet 5.5 response');
-    expect(capturedBody.model).toBe('claude-sonnet-5-5');
-    expect(capturedHeaders['x-api-key']).toBe('sk-ant-claude55');
+    expect(capturedBody.model).toBe('claude-sonnet-5');
+    expect(capturedHeaders['x-api-key']).toBe('sk-ant-claude5');
     expect(capturedHeaders['anthropic-version']).toBe('2026-10-21');
     expect(capturedBody.messages.length).toBe(3); // 2 history + current
     expect(capturedBody.messages[0].role).toBe('user');

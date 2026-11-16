@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import { ipcMain } from 'electron';
 import { ActiveRequestRegistry, IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
+import { credentialVault } from '../electron/services/vault';
+import { licenseManager } from '../electron/services/license-manager';
 
 function buildPcmWav(sampleCount: number): Buffer {
   const dataBytes = sampleCount * 2;
@@ -234,6 +237,79 @@ describe('IPC Security & Origin Validation Subsystem', () => {
     const shortcuts = stateManager.getState().shortcuts;
     expect(shortcuts.clear).toBe('Escape');
     expect(shortcuts.emergencyStop).toBe('CommandOrControl+Shift+Escape');
+  });
+
+  it('enforces BYOK provider plan tiers and cleans up transcription tasks on stt-transcribe-payload', async () => {
+    const testRouter = new IpcRouter(trustedHtml);
+    testRouter.init();
+    const sttCall = (ipcMain.handle as any).mock.calls.find((call: any[]) => call[0] === 'stt-transcribe-payload');
+    expect(sttCall).toBeDefined();
+    const sttHandler = sttCall[1];
+
+    const fakeEvent = {
+      senderFrame: {
+        url: pathToFileURL(trustedHtml).href,
+      },
+    };
+
+    // 1. Generate valid 1-second WAV buffer
+    const validWavBase64 = buildPcmWav(16000).toString('base64');
+
+    // 2. Mock credentialVault with groq key and free tier
+    const getVaultSpy = vi.spyOn(credentialVault, 'getKey').mockImplementation(async (provider: string) => {
+      if (provider === 'groq') return 'gsk-test-groq-key';
+      return null;
+    });
+    const tierSpy = vi.spyOn(licenseManager, 'getCurrentTier').mockReturnValue('free');
+
+    // Free tier attempting cloud Groq transcription
+    const prevState = stateManager.getState();
+    stateManager.patchState({ privacyMode: 'cloud' });
+    const freeResult = await sttHandler(fakeEvent, { wavBase64: validWavBase64, language: 'en' });
+    expect(freeResult.text).toContain('requires a Plus or Pro subscription');
+    expect((testRouter as any).activeTranscriptionTasks.size).toBe(0);
+
+    // 3. Plus tier attempting cloud OpenAI transcription (reserved for Pro)
+    getVaultSpy.mockImplementation(async (provider: string) => {
+      if (provider === 'openai') return 'sk-test-openai-key';
+      return null;
+    });
+    tierSpy.mockReturnValue('plus');
+
+    const plusOpenAiResult = await sttHandler(fakeEvent, { wavBase64: validWavBase64, language: 'en' });
+    expect(plusOpenAiResult.text).toContain('requires a Pro subscription');
+    expect((testRouter as any).activeTranscriptionTasks.size).toBe(0);
+
+    // Cleanup spies and state
+    getVaultSpy.mockRestore();
+    tierSpy.mockRestore();
+    stateManager.patchState(prevState);
+  });
+
+  it('clears active transcription tasks and controllers when purge-all-data is executed', async () => {
+    const testRouter = new IpcRouter(trustedHtml);
+    testRouter.init();
+    const purgeCall = (ipcMain.handle as any).mock.calls.find((call: any[]) => call[0] === 'purge-all-data');
+    expect(purgeCall).toBeDefined();
+    const purgeHandler = purgeCall[1];
+
+    const fakeEvent = {
+      senderFrame: {
+        url: pathToFileURL(trustedHtml).href,
+      },
+    };
+
+    // Add dummy in-flight tasks and controllers
+    const dummyTask = new Promise<string>((resolve) => setTimeout(() => resolve('done'), 10));
+    (testRouter as any).activeTranscriptionTasks.add(dummyTask);
+    const dummyController = new AbortController();
+    (testRouter as any).activeTranscriptionControllers.add(dummyController);
+
+    await purgeHandler(fakeEvent);
+
+    expect((testRouter as any).activeTranscriptionTasks.size).toBe(0);
+    expect((testRouter as any).activeTranscriptionControllers.size).toBe(0);
+    expect(dummyController.signal.aborted).toBe(true);
   });
 
   it('rejects IPC invocation when senderFrame is null or undefined', () => {

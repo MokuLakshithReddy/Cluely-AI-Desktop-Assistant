@@ -32,6 +32,14 @@ export class LicenseManager {
   constructor() {
     const baseDir = app?.getPath ? app.getPath('userData') : path.join(process.cwd(), '.scandium');
     this.licenseFile = path.join(baseDir, 'scandium-license.enc');
+    // Note: On Windows and Linux, safeStorage is only available after app.whenReady().
+    // We attempt initial load for test environments, but full initialization is invoked via init() after ready.
+    try {
+      this.loadCachedLicense();
+    } catch {}
+  }
+
+  public init(): void {
     this.loadCachedLicense();
   }
 
@@ -52,6 +60,9 @@ export class LicenseManager {
   }
 
   public getCurrentTier(): SubscriptionTier {
+    if (!this.currentLicense && fs.existsSync(this.licenseFile)) {
+      this.loadCachedLicense();
+    }
     if (!this.currentLicense) return 'free';
 
     // Verify expiration timestamp independently against wall clock
@@ -92,6 +103,9 @@ export class LicenseManager {
     graceRemainingDays?: number;
     instanceName: string;
   } {
+    if (!this.currentLicense && fs.existsSync(this.licenseFile)) {
+      this.loadCachedLicense();
+    }
     const instanceName = this.getInstanceName();
     if (!this.currentLicense) {
       return {
@@ -281,15 +295,19 @@ export class LicenseManager {
     }
   }
 
-  private loadCachedLicense() {
-    if (!fs.existsSync(this.licenseFile)) return;
+  public loadCachedLicense(): LicenseRecord | null {
+    if (!fs.existsSync(this.licenseFile)) {
+      this.currentLicense = null;
+      return null;
+    }
     try {
       const encrypted = fs.readFileSync(this.licenseFile, 'utf8');
       const decrypted = decryptStoragePayload(encrypted);
       this.currentLicense = JSON.parse(decrypted);
+      return this.currentLicense;
     } catch (e) {
-      console.warn('[LicenseManager] Failed to load cached license (may be corrupted or unmigrated):', e);
-      this.currentLicense = null;
+      console.warn('[LicenseManager] Failed to load cached license (may be encrypted by unavailable safeStorage or unmigrated):', e);
+      return null;
     }
   }
 

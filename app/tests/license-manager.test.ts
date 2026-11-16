@@ -212,4 +212,35 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(manager.getCurrentTier()).toBe('free');
     expect(fs.existsSync(testLicenseFile)).toBe(false);
   });
+
+  it('preserves cached license across restart and reloads via init() without losing Plus/Pro tier', () => {
+    const record: LicenseRecord = {
+      licenseKey: 'PLUS-RESTART-TEST-KEY',
+      instanceId: 'inst_restart',
+      instanceName: manager.getInstanceName(),
+      status: 'active',
+      tier: 'plus',
+      activationLimit: 2,
+      activationUsage: 1,
+      expiresAt: null,
+      lastValidatedAt: Date.now(),
+    };
+    (manager as any).currentLicense = record;
+    (manager as any).saveCachedLicense();
+    expect(fs.existsSync(testLicenseFile)).toBe(true);
+
+    // Simulate restart: new instance before app.whenReady() where safeStorage was unavailable
+    const newManager = new LicenseManager();
+    (newManager as any).licenseFile = testLicenseFile;
+    (newManager as any).currentLicense = null; // simulate pre-ready null state
+
+    // Call init() after app.whenReady()
+    newManager.init();
+
+    expect(newManager.getCurrentTier()).toBe('plus');
+    const status = newManager.getLicenseStatus();
+    expect(status.hasLicense).toBe(true);
+    expect(status.tier).toBe('plus');
+    expect(status.status).toBe('active');
+  });
 });

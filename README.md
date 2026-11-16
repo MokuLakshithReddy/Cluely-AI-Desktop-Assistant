@@ -5,7 +5,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Cluely-AI-Desktop-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-229%2F229%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-233%2F233%20passing-success)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (229/229 Passing)](#6-automated-verification--test-suites-229229-passing)
+6. [Automated Verification & Test Suites (233/233 Passing)](#6-automated-verification--test-suites-233233-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -281,10 +281,10 @@ flowchart TD
 
 ## 5. Security, Privacy & Consent-First Governance
 
-Cluely Copilot handles microphone input, desktop display captures, and API credentials. Security and user privacy are foundational architecture principles. For the complete specifications, see [`SECURITY.md`](SECURITY.md) and [`docs/security/SECURITY_AND_PRIVACY.md`](docs/security/SECURITY_AND_PRIVACY.md).
+Scandium handles microphone input, desktop display captures, and API credentials. Security and user privacy are foundational architecture principles. For the complete specifications, see [`SECURITY.md`](SECURITY.md) and [`docs/security/SECURITY_AND_PRIVACY.md`](docs/security/SECURITY_AND_PRIVACY.md).
 
 ### 🛡️ 12-Pillar Security & Privacy Architecture
-1. **Automated Sensitive-Content Redaction**: Real-time regex and token scanner (`app/src/lib/redaction.ts`) masks passwords, API keys (OpenAI, AWS, Gemini, GitHub PATs, Slack), private keys, JWTs, credit cards, MFA codes, and emails with placeholders prior to model dispatch.
+1. **Automated Sensitive-Content Redaction**: Real-time regex and token scanner (`app/src/lib/redaction.ts`) masks passwords, API keys (OpenAI, AWS, Gemini, GitHub PATs, Slack), private keys, JWTs, credit cards, Social Security Numbers (SSNs), MFA codes, and emails with placeholders prior to model dispatch.
 2. **Strict Local-Only Processing Mode (`PRIVACY_MODE=LOCAL`)**: Complete offline isolation routing all inference directly to local Ollama (`http://localhost:11434`). Zero cloud network calls are permitted.
 3. **Ephemeral Volatile-Only Screen Context**: Desktop screenshots are kept strictly in volatile RAM. Persistent disk saving is permanently disabled, and memory buffers are zero-wiped (`buf.fill(0)`) immediately after inference.
 4. **Hardware-Bound OS Credential Vault**: Encrypted via OS-backed native keychains (Windows DPAPI, macOS Keychain, Linux Secret Service). Plaintext credentials never enter renderer state.
@@ -311,9 +311,9 @@ Cluely Copilot handles microphone input, desktop display captures, and API crede
 
 ---
 
-## 6. Automated Verification & Test Suites (229/229 Passing)
+## 6. Automated Verification & Test Suites (233/233 Passing)
 
-The latest verified CI run recorded **229 passing automated checks**: 228 Vitest tests across 22 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The latest verified CI run recorded **233 passing automated checks**: 232 Vitest tests across 22 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
 
 Evidence: [CI run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
@@ -327,23 +327,23 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `e2e-desktop-session.test.ts` | Synthetic pipeline integration with mocked hardware/provider inputs | 6 |
 | `entitlements.test.ts` | Commercial Subscription & Entitlements Matrix | 6 |
 | `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 6 |
-| `ipc-security.test.ts` | Sender validation, request identity and payload limits | 33 |
+| `ipc-security.test.ts` | Sender validation, request identity and payload limits | 35 |
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
-| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 8 |
+| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 9 |
 | `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 7 |
-| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 43 |
+| `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 44 |
 | `session-archive.test.ts` | Session archive persistence and path containment | 12 |
 | `state-broadcast.test.ts` | Shared-state renderer updates | 2 |
 | `state-persistence.test.ts` | Persistence error reporting and recovery | 8 |
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
-| `ai-context.test.ts` | AI context assembly and operating modes | 14 |
 | `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
+| `ai-context.test.ts` | AI context assembly and operating modes | 14 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
 | `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **22 Vitest suites + 1 Electron smoke check** | **229** |
+| **Total** | **22 Vitest suites + 1 Electron smoke check** | **233** |
 
 The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
@@ -362,7 +362,7 @@ The following summarizes implementation behavior and available automated evidenc
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
 3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
 4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. Credential writes fail closed if supported OS-backed secure storage is unavailable.
-5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Cluely Copilot.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
+5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Scandium.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
 6. **Screen-Sharing Display Protection**: Uses the OS-provided Electron content-protection mechanism. Its behavior depends on the OS and capture stack and is not a universal invisibility guarantee.
 
 ---
@@ -383,14 +383,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 228 Vitest unit & integration tests
+# Run the 232 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (229 total verified checks)
+# Generate the automated test results markdown report (233 total verified checks)
 npm run test:report
 ```
 
@@ -418,11 +418,11 @@ cd app
 
 # 1. Unpacked standalone directory (fast testing)
 npm run pack
-# Output: app/release/win-unpacked/Cluely Copilot.exe (181MB)
+# Output: app/release/win-unpacked/Scandium.exe (181MB)
 
 # 2. Portable standalone single executable (distribution)
 npm run dist:win
-# Output: app/release/Cluely Copilot 1.0.2.exe
+# Output: app/release/Scandium 1.0.2.exe
 ```
 
 ### Launching the Packaged Application
@@ -456,23 +456,23 @@ npm start
 
 ## 10. Supported AI Models & BYOK Setup
 
-Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encrypted locally in your operating system's vault and sent directly to provider APIs:
+Scandium uses a **Bring Your Own Key (BYOK)** model. Credentials are encrypted locally in your operating system's vault and sent directly to provider APIs:
 
 | Category | Supported Providers | Recommended Model | Latency |
 |---|---|---|:---:|
-| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (selected `claude-*` models), Ollama (Local) | **Gemini 3.5 Flash-Lite** | **< 1.5s (Sub-3s SLA)** |
+| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5`, `claude-haiku-4-5-20251001`, `claude-opus-5`), Ollama (Local) | **Gemini 3.5 Flash-Lite** | **< 1.5s (Sub-3s SLA)** |
 | **Speech Recognition (STT)** | Groq Whisper and OpenAI Whisper | **Groq Whisper Large v3 Turbo** | Varies by provider/network |
 | **Document RAG** | Built-in in-memory TF-IDF lexical retrieval with character-based overlapping chunks | Local | Local |
 
 > [!NOTE]
 > **Active 2026 AI Model Lineup & Low-Latency Architecture**:
 > * **Google Gemini**: Defaults to `gemini-3.5-flash-lite` for guaranteed sub-3-second responses (benchmarked at ~660ms–1400ms TTFT/completion). The Dashboard also offers `gemini-3.6-flash`, `gemini-3.8-flash`, and `gemini-3.1-pro-preview`. Automatic failover to `gemini-3.5-flash-lite` ensures uninterrupted sub-3s response times if high-tier models experience temporary cloud 503 capacity spikes.
-> * **Anthropic Claude**: Active models are `claude-sonnet-5-5`, `claude-haiku-5-5`, and `claude-opus-5-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are automatically caught with informative retirement diagnostics.
+> * **Anthropic Claude**: Active models are `claude-sonnet-5`, `claude-haiku-4-5-20251001`, and `claude-opus-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are automatically caught with informative retirement diagnostics.
 > * **OpenAI**: Supports `gpt-4o` and `gpt-4o-mini` with full multi-turn conversational history.
 > * **Local Ollama**: Fully offline execution without external API keys or cloud telemetry.
 
 ### Initial Key Configuration
-1. Launch Cluely Copilot and click the **Gear Icon** to open the Dashboard.
+1. Launch Scandium and click the **Gear Icon** to open the Dashboard.
 2. Select the **API Keys** tab.
 3. Enter your Gemini API key (from Google AI Studio) or Groq API key (from Groq Console).
 4. Click **Save Credentials**. Keys are immediately encrypted into your OS vault (`safeStorage`).
@@ -481,14 +481,14 @@ Cluely Copilot uses a **Bring Your Own Key (BYOK)** model. Credentials are encry
 
 ## 11. License & Clean-Room Governance
 
-* **Codebase License**: Original Cluely Copilot source and documentation are proprietary and all rights are reserved under the [project license notice](LICENSE). No general reuse, modification, or redistribution permission is granted. Third-party dependencies remain under their respective upstream licenses; review their notices before redistributing a build.
+* **Codebase License**: Original Scandium source and documentation are proprietary and all rights are reserved under the [project license notice](LICENSE). No general reuse, modification, or redistribution permission is granted. Third-party dependencies remain under their respective upstream licenses; review their notices before redistributing a build.
 * **Clean-Room Guarantee**: No proprietary code, decompiled binaries, or vendor assets are stored in or distributed with this repository. Every line of implementation code was created independently from scratch based on functional specifications and behavioral black-box testing.
 
 ---
 
 ## 12. Ethical & Responsible Usage Notice
 
-Cluely Copilot is designed to empower professionals during meetings, technical research, presentations, and software development. 
+Scandium is designed to empower professionals during meetings, technical research, presentations, and software development. 
 
 * **Audio Consent**: Users must comply with applicable wiretapping, audio recording, and consent laws (e.g. one-party or two-party consent jurisdictions) prior to capturing live conversation audio.
 * **Integrity**: Do not use this software in academic examinations, closed technical assessments, or environments where automated assistance violates institutional codes of conduct.

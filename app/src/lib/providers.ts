@@ -361,13 +361,13 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
   }
   content.push({ type: 'text', text: textPrompt });
 
-  let modelName = 'claude-sonnet-5-5';
-  if (options.model === 'claude-haiku-5-5') {
-    modelName = 'claude-haiku-5-5';
-  } else if (options.model === 'claude-opus-5-5') {
-    modelName = 'claude-opus-5-5';
-  } else if (options.model === 'claude-sonnet-5-5') {
-    modelName = 'claude-sonnet-5-5';
+  let modelName = 'claude-sonnet-5';
+  if (options.model === 'claude-haiku-4-5-20251001' || options.model === 'claude-haiku-5-5') {
+    modelName = 'claude-haiku-4-5-20251001';
+  } else if (options.model === 'claude-opus-5' || options.model === 'claude-opus-5-5') {
+    modelName = 'claude-opus-5';
+  } else if (options.model === 'claude-sonnet-5' || options.model === 'claude-sonnet-5-5') {
+    modelName = 'claude-sonnet-5';
   } else if (options.model?.startsWith('claude-')) {
     modelName = options.model;
   }
