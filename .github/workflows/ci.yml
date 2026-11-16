@@ -79,7 +79,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: cluely-desktop-build
+          name: scandium-desktop-build
           path: |
             app/dist
             app/dist-electron
@@ -198,8 +198,8 @@ jobs:
           set -euo pipefail
           dmg="$(find app/release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
           if [[ -z "$dmg" ]]; then echo "No macOS DMG found"; exit 1; fi
-          mount_dir="$RUNNER_TEMP/cluely-dmg"
-          app_copy="$RUNNER_TEMP/Cluely Copilot.app"
+          mount_dir="$RUNNER_TEMP/scandium-dmg"
+          app_copy="$RUNNER_TEMP/Scandium.app"
           mkdir -p "$mount_dir"
           hdiutil attach "$dmg" -nobrowse -quiet -mountpoint "$mount_dir"
           cleanup() { hdiutil detach "$mount_dir" -quiet || true; }
@@ -209,7 +209,10 @@ jobs:
           ditto "$app_bundle" "$app_copy"
           hdiutil detach "$mount_dir" -quiet
           trap - EXIT
-          node app/tests/packaged-smoke.cjs "$app_copy/Contents/MacOS/Cluely Copilot"
+          binary="$(find "$app_copy/Contents/MacOS" -maxdepth 1 -type f -perm +111 -print -quit || find "$app_copy/Contents/MacOS" -maxdepth 1 -type f -print -quit)"
+          if [[ -z "$binary" ]]; then echo "No executable found in $app_copy/Contents/MacOS"; exit 1; fi
+          echo "Found packaged macOS executable: $binary"
+          node app/tests/packaged-smoke.cjs "$binary"
 
       - name: Ensure Linux virtual display is available
         if: matrix.platform == 'linux-appimage'
@@ -235,7 +238,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: cluely-${{ matrix.platform }}
+          name: scandium-${{ matrix.platform }}
           path: app/release/*
           if-no-files-found: error
           retention-days: 14
