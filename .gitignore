@@ -1,3 +1,11 @@
+# Python virtual environment & cache
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
 # Dependencies
 node_modules/
 app/node_modules/

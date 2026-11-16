@@ -87,6 +87,9 @@ export interface SharedState {
   /** Transient renderer-visible warning; never written into the state file. */
   persistenceError?: string | null;
   activeMode: AssistantMode;
+  sttEngineMode?: 'realtime_local' | 'whisper_cpp' | 'byok_cloud';
+  realtimeSttModel?: 'tiny.en' | 'base.en' | 'small.en';
+  realtimeSttStatus?: 'not_configured' | 'downloading' | 'initializing' | 'ready' | 'capturing' | 'transcribing' | 'paused' | 'stopped' | 'error';
   activeModel:
     | 'gemini-3.8-flash'
     | 'gemini-3.6-flash'
@@ -204,6 +207,15 @@ export interface DesktopBridge {
   getWhisperModels?: () => Promise<any[]>;
   downloadWhisperModel?: (modelId: string) => Promise<boolean>;
   setActiveWhisperModel?: (modelId: string) => Promise<void>;
+
+  // RealtimeSTT (Local, Real-Time Faster-Whisper, System Audio Loopback Only, $0 Owner Cost)
+  startRealtimeSTT?: (model?: string) => Promise<{ success: boolean; error?: string }>;
+  feedRealtimeSTTAudio?: (pcmBase64: string) => Promise<void>;
+  stopRealtimeSTT?: () => Promise<void>;
+  getRealtimeSTTStatus?: () => Promise<{ status: string; model: string; error?: string }>;
+  onRealtimeSTTInterim?: (callback: (data: { text: string; timestamp: number }) => void) => () => void;
+  onRealtimeSTTFinal?: (callback: (data: { text: string; timestamp: number }) => void) => () => void;
+  onRealtimeSTTStatus?: (callback: (data: { status: string; model: string; message?: string }) => void) => () => void;
 
   // Commercial Subscription & Licensing (Lemon Squeezy)
   getLicenseStatus?: () => Promise<any>;

@@ -385,6 +385,21 @@ export class WindowCoordinator {
     app.quit();
   }
 
+  public destroyAllWindows(): void {
+    if (this.controlWin && !this.controlWin.isDestroyed()) {
+      try { this.controlWin.destroy(); } catch {}
+      this.controlWin = null;
+    }
+    if (this.chatWin && !this.chatWin.isDestroyed()) {
+      try { this.chatWin.destroy(); } catch {}
+      this.chatWin = null;
+    }
+    if (this.dashboardWin && !this.dashboardWin.isDestroyed()) {
+      try { this.dashboardWin.destroy(); } catch {}
+      this.dashboardWin = null;
+    }
+  }
+
   public getControlWindow(): BrowserWindow | null {
     if (!this.controlWin || this.controlWin.isDestroyed()) {
       this.controlWin = null;

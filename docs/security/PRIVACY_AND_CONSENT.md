@@ -2,7 +2,7 @@
 
 ## Product principle
 
-Cluely Copilot is intended to be a user-controlled desktop assistant. Audio capture, screen context, documents, chat history, and provider credentials can be sensitive. Users must understand when capture is active, where data is processed, and what a local purge can and cannot remove.
+Scandium Copilot is intended to be a user-controlled desktop assistant. Audio capture, screen context, documents, chat history, and provider credentials can be sensitive. Users must understand when capture is active, where data is processed, and what a local purge can and cannot remove.
 
 ## Consent and user control
 
@@ -25,7 +25,7 @@ The application implements user controls and indicators, but software cannot est
 | Chat and transcript | Maintained in app state and session archive | Relevant context may be included in AI requests |
 | Provider API keys | Stored in the desktop credential vault | Sent to the chosen provider for authenticated requests |
 
-Cloud providers process the payloads they receive according to their own terms, policies, and account settings. Cluely Copilot cannot guarantee deletion from third-party provider systems.
+Cloud providers process the payloads they receive according to their own terms, policies, and account settings. Scandium Copilot cannot guarantee deletion from third-party provider systems.
 
 ## Credential storage
 

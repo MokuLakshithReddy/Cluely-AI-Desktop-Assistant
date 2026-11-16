@@ -113,10 +113,8 @@ export async function initStorageEncryptionAsync(): Promise<Buffer> {
           } else {
             keyHex = String(decryptRes);
           }
-        } else if (typeof safeStorage.decryptString === 'function') {
-          keyHex = safeStorage.decryptString(encryptedKey);
         } else {
-          throw new Error('No safeStorage decryption method available on this runtime');
+          throw new Error('No async safeStorage decryption method available on this runtime');
         }
 
         const keyBuf = Buffer.from(keyHex, 'hex');
@@ -131,10 +129,8 @@ export async function initStorageEncryptionAsync(): Promise<Buffer> {
       let encryptedKey: Buffer;
       if (typeof (safeStorage as any).encryptStringAsync === 'function') {
         encryptedKey = await (safeStorage as any).encryptStringAsync(newKey.toString('hex'));
-      } else if (typeof safeStorage.encryptString === 'function') {
-        encryptedKey = safeStorage.encryptString(newKey.toString('hex'));
       } else {
-        throw new Error('No safeStorage encryption method available on this runtime');
+        throw new Error('No async safeStorage encryption method available on this runtime');
       }
 
       fs.writeFileSync(keyFile, encryptedKey, { mode: 0o600 });
@@ -164,47 +160,17 @@ export async function initStorageEncryptionAsync(): Promise<Buffer> {
 }
 
 /**
- * Retrieves or initializes the 256-bit AES master key protected at rest by OS safeStorage.
- * Fails closed in production environments if secure OS-backed storage is unavailable.
+ * Retrieves the 256-bit AES master key.
+ * In production, the key is asynchronously initialized during startup via initStorageEncryptionAsync().
+ * Synchronous safeStorage.encryptString and decryptString were deprecated in Electron v45 and removed in v46.
+ * Fails closed in production environments if secure OS-backed storage was not initialized.
  */
 export function getMasterEncryptionKey(): Buffer {
   if (activeMasterKey && activeMasterKey.length === 32) {
     return activeMasterKey;
   }
 
-  // 1. Try OS-backed safeStorage if inside Electron main process (fallback for synchronous callers)
-  if (isSafeStorageAvailable()) {
-    try {
-      const keyFile = path.join(app.getPath('userData'), 'storage-master.key');
-      if (fs.existsSync(keyFile)) {
-        const encryptedKey = fs.readFileSync(keyFile);
-        if (typeof safeStorage.decryptString === 'function') {
-          const keyHex = safeStorage.decryptString(encryptedKey);
-          const keyBuf = Buffer.from(keyHex, 'hex');
-          if (keyBuf.length === 32) {
-            activeMasterKey = keyBuf;
-            return activeMasterKey;
-          }
-        }
-      }
-
-      if (typeof safeStorage.encryptString === 'function') {
-        const newKey = crypto.randomBytes(32);
-        const encryptedKey = safeStorage.encryptString(newKey.toString('hex'));
-        fs.writeFileSync(keyFile, encryptedKey, { mode: 0o600 });
-        if (process.platform !== 'win32') {
-          fs.chmodSync(keyFile, 0o600);
-        }
-        activeMasterKey = newKey;
-        return activeMasterKey;
-      }
-    } catch (err) {
-      console.error('[StorageEncryption] Failed to initialize safeStorage master key synchronously:', err);
-    }
-  }
-
-  // 2. Headless unit test runner fallback: strictly restricted to unpackaged automated test environments
-  // A packaged production app or production process setting TEST=1 must NEVER use the deterministic test key
+  // Headless unit test runner fallback: strictly restricted to unpackaged automated test environments
   const isPackaged = typeof app !== 'undefined' && typeof app.isPackaged === 'boolean' ? app.isPackaged : false;
   const isExplicitUnitTestRunner =
     !isPackaged &&
@@ -215,8 +181,7 @@ export function getMasterEncryptionKey(): Buffer {
     return activeMasterKey;
   }
 
-  // 3. FAIL CLOSED: In packaged applications and standard production environments,
-  // never fallback to a predictable static key even if TEST or SESSION_ENCRYPTION_KEY environment variables are present.
+  // FAIL CLOSED: Never fallback to synchronous safeStorage or arbitrary keys
   throw new Error(
     '[StorageEncryption] Secure OS-backed storage is unavailable. ' +
     (isPackaged

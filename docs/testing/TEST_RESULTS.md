@@ -3,9 +3,9 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 238/238 Passing (100% Pass Rate)  
+**Test Status**: 245/245 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `6e889b818eb0259d6caa010435215cb9b1087a0c`  
+**Source revision**: `6aa49d9223e4963b547e4e8142107988771ad75e`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-16  
 
@@ -26,6 +26,7 @@
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
 | `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 11 | 11 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 7 | 7 | 0 | **PASSED** |
+| `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 7 | 7 | 0 | **PASSED** |
 | `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 46 | 46 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 12 | 12 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
@@ -36,10 +37,10 @@
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
-| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
+| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **238** | **238** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **245** | **245** | **0** | **100% PASS** |
 
 ---
 
@@ -212,7 +213,18 @@
 ✓ buildContextPrompt excludes transcribing and error items from transcript context
 ```
 
-### 12. Security, Privacy & Sensitive-Content Hardening Subsystem (`tests/security-redaction.test.ts`)
+### 12. RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) (`tests/realtime-stt.test.ts`)
+```text
+✓ correctly converts Float32 audio samples into 16-bit signed PCM little-endian buffer
+✓ correctly downsamples 48kHz audio to 16kHz for Whisper inference
+✓ initializes in synthetic mode and reports status accurately
+✓ supports model profile switching between tiny.en, base.en, and small.en
+✓ allows subscription to interim, final, and status event listeners
+✓ gracefully handles feedAudioChunk and feedSilence without throwing
+✓ shuts down cleanly and transitions status to stopped
+```
+
+### 13. Security, Privacy & Sensitive-Content Hardening Subsystem (`tests/security-redaction.test.ts`)
 ```text
 ✓ redacts OpenAI API keys
 ✓ redacts AWS Access Key IDs
@@ -262,7 +274,7 @@
 ✓ permits local screenshot processing on-device when provider is local ollama
 ```
 
-### 13. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
+### 14. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
 ```text
 ✓ saves and reads a full session record with transcripts and messages
 ✓ restricts session directory and archive file access on POSIX
@@ -278,13 +290,13 @@
 ✓ locks repository and fails closed if getSession encounters a migration re-write error
 ```
 
-### 14. Shared-state renderer broadcast (`tests/state-broadcast.test.ts`)
+### 15. Shared-state renderer broadcast (`tests/state-broadcast.test.ts`)
 ```text
 ✓ updates control, chat, and Dashboard windows
 ✓ skips missing or destroyed windows without preventing other updates
 ```
 
-### 15. State persistence error reporting (`tests/state-persistence.test.ts`)
+### 16. State persistence error reporting (`tests/state-persistence.test.ts`)
 ```text
 ✓ does not restore stale transient persistence warnings from older state files
 ✓ ignores stale persisted app versions and does not persist runtime version metadata
@@ -296,12 +308,12 @@
 ✓ suppresses active session and knowledge documents from disk when enterpriseMode is active
 ```
 
-### 16. First-party subscription page URLs (`tests/subscription-url.test.ts`)
+### 17. First-party subscription page URLs (`tests/subscription-url.test.ts`)
 ```text
 ✓ opens the Scandium pricing page with the selected plan highlighted
 ```
 
-### 17. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
+### 18. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
 ```text
 ✓ provides verified registry of open-weight GGML Whisper models with exact SHA-256 hashes
 ✓ tracks active model selection safely
@@ -312,7 +324,7 @@
 ✓ gracefully serializes concurrent overlapping audio streams without crashing or process starvation
 ```
 
-### 18. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
+### 19. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
 ```text
 ✓ clears closed control/chat references and recreates both windows on reinitialization
 ✓ keeps initialization idempotent and does not register duplicate state listeners
@@ -322,7 +334,7 @@
 ✓ moveControlWindow safely ignores invalid or NaN deltas
 ```
 
-### 19. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
+### 20. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
 ```text
 ✓ builds context prompt including speaker-attributed transcripts
 ✓ filters out error and incomplete transcript segments from prompt context
@@ -340,7 +352,7 @@
 ✓ hides incomplete context preamble while streaming so it does not flicker on screen
 ```
 
-### 20. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+### 21. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
 ```text
 ✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
 ✓ preserves multi-turn conversation history across multiple consecutive queries
@@ -348,21 +360,12 @@
 ✓ guarantees state immutability when updating session records
 ```
 
-### 21. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+### 22. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
 ```text
 ✓ parses empty or missing hash as default "all" view
 ✓ parses direct routes without query parameters
 ✓ correctly extracts route and tab query parameters from complex hashes
 ✓ handles leading slash with query parameters
-```
-
-### 22. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
-```text
-✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
-✓ purgeAllData wipes in-memory vault keys and stored session archives
-✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
-✓ abortAiStream returns false for unknown requestId without aborting other requests
-✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
 ### 23. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
@@ -374,7 +377,16 @@
 ✓ handles boundary 1x1 minimal screen dimension safely
 ```
 
-### 24. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
+### 24. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+```text
+✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
+✓ purgeAllData wipes in-memory vault keys and stored session archives
+✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
+✓ abortAiStream returns false for unknown requestId without aborting other requests
+✓ exposes window lifecycle controls minimizeApp and quitApp safely
+```
+
+### 25. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
 ```text
 ✓ Spawns Electron with ELECTRON_RUN_AS_NODE removed
 ✓ Loads the control/chat windows and mounts the real Dashboard renderer

@@ -1,0 +1,11 @@
+# Scandium Local RealtimeSTT Dependencies
+# License Notice: All packages are under commercial-friendly permissive licenses (MIT / BSD).
+# Pinned versions ensure 100% compatibility with Windows 11 Smart App Control and Intel CPU INT8 inference.
+
+RealtimeSTT==1.2.0
+faster-whisper==1.2.1
+ctranslate2==4.8.0
+silero-vad==6.2.3
+webrtcvad-wheels>=2.0.14
+onnxruntime>=1.16.0
+numpy>=1.24.0

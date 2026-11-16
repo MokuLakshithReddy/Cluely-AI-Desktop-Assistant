@@ -121,7 +121,7 @@ before final sign-off):
       "microphoneDevice": "manufacturer and model",
       "audioRoute": "input/output/loopback route",
       "displayConfiguration": "monitor count, resolution, scaling",
-      "artifactName": "Cluely-Copilot-1.0.2-windows.exe",
+      "artifactName": "Scandium-1.0.2-windows.exe",
       "artifactUrl": "https://example.invalid/evidence/windows.exe",
       "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "records": [

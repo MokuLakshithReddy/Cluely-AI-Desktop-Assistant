@@ -3,6 +3,22 @@ import { SharedState, TranscriptItem, Role } from '../lib/types';
 import { StateUpdater } from './useSharedState';
 import { AudioResampler, VADProcessor, arrayBufferToBase64 } from '../lib/vad';
 
+function floatTo16BitPCMBase64(float32Array: Float32Array): string {
+  const buffer = new ArrayBuffer(float32Array.length * 2);
+  const view = new DataView(buffer);
+  for (let i = 0; i < float32Array.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32Array[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 export function useAudioCapture(
   state: SharedState,
   patchState: (updater: StateUpdater) => Promise<SharedState>,
@@ -13,6 +29,7 @@ export function useAudioCapture(
   const isPurging = state.isPurging;
   const isEmergencyStopping = state.isEmergencyStopping;
   const captureSessionIdRef = useRef(0);
+  const activeInterimIdRef = useRef<string | null>(null);
   // The effect can re-run while recording remains enabled (for example, when
   // emergency-stop/purge flags change). Keep startup idempotent for one capture
   // generation and block automatic restart after a fail-closed stop.
@@ -56,6 +73,103 @@ export function useAudioCapture(
       stopDualCapture(!getLatestState().isPurging && !getLatestState().isEmergencyStopping, false);
     };
   }, [isRecording, isAudioOwner, isPurging, isEmergencyStopping]);
+
+  // RealtimeSTT event listeners for live interim text and finalized sentences
+  useEffect(() => {
+    if (!window.desktopBridge?.onRealtimeSTTInterim) return;
+
+    const unInterim = window.desktopBridge.onRealtimeSTTInterim(({ text }) => {
+      if (!text || getLatestState().isPurging) return;
+      patchState(prev => {
+        if (!prev.session || prev.isPurging) return {};
+        const transcript = [...prev.session.transcript];
+        if (!activeInterimIdRef.current) {
+          activeInterimIdRef.current = `tr_them_${Date.now()}_rt`;
+          transcript.push({
+            id: activeInterimIdRef.current,
+            createdAt: new Date().toISOString(),
+            relativeMs: 0,
+            role: 'them',
+            status: 'transcribing',
+            text,
+          });
+        } else {
+          const idx = transcript.findIndex(i => i.id === activeInterimIdRef.current);
+          if (idx >= 0) {
+            transcript[idx] = { ...transcript[idx], text, status: 'transcribing' };
+          } else {
+            transcript.push({
+              id: activeInterimIdRef.current,
+              createdAt: new Date().toISOString(),
+              relativeMs: 0,
+              role: 'them',
+              status: 'transcribing',
+              text,
+            });
+          }
+        }
+        return {
+          session: {
+            ...prev.session,
+            updatedAt: new Date().toISOString(),
+            transcript,
+          },
+        };
+      });
+    });
+
+    const unFinal = window.desktopBridge.onRealtimeSTTFinal?.(({ text }) => {
+      if (!text || getLatestState().isPurging) return;
+      const targetId = activeInterimIdRef.current;
+      activeInterimIdRef.current = null;
+
+      patchState(prev => {
+        if (!prev.session || prev.isPurging) return {};
+        const transcript = [...prev.session.transcript];
+        if (targetId) {
+          const idx = transcript.findIndex(i => i.id === targetId);
+          if (idx >= 0) {
+            transcript[idx] = { ...transcript[idx], text, status: 'ready' };
+          } else {
+            transcript.push({
+              id: targetId,
+              createdAt: new Date().toISOString(),
+              relativeMs: 0,
+              role: 'them',
+              status: 'ready',
+              text,
+            });
+          }
+        } else {
+          transcript.push({
+            id: `tr_them_${Date.now()}_rt_f`,
+            createdAt: new Date().toISOString(),
+            relativeMs: 0,
+            role: 'them',
+            status: 'ready',
+            text,
+          });
+        }
+        return {
+          session: {
+            ...prev.session,
+            updatedAt: new Date().toISOString(),
+            transcript,
+          },
+        };
+      });
+    });
+
+    const unStatus = window.desktopBridge.onRealtimeSTTStatus?.(({ status }) => {
+      patchState({ realtimeSttStatus: status as any });
+    });
+
+    return () => {
+      unInterim?.();
+      unFinal?.();
+      unStatus?.();
+    };
+  }, []);
 
   const handleSpeechSegmentReady = async (
     role: Role,
@@ -197,7 +311,12 @@ export function useAudioCapture(
     // from stopping a newer recording or racing with an explicit stop/purge.
     const stopForUnexpectedTrackEnd = (role: Role, source: string) => {
       if (captureSessionIdRef.current !== currentSessionId) return;
-      const latest = getLatestState();
+      // Stop RealtimeSTT sidecar if active
+    if (window.desktopBridge?.stopRealtimeSTT) {
+      window.desktopBridge.stopRealtimeSTT().catch(() => {});
+    }
+
+    const latest = getLatestState();
       if (!latest.isRecording || latest.isPurging || latest.isEmergencyStopping) return;
 
       const message = `${source} capture ended unexpectedly. Recording was stopped.`;
@@ -261,126 +380,133 @@ export function useAudioCapture(
     };
 
     // 1. Channel A: Start Local Microphone Capture ('me')
-    if (!navigator?.mediaDevices?.getUserMedia) {
-      const message = 'Microphone capture is not supported in this environment.';
-      console.warn('[useAudioCapture] ' + message);
-      captureStopRequestedRef.current = true;
-      stopDualCapture(false, false);
+    const isRealtimeLocal = (getLatestState().sttEngineMode ?? 'realtime_local') === 'realtime_local';
+
+    if (isRealtimeLocal) {
+      // Per system design & user requirements: RealtimeSTT captures Computer/System Audio only.
+      // Do not capture microphone audio; do not prompt for getUserMedia.
       await patchState({
-        isRecording: false,
         micActive: false,
-        systemAudioActive: false,
-        meHasVoiceActivity: false,
-        microphoneCaptureStatus: 'unavailable',
-        systemAudioCaptureStatus: 'idle',
-        captureWarning: message,
+        microphoneCaptureStatus: 'idle',
       });
-      return;
-    }
-
-    try {
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 48000,
-        },
-      });
-
-      // Abort and stop tracks if recording stopped or session changed while prompt was active
-      if (captureSessionIdRef.current !== currentSessionId || !getLatestState().isRecording || getLatestState().isPurging) {
-        micStream.getTracks().forEach(t => t.stop());
-        return;
-      }
-
-      micStreamRef.current = micStream;
-      watchAudioTracks(micStream, 'me', 'Microphone');
-      if (captureSessionIdRef.current !== currentSessionId) return;
-
-      const micAudioCtx = new AudioContext({ sampleRate: 48000 });
-      micAudioCtxRef.current = micAudioCtx;
-      const micSource = micAudioCtx.createMediaStreamSource(micStream);
-      const micResampler = new AudioResampler(48000, 16000);
-      micResamplerRef.current = micResampler;
-
-      const micVad = new VADProcessor();
-      micVadRef.current = micVad;
-
-      micVad.onSpeechStart = () => {
-        patchState({ meHasVoiceActivity: true });
-      };
-      micVad.onSpeechEnd = (wav, duration) => {
-        patchState({ meHasVoiceActivity: false });
-        handleSpeechSegmentReady('me', wav, duration);
-      };
-
-      const micScriptNode = micAudioCtx.createScriptProcessor(4096, 1, 1);
-      micScriptNode.onaudioprocess = event => {
-        const inputData = event.inputBuffer.getChannelData(0);
-        const resampled = micResampler.resample(inputData);
-
-        // Keep microphone and loopback as independent sources. Remote activity must not
-        // erase genuine local speech when both speakers talk at the same time.
-        micVad.processFrame(resampled);
-      };
-
-      micSource.connect(micScriptNode);
-      micScriptNode.connect(micAudioCtx.destination);
-      await patchState({ micActive: true, microphoneCaptureStatus: 'active' });
-    } catch (err: any) {
-      if (captureSessionIdRef.current !== currentSessionId) return;
-      console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
-      // Release any stream/context created before the failure (for example, if
-      // AudioContext construction fails after getUserMedia succeeds).
-      captureStopRequestedRef.current = true;
-      stopDualCapture(false, false);
-      const captureError = err?.name === 'NotAllowedError'
-        ? 'Microphone permission was denied.'
-        : `Microphone capture failed: ${err?.message || 'device unavailable'}`;
-
-      // Gracefully reset recording state while keeping the failure visible until the next attempt.
-      await patchState(prev => {
-        if (prev.isPurging) return {};
-        const activeSession = prev.session || {
-          id: `sess_${Date.now()}`,
-          title: 'Live Conversation Session',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          durationSeconds: 0,
-          mode: prev.activeMode,
-          audioInputLanguage: 'en',
-          transcript: [],
-          messages: [],
-        };
-        const nextConsent = prev.meetingConsent === 'allowed_once' ? 'prompt' : prev.meetingConsent;
-        return {
+      const model = getLatestState().realtimeSttModel || 'tiny.en';
+      void window.desktopBridge?.startRealtimeSTT?.(model);
+    } else {
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        const message = 'Microphone capture is not supported in this environment.';
+        console.warn('[useAudioCapture] ' + message);
+        captureStopRequestedRef.current = true;
+        stopDualCapture(false, false);
+        await patchState({
           isRecording: false,
           micActive: false,
           systemAudioActive: false,
           meHasVoiceActivity: false,
-          microphoneCaptureStatus: 'error',
+          microphoneCaptureStatus: 'unavailable',
           systemAudioCaptureStatus: 'idle',
-          captureWarning: captureError.slice(0, 256),
-          meetingConsent: nextConsent,
-          session: {
-            ...activeSession,
-            transcript: [
-              ...activeSession.transcript,
-              {
-                id: `tr_mic_perm_${Date.now()}`,
-                createdAt: new Date().toISOString(),
-                relativeMs: 0,
-                role: 'me',
-                status: 'error',
-                error: captureError,
-                text: `[${captureError}]`,
-              },
-            ],
+          captureWarning: message,
+        });
+        return;
+      }
+
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
           },
+        });
+
+        // Abort and stop tracks if recording stopped or session changed while prompt was active
+        if (captureSessionIdRef.current !== currentSessionId || !getLatestState().isRecording || getLatestState().isPurging) {
+          micStream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
+        micStreamRef.current = micStream;
+        watchAudioTracks(micStream, 'me', 'Microphone');
+        if (captureSessionIdRef.current !== currentSessionId) return;
+
+        const micAudioCtx = new AudioContext({ sampleRate: 48000 });
+        micAudioCtxRef.current = micAudioCtx;
+        const micSource = micAudioCtx.createMediaStreamSource(micStream);
+        const micResampler = new AudioResampler(48000, 16000);
+        micResamplerRef.current = micResampler;
+
+        const micVad = new VADProcessor();
+        micVadRef.current = micVad;
+
+        micVad.onSpeechStart = () => {
+          patchState({ meHasVoiceActivity: true });
         };
-      });
-      return;
+        micVad.onSpeechEnd = (wav, duration) => {
+          patchState({ meHasVoiceActivity: false });
+          handleSpeechSegmentReady('me', wav, duration);
+        };
+
+        const micScriptNode = micAudioCtx.createScriptProcessor(4096, 1, 1);
+        micScriptNode.onaudioprocess = event => {
+          const inputData = event.inputBuffer.getChannelData(0);
+          const resampled = micResampler.resample(inputData);
+          micVad.processFrame(resampled);
+        };
+
+        micSource.connect(micScriptNode);
+        micScriptNode.connect(micAudioCtx.destination);
+        await patchState({ micActive: true, microphoneCaptureStatus: 'active' });
+      } catch (err: any) {
+        if (captureSessionIdRef.current !== currentSessionId) return;
+        console.warn('[useAudioCapture] Microphone access not granted or unavailable:', err?.message || err);
+        captureStopRequestedRef.current = true;
+        stopDualCapture(false, false);
+        const captureError = err?.name === 'NotAllowedError'
+          ? 'Microphone permission was denied.'
+          : `Microphone capture failed: ${err?.message || 'device unavailable'}`;
+
+        await patchState(prev => {
+          if (prev.isPurging) return {};
+          const activeSession = prev.session || {
+            id: `sess_${Date.now()}`,
+            title: 'Live Conversation Session',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            durationSeconds: 0,
+            mode: prev.activeMode,
+            audioInputLanguage: 'en',
+            transcript: [],
+            messages: [],
+          };
+          const nextConsent = prev.meetingConsent === 'allowed_once' ? 'prompt' : prev.meetingConsent;
+          return {
+            isRecording: false,
+            micActive: false,
+            systemAudioActive: false,
+            meHasVoiceActivity: false,
+            microphoneCaptureStatus: 'error',
+            systemAudioCaptureStatus: 'idle',
+            captureWarning: captureError.slice(0, 256),
+            meetingConsent: nextConsent,
+            session: {
+              ...activeSession,
+              transcript: [
+                ...activeSession.transcript,
+                {
+                  id: `tr_mic_perm_${Date.now()}`,
+                  createdAt: new Date().toISOString(),
+                  relativeMs: 0,
+                  role: 'me',
+                  status: 'error',
+                  error: captureError,
+                  text: `[${captureError}]`,
+                },
+              ],
+            },
+          };
+        });
+        return;
+      }
     }
 
     // 2. Channel B: Start Remote System Audio Loopback Capture ('them')
@@ -459,7 +585,9 @@ export function useAudioCapture(
         };
         systemVad.onSpeechEnd = (wav, duration) => {
           patchState({ themHasVoiceActivity: false });
-          handleSpeechSegmentReady('them', wav, duration);
+          if (!isRealtimeLocal) {
+            handleSpeechSegmentReady('them', wav, duration);
+          }
         };
 
         const systemScriptNode = systemAudioCtx.createScriptProcessor(4096, 1, 1);
@@ -467,6 +595,11 @@ export function useAudioCapture(
           const inputData = event.inputBuffer.getChannelData(0);
           const resampled = systemResampler.resample(inputData);
           systemVad.processFrame(resampled);
+
+          if (isRealtimeLocal) {
+            const b64 = floatTo16BitPCMBase64(resampled);
+            window.desktopBridge?.feedRealtimeSTTAudio?.(b64);
+          }
         };
 
         systemSource.connect(systemScriptNode);
@@ -525,6 +658,11 @@ export function useAudioCapture(
       if (flushPendingSpeech) systemVadRef.current.flush();
       else systemVadRef.current.discard();
       systemVadRef.current = null;
+    }
+
+    // Stop RealtimeSTT sidecar if active
+    if (window.desktopBridge?.stopRealtimeSTT) {
+      window.desktopBridge.stopRealtimeSTT().catch(() => {});
     }
 
     const latest = getLatestState();

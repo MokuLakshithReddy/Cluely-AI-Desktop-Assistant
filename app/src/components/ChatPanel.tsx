@@ -126,6 +126,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             transcript={transcript}
             meHasVoiceActivity={state.meHasVoiceActivity}
             themHasVoiceActivity={state.themHasVoiceActivity}
+            sttEngineMode={state.sttEngineMode}
           />
         ) : (
           <div className="flex flex-col h-full overflow-y-auto p-3 space-y-3 select-text">

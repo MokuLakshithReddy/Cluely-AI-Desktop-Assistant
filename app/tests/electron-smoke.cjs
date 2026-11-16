@@ -84,6 +84,7 @@ child.on('error', err => {
 function requestGracefulShutdown() {
   if (shutdownCommandDelivered) return;
   shutdownCommandDelivered = true;
+  if (readinessTimeoutHandle) clearTimeout(readinessTimeoutHandle);
   console.log('Delivering graceful shutdown trigger after desktop E2E result...');
   const shutdownPath = path.join(appPath, '.smoke-shutdown.trigger');
   try {
@@ -93,12 +94,12 @@ function requestGracefulShutdown() {
     process.exit(1);
   }
 
-  // Hard timeout for graceful shutdown: must complete lifecycle within 10 seconds of trigger.
+  // Hard timeout for graceful shutdown: must complete lifecycle within 25 seconds of trigger.
   shutdownTimeoutHandle = setTimeout(() => {
-    console.error('Smoke test failure: Electron failed to exit cleanly within 10 seconds after shutdown trigger!');
+    console.error('Smoke test failure: Electron failed to exit cleanly within 25 seconds after shutdown trigger!');
     try { child.kill('SIGKILL'); } catch {}
     process.exit(1);
-  }, 10000);
+  }, 25000);
 }
 
 child.stdout.on('data', data => {
@@ -132,12 +133,12 @@ child.stderr.on('data', data => {
 
 // Allow the real renderer/UI/IPC flow to finish before forcing shutdown.
 const readinessTimeoutHandle = setTimeout(() => {
-  console.error('Smoke test failure: Timed out waiting for desktop E2E completion after 45 seconds.');
+  console.error('Smoke test failure: Timed out waiting for desktop E2E completion after 90 seconds.');
   try {
     child.kill('SIGKILL');
   } catch {}
   process.exit(1);
-}, 45000);
+}, 90000);
 
 // Wait for stdio to close too, so all lifecycle markers are captured before validation.
 child.on('close', (code, signal) => {

@@ -55,6 +55,9 @@ export const INITIAL_STATE: SharedState = {
   micActive: false,
   systemAudioActive: false,
   privacyMode: 'local', // Default execution mode: LOCAL-FIRST ($0 owner cost)
+  sttEngineMode: 'realtime_local',
+  realtimeSttModel: 'tiny.en',
+  realtimeSttStatus: 'ready',
   meetingConsent: process.env.SMOKE_TEST === 'true' ? 'always_allowed' : 'prompt',
   telemetryEnabled: false,
   enterpriseMode: process.env.ENTERPRISE_MODE === 'true',

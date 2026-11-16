@@ -2,13 +2,13 @@
 
 ## Scope and Security Posture
 
-Cluely Copilot is an evidence-driven, privacy-first desktop AI assistant that operates directly alongside user applications. It processes audio streams, screen context, documents, chat messages, and user-supplied AI credentials. This document describes the implemented cryptographic safeguards, data handling boundaries, local-first architectures, and governance controls.
+Scandium Copilot is an evidence-driven, privacy-first desktop AI assistant that operates directly alongside user applications. It processes audio streams, screen context, documents, chat messages, and user-supplied AI credentials. This document describes the implemented cryptographic safeguards, data handling boundaries, local-first architectures, and governance controls.
 
 ---
 
 ## 12 Pillars of Security and Privacy
 
-Cluely implements a defense-in-depth security model across 12 core architectural pillars:
+Scandium implements a defense-in-depth security model across 12 core architectural pillars:
 
 ### 1. Sensitive-Content Redaction
 Before any screen text, conversation transcript, or document context is passed to AI reasoning models, it passes through an automated redaction engine (`app/src/lib/redaction.ts`):
@@ -62,7 +62,7 @@ All desktop windows (`createControlWindow`, `createChatWindow`, `openDashboardWi
 - Silent or hidden background capture is structurally prevented by design.
 
 ### 8. Meeting Privacy Guard & Explicit Audio Consent
-System audio loopback capture carries significant confidentiality risks in remote meetings. Cluely enforces explicit consent policies (`meetingConsent`):
+System audio loopback capture carries significant confidentiality risks in remote meetings. Scandium enforces explicit consent policies (`meetingConsent`):
 - `prompt`: Prompts the user with explicit consent choices before activating loopback audio.
 - `allowed_once`: Authorizes loopback capture for the current meeting session only.
 - `always_allowed`: Retains user authorization for trusted enterprise environments.

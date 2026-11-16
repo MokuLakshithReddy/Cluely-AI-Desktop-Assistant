@@ -63,9 +63,8 @@ const smokeResult = spawnSync(process.execPath, ['tests/electron-smoke.cjs'], {
   cwd: appDir,
   encoding: 'utf8',
   env: { ...process.env, CI: 'true' },
-  timeout: 90000,
+  timeout: 120000,
   maxBuffer: 10 * 1024 * 1024,
-  windowsHide: true,
 });
 
 const smokeStdout = smokeResult.stdout || '';

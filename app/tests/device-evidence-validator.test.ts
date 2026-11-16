@@ -22,7 +22,7 @@ function buildCampaign(): any {
     candidate: {
       version: '1.0.2',
       commit: 'a'.repeat(40),
-      ciRunUrl: 'https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/123456',
+      ciRunUrl: 'https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/123456',
       electronVersion: '45.2.3',
       nodeVersion: '24.22.2',
       supportedConfigurations: platforms.map((platform) => ({
@@ -49,7 +49,7 @@ function buildCampaign(): any {
       microphoneDevice: 'Test microphone',
       audioRoute: 'Test audio output and loopback',
       displayConfiguration: 'Single 1920x1080 display',
-      artifactName: 'Cluely-Copilot-1.0.2-' + platform,
+      artifactName: 'Scandium-1.0.2-' + platform,
       artifactUrl: 'https://example.com/artifacts/' + platform,
       artifactSha256: 'b'.repeat(64),
       records: REQUIRED_TEST_IDS.map((testId) => ({

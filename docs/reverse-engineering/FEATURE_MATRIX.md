@@ -1,4 +1,4 @@
-# Cluely Copilot Feature Matrix: Source-Verified Implementation Status
+# Scandium Feature Matrix: Source-Verified Implementation Status
 
 This matrix describes the independent implementation in `app/`, not capabilities observed in the original Cluely application. Statuses are based on the current repository source and automated tests as of the revision containing this document.
 

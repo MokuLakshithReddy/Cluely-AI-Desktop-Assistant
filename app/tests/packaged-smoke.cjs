@@ -43,7 +43,7 @@ if (process.platform === 'win32') {
   env.XDG_CACHE_HOME = path.join(env.HOME, '.cache');
 }
 // On macOS (darwin), preserve real process.env.HOME so Mach bootstrap and launchd namespaces
-// for Electron helper processes (Cluely Copilot Helper.app) remain intact.
+// for Electron helper processes (Scandium Helper.app) remain intact.
 for (const dir of [env.APPDATA, env.LOCALAPPDATA, env.HOME, env.XDG_CONFIG_HOME, env.XDG_CACHE_HOME]) {
   if (dir && dir !== process.env.HOME) fs.mkdirSync(dir, { recursive: true });
 }

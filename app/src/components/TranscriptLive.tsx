@@ -6,12 +6,14 @@ interface TranscriptLiveProps {
   transcript: TranscriptItem[];
   meHasVoiceActivity?: boolean;
   themHasVoiceActivity?: boolean;
+  sttEngineMode?: 'realtime_local' | 'whisper_cpp' | 'byok_cloud';
 }
 
 export const TranscriptLive: React.FC<TranscriptLiveProps> = ({
   transcript,
   meHasVoiceActivity,
   themHasVoiceActivity,
+  sttEngineMode = 'realtime_local',
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -21,30 +23,50 @@ export const TranscriptLive: React.FC<TranscriptLiveProps> = ({
     }
   }, [transcript]);
 
+  const isRealtime = sttEngineMode === 'realtime_local';
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Live Voice Activity Strip */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950/60 border-b border-slate-800 text-[11px] text-slate-400">
-        <div className="flex items-center gap-1.5">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              meHasVoiceActivity ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'
-            }`}
-          />
-          <span className={meHasVoiceActivity ? 'text-emerald-400 font-semibold' : ''}>
-            You (Mic)
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              themHasVoiceActivity ? 'bg-purple-400 animate-ping' : 'bg-slate-600'
-            }`}
-          />
-          <span className={themHasVoiceActivity ? 'text-purple-400 font-semibold' : ''}>
-            Remote (System Audio)
-          </span>
-        </div>
+        {isRealtime ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  themHasVoiceActivity ? 'bg-cyan-400 animate-ping' : 'bg-cyan-600'
+                }`}
+              />
+              <span className="text-cyan-300 font-medium">
+                Local Engine (System Audio Loopback Only)
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500">Real-Time Whisper</span>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  meHasVoiceActivity ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'
+                }`}
+              />
+              <span className={meHasVoiceActivity ? 'text-emerald-400 font-semibold' : ''}>
+                You (Mic)
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  themHasVoiceActivity ? 'bg-purple-400 animate-ping' : 'bg-slate-600'
+                }`}
+              />
+              <span className={themHasVoiceActivity ? 'text-purple-400 font-semibold' : ''}>
+                Remote (System Audio)
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Transcript Scroll Area */}

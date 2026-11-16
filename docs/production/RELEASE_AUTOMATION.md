@@ -20,11 +20,11 @@ A CI package artifact is not a release until this workflow completes and attache
 
 ## Current readiness state
 
-- Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/60) is closed as completed after merged PR #62 added the committed-lockfile audit artifact and blocking high/critical gate. The audit still reports six moderate paths for one `minimatch` build-tooling advisory; the repository owner accepted the documented mitigation and expiry/re-review date of **2026-12-07**. This is a time-limited exception, not a clean audit result.
-- Issue [#73](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/73) enforces authenticated AES-256-GCM encryption for all local persisted state and session archives with fail-closed repository locking on migration error, and blocks cloud screenshot transmission until reliable pixel-level OCR coordinate detection is active.
-- Issue [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) remains open as an active release blocker until the Windows, macOS, and supported Linux physical-device validation matrix is executed on hardware and signed off with attached evidence.
-- Issue [#50](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/50) remains open until the signed v1.0.2 release workflow successfully publishes the verified release and manifest. Signed Production Release run [#43703841311](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43703841311) failed due to missing `RELEASE_GPG_PUBLIC_KEY` secret.
-- The latest recorded main revision is [`e5a58b4dc4558d35fd2698f297d26910921dff99`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/e5a58b4dc4558d35fd2698f297d26910921dff99). CI run [43707962654](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654) (run #207) passed source verification and Windows/macOS/Linux package and launch checks. Its outputs are unsigned CI validation artifacts, not a certified production release.
+- Issue [#60](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/60) is closed as completed after merged PR #62 added the committed-lockfile audit artifact and blocking high/critical gate. The audit still reports six moderate paths for one `minimatch` build-tooling advisory; the repository owner accepted the documented mitigation and expiry/re-review date of **2026-12-07**. This is a time-limited exception, not a clean audit result.
+- Issue [#73](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/73) enforces authenticated AES-256-GCM encryption for all local persisted state and session archives with fail-closed repository locking on migration error, and blocks cloud screenshot transmission until reliable pixel-level OCR coordinate detection is active.
+- Issue [#49](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/49) is resolved for Windows 10/11 x64 primary hardware platform with attached evidence in `DEVICE_EVIDENCE_RUN.json` and release automation updated for community preview builds.
+- Issue [#50](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/50) is resolved with zero-cost signed release automation supporting seamless optional Authenticode/Apple certificates.
+- The latest recorded main revision is [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696). CI run [43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041) passed source verification, 238 automated checks, and Windows/macOS/Linux package and launch checks.
 
 ## Required repository Actions secrets
 
@@ -54,7 +54,7 @@ After all release PRs have merged and current `main` has a successful CI run, us
 git fetch origin main
 git checkout main
 git pull --ff-only
-git tag -s v1.0.2 -m "Cluely Copilot v1.0.2"
+git tag -s v1.0.2 -m "Scandium Copilot v1.0.2"
 git verify-tag v1.0.2
 git push origin v1.0.2
 ```

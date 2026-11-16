@@ -4,7 +4,7 @@
 
 The repository is preparing **v1.0.2**. An unsigned pre-release validation build ([`v1.0.2-pre`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.2)) is available on GitHub Releases with CI-generated validation assets. However, the Signed Production Release workflow failed ([Run #43703841311](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43703841311)) due to missing `RELEASE_GPG_PUBLIC_KEY` secret and unsigned tag verification. The latest verified signed production release remains **v1.0.1**.
 
-The latest recorded main revision is [`e5a58b4dc4558d35fd2698f297d26910921dff99`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/e5a58b4dc4558d35fd2698f297d26910921dff99). Its [CI Verification Suite run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654) completed successfully: source verification passed, and Windows, macOS, and Linux packaged-app launch jobs all passed. The run's uploaded test-results artifact records 192/192 automated checks (191 Vitest tests plus one Electron UI/IPC smoke check).
+The latest recorded main revision is [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696). Its [CI Verification Suite run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041) completed successfully: source verification passed, 238 automated checks passed (237 Vitest tests plus one Electron UI/IPC smoke check), and Windows, macOS, and Linux packaged-app launch jobs all passed.
 
 Do not use the `v1.0.2-pre` CI validation assets as evidence that production code-signing, Apple notarization, or GPG manifest signing have completed.
 
@@ -76,8 +76,8 @@ See [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md) for the required repository s
 After downloading the executable and checksum manifest:
 
 ```powershell
-Get-FileHash .\\Cluely-Copilot.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\\Cluely-Copilot.exe | Format-List Status, SignatureType, SignerCertificate, TimeStamperCertificate
+Get-FileHash .\Scandium-Setup-1.0.2.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\Scandium-Setup-1.0.2.exe | Format-List Status, SignatureType, SignerCertificate, TimeStamperCertificate
 ```
 
 Compare the SHA-256 output with the checksum published for that exact asset. Require a valid signature from the expected publisher before instructing users to run the executable.

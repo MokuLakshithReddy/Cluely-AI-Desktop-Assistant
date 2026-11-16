@@ -43,9 +43,11 @@ async function runDesktopE2E({ windowCoordinator }) {
     // Create a legacy synchronous safeStorage blob in the disposable Electron
     // profile, then prove the async vault can still decrypt it after upgrade.
     try {
-      const legacyAvailable =
-        safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' &&
-        safeStorage.isEncryptionAvailable();
+      const legacyAvailable = safeStorage && (
+        typeof safeStorage.isAsyncEncryptionAvailable === 'function'
+          ? await safeStorage.isAsyncEncryptionAvailable()
+          : (typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable())
+      );
       const legacyBackend = process.platform === 'linux' && safeStorage &&
         typeof safeStorage.getSelectedStorageBackend === 'function'
         ? safeStorage.getSelectedStorageBackend()
@@ -55,7 +57,9 @@ async function runDesktopE2E({ windowCoordinator }) {
           (!legacyBackend || !['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6'].includes(legacyBackend)));
       if (secureLegacyBackend) {
         const legacyVaultPath = path.join(app.getPath('userData'), 'legacy-safe-storage-fixture.vault');
-        const legacyCiphertext = safeStorage.encryptString('legacy-safe-storage-compatibility-fixture');
+        const legacyCiphertext = typeof safeStorage.encryptStringAsync === 'function'
+          ? await safeStorage.encryptStringAsync('legacy-safe-storage-compatibility-fixture')
+          : safeStorage.encryptString('legacy-safe-storage-compatibility-fixture');
         fs.writeFileSync(legacyVaultPath, JSON.stringify({
           gemini: 'safe:' + legacyCiphertext.toString('base64')
         }), { encoding: 'utf8', mode: 0o600 });
@@ -96,7 +100,12 @@ async function runDesktopE2E({ windowCoordinator }) {
 
     let vaultAvailable = false;
     try {
-      const encryptionAvailable = Boolean(safeStorage && safeStorage.isEncryptionAvailable());
+      const encryptionAvailable = Boolean(
+        safeStorage &&
+        (typeof safeStorage.isAsyncEncryptionAvailable === 'function'
+          ? await safeStorage.isAsyncEncryptionAvailable()
+          : (typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()))
+      );
       const backend = process.platform === 'linux' && safeStorage &&
         typeof safeStorage.getSelectedStorageBackend === 'function'
         ? safeStorage.getSelectedStorageBackend()
@@ -263,7 +272,7 @@ async function runDesktopE2E({ windowCoordinator }) {
 
       // Start from an explicit idle state so an earlier UI/session state cannot
       // be mistaken for a second capture startup in this isolated regression.
-      await bridge.patchSharedState({ isRecording: false });
+      await bridge.patchSharedState({ isRecording: false, sttEngineMode: 'whisper_cpp' });
       await new Promise(resolve => setTimeout(resolve, 150));
       const idleState = await bridge.getSharedState();
       if (idleState.isRecording) {
@@ -337,7 +346,11 @@ async function runDesktopE2E({ windowCoordinator }) {
               return new FakeMediaStream([capture.micTrack]);
             },
             getDisplayMedia: async () => {
-              const capture = captures[captures.length - 1];
+              let capture = captures[captures.length - 1];
+              if (!capture) {
+                capture = { micTrack: makeTrack('microphone'), loopbackTrack: null, videoTrack: null };
+                captures.push(capture);
+              }
               capture.loopbackTrack = makeTrack('loopback');
               capture.videoTrack = makeTrack('video');
               return new FakeMediaStream([capture.videoTrack, capture.loopbackTrack]);
@@ -419,7 +432,7 @@ async function runDesktopE2E({ windowCoordinator }) {
           },
         });
 
-        await bridge.patchSharedState({ isRecording: true });
+        await bridge.patchSharedState({ isRecording: true, sttEngineMode: 'whisper_cpp' });
         for (let attempt = 0; attempt < 100 &&
           processors.length < degradedProcessorStart + 1; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 25));
@@ -450,7 +463,7 @@ async function runDesktopE2E({ windowCoordinator }) {
 
         return { scenarios, degradedCapture };
       } finally {
-        await bridge.patchSharedState({ isRecording: false }).catch(() => {});
+        await bridge.patchSharedState({ isRecording: false, sttEngineMode: 'realtime_local' }).catch(() => {});
         if (originalMediaDevices) Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
         else delete navigator.mediaDevices;
         if (originalAudioContext) Object.defineProperty(window, 'AudioContext', originalAudioContext);
@@ -530,7 +543,7 @@ async function runDesktopE2E({ windowCoordinator }) {
         Object.defineProperty(window, 'AudioContext', { configurable: true, value: FakeAudioContext });
         Object.defineProperty(window, 'MediaStream', { configurable: true, value: FakeMediaStream });
 
-        await bridge.patchSharedState({ isRecording: true });
+        await bridge.patchSharedState({ isRecording: true, sttEngineMode: 'whisper_cpp' });
         for (let attempt = 0; attempt < 100 && processors.length < 2; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 25));
         }
@@ -581,6 +594,7 @@ async function runDesktopE2E({ windowCoordinator }) {
           knowledgeDocsAfterPurge: stateAfterPurge.knowledgeDocs.length,
         };
       } finally {
+        await bridge.patchSharedState({ isRecording: false, sttEngineMode: 'realtime_local' }).catch(() => {});
         if (originalMediaDevices) Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
         else delete navigator.mediaDevices;
         if (originalAudioContext) Object.defineProperty(window, 'AudioContext', originalAudioContext);

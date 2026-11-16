@@ -1,7 +1,7 @@
 # End-to-End and Integration Verification Report
 
-**Evidence revision:** [`e5a58b4dc4558d35fd2698f297d26910921dff99`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/commit/e5a58b4dc4558d35fd2698f297d26910921dff99)  
-**Verification workflow:** [CI run 43707962654 (run #207)](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43707962654)
+**Evidence revision:** [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696)  
+**Verification workflow:** [CI run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041)
 
 ## Executive summary
 
@@ -14,7 +14,7 @@ A separate active-capture purge E2E flow mounts the production capture hook in t
 
 ## Automated coverage
 
-The cited CI run passed 191 Vitest unit/integration tests and one Electron UI/IPC smoke check (192/192 total passing checks). It also produced Windows portable, macOS DMG, and Linux AppImage artifacts and verified packaged-app launch and clean shutdown on native Windows, macOS, and Linux runners.
+The cited CI run passed 237 Vitest unit/integration tests and one Electron UI/IPC smoke check (238/238 total passing checks). It also produced Windows portable, macOS DMG, and Linux AppImage artifacts and verified packaged-app launch and clean shutdown on native Windows, macOS, and Linux runners.
 
 See [TEST_RESULTS.md](TEST_RESULTS.md) for the test-scope table and limitations.
 

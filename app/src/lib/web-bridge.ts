@@ -652,6 +652,15 @@ export function initWebBridge(defaultState?: Partial<SharedState>): DesktopBridg
     downloadWhisperModel: async () => true,
     setActiveWhisperModel: async () => {},
 
+    // RealtimeSTT (Local, Real-Time Faster-Whisper, System Audio Loopback Only, $0 Owner Cost)
+    startRealtimeSTT: async (model?: string) => ({ success: true, status: 'ready' }),
+    feedRealtimeSTTAudio: async (_pcmBase64: string) => {},
+    stopRealtimeSTT: async () => {},
+    getRealtimeSTTStatus: async () => ({ status: 'ready', model: 'tiny.en' }),
+    onRealtimeSTTInterim: (_cb: any) => () => {},
+    onRealtimeSTTFinal: (_cb: any) => () => {},
+    onRealtimeSTTStatus: (_cb: any) => () => {},
+
     getLicenseStatus: async () => ({
       hasLicense: false,
       tier: 'free',

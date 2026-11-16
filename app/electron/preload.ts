@@ -47,6 +47,27 @@ const desktopBridge: DesktopBridge = {
   downloadWhisperModel: (modelId: string) => ipcRenderer.invoke('whisper-model-download', { modelId }),
   setActiveWhisperModel: (modelId: string) => ipcRenderer.invoke('whisper-model-set-active', { modelId }),
 
+  // RealtimeSTT (Local, Real-Time Faster-Whisper, System Audio Loopback Only, $0 Owner Cost)
+  startRealtimeSTT: (model?: string) => ipcRenderer.invoke('realtime-stt-start', { model }),
+  feedRealtimeSTTAudio: (pcmBase64: string) => ipcRenderer.invoke('realtime-stt-feed', { pcmBase64 }),
+  stopRealtimeSTT: () => ipcRenderer.invoke('realtime-stt-stop'),
+  getRealtimeSTTStatus: () => ipcRenderer.invoke('realtime-stt-status'),
+  onRealtimeSTTInterim: (callback: (data: { text: string; timestamp: number }) => void) => {
+    const handler = (_event: any, data: { text: string; timestamp: number }) => callback(data);
+    ipcRenderer.on('realtime-stt-interim', handler);
+    return () => ipcRenderer.off('realtime-stt-interim', handler);
+  },
+  onRealtimeSTTFinal: (callback: (data: { text: string; timestamp: number }) => void) => {
+    const handler = (_event: any, data: { text: string; timestamp: number }) => callback(data);
+    ipcRenderer.on('realtime-stt-final', handler);
+    return () => ipcRenderer.off('realtime-stt-final', handler);
+  },
+  onRealtimeSTTStatus: (callback: (data: { status: string; model: string; message?: string }) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('realtime-stt-status', handler);
+    return () => ipcRenderer.off('realtime-stt-status', handler);
+  },
+
   // Licensing & Subscription (Lemon Squeezy)
   getLicenseStatus: () => ipcRenderer.invoke('license-get-status'),
   activateLicense: (key: string) => ipcRenderer.invoke('license-activate', { licenseKey: key }),

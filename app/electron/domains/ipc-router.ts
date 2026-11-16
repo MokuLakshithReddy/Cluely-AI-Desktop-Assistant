@@ -15,6 +15,7 @@ import { hardwareDetector } from '../services/hardware-detector';
 import { whisperRuntime } from '../services/whisper-runtime';
 import { modelManager } from '../services/model-manager';
 import { licenseManager } from '../services/license-manager';
+import { realtimeSTTManager } from '../services/realtime-stt-manager';
 import { isModeAllowed, canUseByokProvider } from './entitlements';
 
 const BOOLEAN_STATE_KEYS = new Set([
@@ -82,6 +83,22 @@ const VALID_TRANSCRIPT_STATUSES = new Set(['transcribing', 'ready', 'error']);
 const VALID_MESSAGE_ROLES = new Set(['user', 'assistant', 'system']);
 const VALID_DOC_SOURCE_TYPES = new Set(['pasted', 'file']);
 const VALID_CAPTURE_STATUSES = new Set(['idle', 'starting', 'active', 'unavailable', 'error']);
+const VALID_STT_ENGINE_MODES = new Set(['realtime_local', 'whisper_cpp', 'byok_cloud', 'whisper_local', 'groq', 'openai']);
+const VALID_REALTIME_STT_MODELS = new Set(['tiny.en', 'base.en', 'small.en', 'medium.en']);
+const VALID_REALTIME_STT_STATUSES = new Set([
+  'not_configured',
+  'downloading',
+  'initializing',
+  'ready',
+  'capturing',
+  'transcribing',
+  'paused',
+  'stopped',
+  'error',
+  'uninitialized',
+  'starting',
+  'alive',
+]);
 
 const ALLOWED_STATE_KEYS = new Set([
   ...BOOLEAN_STATE_KEYS,
@@ -95,6 +112,9 @@ const ALLOWED_STATE_KEYS = new Set([
   'shortcuts',
   'session',
   'knowledgeDocs',
+  'sttEngineMode',
+  'realtimeSttModel',
+  'realtimeSttStatus',
 ]);
 
 export interface ActiveRequest {
@@ -181,6 +201,7 @@ export class IpcRouter {
     const currentState = stateManager.getState();
     this.activeAiControllers.abortAll();
     for (const controller of this.activeTranscriptionControllers) controller.abort();
+    try { void realtimeSTTManager.stop(); } catch {}
     stateManager.patchState({
       isRecording: false,
       isEmergencyStopping: !currentState.isPurging,
@@ -546,6 +567,30 @@ export class IpcRouter {
           throw new Error(
             `[IpcRouter] Invalid meetingConsent: "${val}". Must be one of: ${Array.from(ALLOWED_MEETING_CONSENTS).join(', ')}`
           );
+        }
+        sanitized[key] = val;
+      }
+
+      // 3c. Validate STT engine mode
+      else if (key === 'sttEngineMode') {
+        if (typeof val !== 'string' || !VALID_STT_ENGINE_MODES.has(val)) {
+          throw new Error(`[IpcRouter] Invalid sttEngineMode: "${val}"`);
+        }
+        sanitized[key] = val;
+      }
+
+      // 3d. Validate Realtime STT model
+      else if (key === 'realtimeSttModel') {
+        if (typeof val !== 'string' || !VALID_REALTIME_STT_MODELS.has(val)) {
+          throw new Error(`[IpcRouter] Invalid realtimeSttModel: "${val}"`);
+        }
+        sanitized[key] = val;
+      }
+
+      // 3e. Validate Realtime STT status
+      else if (key === 'realtimeSttStatus') {
+        if (typeof val !== 'string' || !VALID_REALTIME_STT_STATUSES.has(val)) {
+          throw new Error(`[IpcRouter] Invalid realtimeSttStatus: "${val}"`);
         }
         sanitized[key] = val;
       }
@@ -1148,6 +1193,7 @@ export class IpcRouter {
         ]);
         this.activeTranscriptionTasks.clear();
         this.activeTranscriptionControllers.clear();
+        try { await realtimeSTTManager.stop(); } catch {}
         await credentialVault.deleteAllKeys();
         await sessionRepository.purgeAll();
 
@@ -1370,6 +1416,33 @@ export class IpcRouter {
       this.validateOrigin(event);
       await licenseManager.deactivateLicense();
       return { success: true };
+    });
+
+    // 16. RealtimeSTT (Local, Real-Time Faster-Whisper, System Audio Loopback Only, $0 Owner Cost)
+    ipcMain.handle('realtime-stt-start', async (event, { model }: any = {}) => {
+      this.validateOrigin(event);
+      const safeModel = typeof model === 'string' && ['tiny.en', 'base.en', 'small.en'].includes(model)
+        ? model
+        : 'tiny.en';
+      const success = await realtimeSTTManager.start(safeModel);
+      return { success, status: realtimeSTTManager.getStatus() };
+    });
+
+    ipcMain.handle('realtime-stt-feed', async (event, { pcmBase64 }: any) => {
+      this.validateOrigin(event);
+      if (!pcmBase64 || typeof pcmBase64 !== 'string') return;
+      realtimeSTTManager.feedAudioChunk(pcmBase64);
+    });
+
+    ipcMain.handle('realtime-stt-stop', async event => {
+      this.validateOrigin(event);
+      await realtimeSTTManager.stop();
+      return { success: true };
+    });
+
+    ipcMain.handle('realtime-stt-status', async event => {
+      this.validateOrigin(event);
+      return realtimeSTTManager.getStatus();
     });
 
     // Broadcast state updates to windows

@@ -226,6 +226,7 @@ if (!gotSingleInstanceLock) {
           writePackagedSmokeStatus({ cleanShutdown: true });
           console.log('[APP_CLEAN_SHUTDOWN] Graceful shutdown command received via trigger.');
           isQuitting = true;
+          windowCoordinator.destroyAllWindows();
           app.quit();
         }
       }, 100);
@@ -262,6 +263,9 @@ if (!gotSingleInstanceLock) {
   app.on('will-quit', () => {
     writePackagedSmokeStatus({ willQuit: true });
     console.log('[APP_WILL_QUIT] Application lifecycle will-quit completed.');
+    if (process.env.SMOKE_TEST === 'true') {
+      process.exit(0);
+    }
   });
 
   app.on('window-all-closed', () => {

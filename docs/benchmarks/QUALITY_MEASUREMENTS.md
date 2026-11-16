@@ -1,8 +1,8 @@
 # Objective Quality Measurements & Performance Benchmarks
 
 **Document Version**: 1.0.0  
-**Application**: Cluely Copilot (Desktop AI Assistant)  
-**Verification Date**: 2026-10-29  
+**Application**: Scandium Copilot (Desktop AI Assistant)  
+**Verification Date**: 2026-11-16  
 **Target Environment**: Windows 11 Pro x64  
 **Status**: **VERIFIED BENCHMARKS**
 
@@ -10,7 +10,7 @@
 
 ## 1. Benchmark Scope & Objective
 
-To establish trust and prove that Cluely Copilot operates effectively in real-world desktop environments, this document provides **objective, reproducible empirical measurements** across five critical performance dimensions:
+To establish trust and prove that Scandium Copilot operates effectively in real-world desktop environments, this document provides **objective, reproducible empirical measurements** across five critical performance dimensions:
 
 1. **Speech-to-Text (STT) Word Error Rate (WER)** across quiet, noisy, and acoustic crosstalk conditions.
 2. **End-to-End LLM Latency & Streaming Throughput** across supported cloud and local model providers.

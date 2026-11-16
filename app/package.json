@@ -37,6 +37,11 @@
           "from": "resources/whisper",
           "to": "whisper",
           "filter": ["*.exe", "*.dll", "*.md"]
+        },
+        {
+          "from": "python-stt",
+          "to": "python-stt",
+          "filter": ["*.py", "*.txt", "*.md"]
         }
       ]
     },
@@ -49,6 +54,11 @@
           "from": "resources/whisper",
           "to": "whisper",
           "filter": ["whisper-cli", "*.dylib", "*.metal", "*.md"]
+        },
+        {
+          "from": "python-stt",
+          "to": "python-stt",
+          "filter": ["*.py", "*.txt", "*.md"]
         }
       ]
     },
@@ -61,6 +71,11 @@
           "from": "resources/whisper",
           "to": "whisper",
           "filter": ["whisper-cli", "*.so*", "*.md"]
+        },
+        {
+          "from": "python-stt",
+          "to": "python-stt",
+          "filter": ["*.py", "*.txt", "*.md"]
         }
       ]
     }
