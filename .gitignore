@@ -9,6 +9,8 @@ __pycache__/
 # Dependencies
 node_modules/
 app/node_modules/
+app/resources/python/*
+!app/resources/python/README.md
 
 # Production build outputs
 app/dist/

@@ -429,11 +429,22 @@ export function useAudioCapture(
       const model = getLatestState().realtimeSttModel || 'tiny.en';
       const startRes = await window.desktopBridge?.startRealtimeSTT?.(model);
       if (startRes && !startRes.success) {
-        console.warn('[useAudioCapture] Failed to start RealtimeSTT:', startRes.error);
+        const errMsg = startRes.error || 'Failed to start local speech recognition engine.';
+        console.warn('[useAudioCapture] Failed to start RealtimeSTT:', errMsg);
+        captureStopRequestedRef.current = true;
+        stopDualCapture(false, false);
         await patchState({
-          captureWarning: startRes.error || 'Failed to start local speech recognition engine.',
+          isRecording: false,
+          micActive: false,
+          systemAudioActive: false,
+          meHasVoiceActivity: false,
+          themHasVoiceActivity: false,
+          microphoneCaptureStatus: 'idle',
+          systemAudioCaptureStatus: 'error',
+          captureWarning: errMsg,
           realtimeSttStatus: 'error',
         });
+        return;
       }
     } else {
       if (!navigator?.mediaDevices?.getUserMedia) {

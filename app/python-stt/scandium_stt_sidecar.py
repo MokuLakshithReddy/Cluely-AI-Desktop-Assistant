@@ -151,6 +151,15 @@ class ScandiumSTTEngine:
             })
             return False
 
+    def emit_final(self, text):
+        """Emits a finalized speech transcription segment."""
+        if text and text.strip() and not self.is_paused and self.running:
+            emit({
+                "type": "final",
+                "text": text.strip(),
+                "timestamp": current_time_ms()
+            })
+
     def _worker_loop(self):
         """Worker thread reading finalized sentences from recorder."""
         while self.running and not self.stop_event.is_set():
@@ -161,12 +170,7 @@ class ScandiumSTTEngine:
                 final_text = self.recorder.text()
                 if self.stop_event.is_set() or not self.running:
                     break
-                if final_text and final_text.strip() and not self.is_paused:
-                    emit({
-                        "type": "final",
-                        "text": final_text.strip(),
-                        "timestamp": current_time_ms()
-                    })
+                self.emit_final(final_text)
             except Exception as e:
                 if self.stop_event.is_set() or not self.running:
                     break
@@ -175,8 +179,6 @@ class ScandiumSTTEngine:
 
     def feed_pcm(self, pcm_bytes):
         """Feed raw 16-bit 16000Hz mono PCM audio bytes."""
-        if not self.recorder or not self.running or self.is_paused:
-            return
         if len(pcm_bytes) % 2 != 0:
             emit({
                 "type": "error",
@@ -184,6 +186,8 @@ class ScandiumSTTEngine:
                 "code": "INVALID_PCM_ALIGNMENT",
                 "timestamp": current_time_ms()
             })
+            return
+        if not self.recorder or not self.running or self.is_paused:
             return
         try:
             self.recorder.feed_audio(pcm_bytes, original_sample_rate=16000)

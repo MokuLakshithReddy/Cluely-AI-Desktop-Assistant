@@ -139,5 +139,68 @@ class TestSidecarProtocol(unittest.TestCase):
         exit_code = self.proc.wait(timeout=3)
         self.assertEqual(exit_code, 0)
 
+    def test_09_feed_pcm_audio_accepts_valid_audio(self):
+        self.read_event()  # consume alive
+        wav_path = os.path.join(os.path.dirname(__file__), "..", "tests", "fixtures", "jfk.wav")
+        if os.path.exists(wav_path):
+            import wave
+            import base64
+            with wave.open(wav_path, "rb") as wf:
+                pcm_data = wf.readframes(1600)  # 100ms chunk (3200 bytes)
+                b64 = base64.b64encode(pcm_data).decode("ascii")
+                self.send_cmd({"type": "feed", "data": b64})
+                # Check that no error is returned
+                self.send_cmd({"type": "ping"})
+                pong = self.read_event()
+                self.assertIsNotNone(pong)
+                self.assertEqual(pong.get("type"), "pong")
+
+    def test_10_unaligned_pcm_rejected(self):
+        self.read_event()
+        import base64
+        # 3 bytes is odd, violating 16-bit PCM alignment (must be multiple of 2)
+        odd_b64 = base64.b64encode(b"\x00\x01\x02").decode("ascii")
+        self.send_cmd({"type": "feed", "data": odd_b64})
+        err = self.read_event()
+        self.assertIsNotNone(err)
+        self.assertEqual(err.get("type"), "error")
+        self.assertEqual(err.get("code"), "INVALID_PCM_ALIGNMENT")
+
+
+class TestTranscriptionPipeline(unittest.TestCase):
+    """Direct test of the STTEngine class and transcript emission pipeline."""
+
+    def test_transcription_event_flow(self):
+        import io
+        from unittest.mock import MagicMock, patch
+        import scandium_stt_sidecar
+
+        captured_stdout = io.StringIO()
+        engine = scandium_stt_sidecar.ScandiumSTTEngine()
+        mock_recorder = MagicMock()
+
+        with patch("sys.stdout", captured_stdout):
+            engine.recorder = mock_recorder
+            engine.running = True
+            engine.is_paused = False
+
+            # Feed audio chunk
+            pcm_chunk = b"\x00\x00" * 1600
+            engine.feed_pcm(pcm_chunk)
+            mock_recorder.feed_audio.assert_called_with(pcm_chunk, original_sample_rate=16000)
+
+            # Emulate finalized sentence emission
+            engine.emit_final("Ask not what your country can do for you.")
+            engine.shutdown()
+
+        lines = [json.loads(line) for line in captured_stdout.getvalue().strip().split("\n") if line.strip()]
+        event_types = [item.get("type") for item in lines]
+        self.assertIn("final", event_types)
+
+        final_event = next(item for item in lines if item.get("type") == "final")
+        self.assertEqual(final_event.get("text"), "Ask not what your country can do for you.")
+        self.assertIsInstance(final_event.get("timestamp"), int)
+
+
 if __name__ == "__main__":
     unittest.main()

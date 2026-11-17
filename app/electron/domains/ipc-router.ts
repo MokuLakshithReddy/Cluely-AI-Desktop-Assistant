@@ -1431,14 +1431,16 @@ export class IpcRouter {
     ipcMain.handle('realtime-stt-feed', async (event, { pcmBase64 }: any) => {
       this.validateOrigin(event);
       const state = stateManager.getState();
-      // Enforce strict consent, active recording, and emergency/purge gating
+      // Enforce strict consent, active recording, active system audio capture, and emergency/purge gating
       if (
         state.isPurging ||
         state.isEmergencyStopping ||
         !state.isRecording ||
+        !state.systemAudioActive ||
+        (state.systemAudioCaptureStatus !== 'active' && state.systemAudioCaptureStatus !== 'starting') ||
         (state.meetingConsent !== 'allowed_once' && state.meetingConsent !== 'always_allowed')
       ) {
-        return { success: false, error: 'Feed rejected: capture not consented or session inactive' };
+        return { success: false, error: 'Feed rejected: capture not consented or system-audio capture inactive' };
       }
 
       if (!pcmBase64 || typeof pcmBase64 !== 'string') {

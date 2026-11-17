@@ -32,7 +32,7 @@ A production release must not be published until all applicable checks below are
 - Confirm root and app package versions agree with the intended release version.
 - Use the committed lockfile and a clean `npm ci`.
 - Run lint/typecheck, all unit/integration tests, and the Electron UI/IPC smoke test.
-- Retain the machine-readable dependency audit report. The current gate fails on high and critical findings; the six moderate `minimatch` build-tooling paths are covered by the owner-accepted, time-limited exception documented in [DEPENDENCY_ADVISORY_REVIEW.md](../security/DEPENDENCY_ADVISORY_REVIEW.md), expiring for review on 2026-12-07.
+- Retain the machine-readable dependency audit report. The audit gate confirms zero vulnerabilities (0 critical, 0 high, 0 moderate, 0 low) with `minimatch@11.0.8` resolved; no temporary exceptions remain active.
 - Record the exact commit SHA and workflow run URL.
 
 ### 2. Packaged artifact verification

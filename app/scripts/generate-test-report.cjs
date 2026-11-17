@@ -333,6 +333,12 @@ if (fs.existsSync(prodDocPath)) {
     `| ${totalUnitTests} Vitest tests across ${totalSuites} test files |`
   );
 
+  const shortSha = sourceRevision.slice(0, 7);
+  prodDoc = prodDoc.replace(
+    /\*\*Audited source revision:\*\* \[`[^`]+`\]\([^)]+\)/,
+    `**Audited source revision:** [\`${shortSha}\`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/${sourceRevision})`
+  );
+
   const breakdownMarker = '============================== TEST EXECUTION BREAKDOWN ==============================';
   const breakdownStart = prodDoc.indexOf(breakdownMarker);
   const separator = '======================================================================================';

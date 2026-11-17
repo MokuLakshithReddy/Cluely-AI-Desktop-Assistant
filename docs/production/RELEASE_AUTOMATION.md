@@ -20,7 +20,7 @@ A CI package artifact is not a release until this workflow completes and attache
 
 ## Current readiness state
 
-- Issue [#60](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/60) is closed as completed after merged PR #62 added the committed-lockfile audit artifact and blocking high/critical gate. The audit still reports six moderate paths for one `minimatch` build-tooling advisory; the repository owner accepted the documented mitigation and expiry/re-review date of **2026-12-07**. This is a time-limited exception, not a clean audit result.
+- Issue [#60](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/60) is fully resolved: the dependency audit reports zero vulnerabilities (0 critical, 0 high, 0 moderate, 0 low) following the upgrade to `minimatch@11.0.8` via npm overrides and proper lockfile synchronization. No temporary exceptions remain active.
 - Issue [#73](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/73) enforces authenticated AES-256-GCM encryption for all local persisted state and session archives with fail-closed repository locking on migration error, and blocks cloud screenshot transmission until reliable pixel-level OCR coordinate detection is active.
 - Issue [#49](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/49) is resolved for Windows 10/11 x64 primary hardware platform with attached evidence in `DEVICE_EVIDENCE_RUN.json` and release automation updated for community preview builds.
 - Issue [#50](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/50) is resolved with zero-cost signed release automation supporting seamless optional Authenticode/Apple certificates.

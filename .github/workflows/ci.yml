@@ -170,6 +170,12 @@ jobs:
       - name: Remove unused PDF.js optional Node canvas stub before packaging
         working-directory: app
         run: node -e "const fs=require('node:fs');const p='node_modules/pdfjs-dist/node_modules/@napi-rs/canvas';if(fs.existsSync(p)||fs.lstatSync(p,{throwIfNoEntry:false})){fs.rmSync(p,{recursive:true,force:true});console.log('Removed PDF.js optional Node canvas stub; renderer uses the browser build.')}else{console.log('No optional Node canvas stub present.')}"
+      - name: Set up Python 3.12 for STT sidecar runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Provision Python runtime and dependencies
+        run: node scripts/provision-python-runtime.cjs
       - name: Provision native macOS Whisper.cpp binary
         if: matrix.platform == 'macos-dmg'
         run: |

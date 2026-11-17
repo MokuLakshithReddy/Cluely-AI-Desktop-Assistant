@@ -52,6 +52,7 @@ export class RealtimeSTTManager {
 
   // Concurrency & Lifecycle Mutex
   private startPromise: Promise<boolean> | null = null;
+  private pendingModel: string | null = null;
   private isShuttingDown: boolean = false;
   private isExpectedExit: boolean = false;
   private initTimeoutHandle: NodeJS.Timeout | null = null;
@@ -207,16 +208,25 @@ export class RealtimeSTTManager {
       return true;
     }
 
-    // Return active single-flight promise if a startup operation is currently in flight
+    // Return active single-flight promise if the same model startup is currently in flight.
+    // If a different model is requested, await completion of the in-flight startup then switch models.
     if (this.startPromise) {
-      return this.startPromise;
+      if (this.pendingModel === model) {
+        return this.startPromise;
+      }
+      try {
+        await this.startPromise;
+      } catch {}
+      return this.start(model);
     }
 
+    this.pendingModel = model;
     this.startPromise = this.performStart(model);
     try {
       return await this.startPromise;
     } finally {
       this.startPromise = null;
+      this.pendingModel = null;
     }
   }
 

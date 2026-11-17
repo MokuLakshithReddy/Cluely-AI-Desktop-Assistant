@@ -1,23 +1,31 @@
 # Python Dependencies Software Bill of Materials (SBOM) & License Compliance
 
-This document provides a verified Software Bill of Materials (SBOM) and license compliance audit for the local speech-to-text runtime (RealtimeSTT + faster-whisper) integrated into Scandium Assistant.
+This document provides a verified Software Bill of Materials (SBOM) and license compliance audit for the local speech-to-text runtime (RealtimeSTT + faster-whisper) integrated into Scandium Assistant, generated directly from `app/python-stt/requirements.txt` and the resolved runtime environment.
 
-## Zero-Cost Commercial License Compliance Matrix
+## Declared Direct Dependencies (`requirements.txt`)
 
-All bundled and referenced Python libraries for the RealtimeSTT local inference pipeline operate under permissive open-source licenses (MIT, BSD-3-Clause, Apache-2.0). There are zero GPL/AGPL copyleft dependencies or proprietary cloud API dependencies, enabling completely royalty-free, zero-cost commercial distribution.
+All direct runtime dependencies for the local inference pipeline operate under permissive open-source licenses (Apache-2.0, MIT, BSD-3-Clause). There are zero GPL/AGPL copyleft dependencies or proprietary cloud service requirements, permitting royalty-free, zero-cost commercial distribution.
 
-| Package | Version | License | Primary Purpose | Commercial Distribution Permitted |
-|---|---|---|---|---|
-| `RealtimeSTT` | `0.3.5` | MIT | Real-time voice activity detection, streaming audio chunk buffer, and transcript callback orchestrator | Yes |
-| `faster-whisper` | `1.1.1` | MIT | CTranslate2-accelerated OpenAI Whisper inference engine | Yes |
-| `ctranslate2` | `4.8.0` | MIT | Fast CPU/INT8 quantized inference engine optimized for Intel x86_64 AVX2/AVX-512 | Yes |
-| `silero-vad` | `6.2.3` | MIT | Deep-learning voice activity detection model for accurate sentence boundary segmentation | Yes |
-| `onnxruntime` | `1.20.1` | MIT | Portable runtime for Silero VAD neural network execution | Yes |
-| `numpy` | `>=1.24.0` | BSD-3-Clause | Vectorized 16-bit PCM buffer conversion and resampling math | Yes |
-| `scipy` | `>=1.10.0` | BSD-3-Clause | Digital signal processing filters | Yes |
-| `pyaudio` | `0.2.14` | MIT | Audio I/O abstraction (fallback) | Yes |
-| `torch` | `>=2.0.0` | BSD-3-Clause | Underlying tensor operations required by faster-whisper and silero-vad | Yes |
-| `torchaudio` | `>=2.0.0` | BSD-3-Clause | Audio waveform tensors and filterbanks | Yes |
+| Package | Pinned Requirement | Installed / Resolved Version | License | Primary Purpose | Commercial Distribution Permitted |
+|---|---|---|---|---|---|
+| `RealtimeSTT` | `==1.2.0` | `1.2.0` | Apache-2.0 | Real-time voice activity detection, streaming audio chunk buffer, and transcript callback orchestrator | Yes (Permissive) |
+| `faster-whisper` | `==1.2.1` | `1.2.1` | MIT | CTranslate2-accelerated OpenAI Whisper inference engine | Yes (Permissive) |
+| `ctranslate2` | `==4.8.0` | `4.8.0` | MIT | Fast CPU/INT8 quantized inference engine optimized for Intel x86_64 AVX2/AVX-512 | Yes (Permissive) |
+| `silero-vad` | `==6.2.3` | `6.2.3` | MIT | Deep-learning voice activity detection model for accurate sentence boundary segmentation | Yes (Permissive) |
+| `webrtcvad-wheels` | `>=2.0.14` | `2.0.14` | MIT | WebRTC Voice Activity Detector compiled wheels | Yes (Permissive) |
+| `onnxruntime` | `>=1.16.0` | `1.32.0` | MIT | Portable runtime for neural network execution | Yes (Permissive) |
+| `numpy` | `>=1.24.0` | `2.5.5` | BSD-3-Clause | Vectorized 16-bit PCM buffer conversion and resampling math | Yes (Permissive) |
+
+## Transitive Runtime Dependencies
+
+| Package | Resolved Version | License | Note |
+|---|---|---|---|
+| `PyAudio` | `0.2.14` | MIT | Audio interface bindings |
+| `scipy` | `1.17.1` | BSD-3-Clause | Signal processing filters |
+| `torch` | `2.15.0` | BSD-style / Apache-2.0 | Underlying tensor library required by faster-whisper |
+| `torchaudio` | `2.11.1` | BSD-2-Clause | Audio waveform operations |
+| `tokenizers` | `0.23.3` | Apache-2.0 | HuggingFace byte-pair tokenization |
+| `huggingface-hub` | `2.4.0` | Apache-2.0 | Offline model caching utilities |
 
 ## Isolation & Security Boundaries
 

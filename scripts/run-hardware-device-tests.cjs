@@ -39,8 +39,19 @@ app.whenReady().then(async () => {
   try {
     const isEncAvailable = safeStorage.isEncryptionAvailable();
     const testPlaintext = 'scandium-hardware-test-secret-' + Date.now();
-    const cipherBuffer = safeStorage.encryptString(testPlaintext);
-    const decrypted = safeStorage.decryptString(cipherBuffer);
+    let cipherBuffer;
+    let decrypted;
+    if (typeof safeStorage.encryptStringAsync === 'function') {
+      cipherBuffer = await safeStorage.encryptStringAsync(testPlaintext);
+    } else {
+      cipherBuffer = safeStorage.encryptString(testPlaintext);
+    }
+    if (typeof safeStorage.decryptStringAsync === 'function') {
+      const decRes = await safeStorage.decryptStringAsync(cipherBuffer);
+      decrypted = typeof decRes === 'object' && decRes !== null && 'result' in decRes ? decRes.result : String(decRes);
+    } else {
+      decrypted = safeStorage.decryptString(cipherBuffer);
+    }
     const pass = isEncAvailable && decrypted === testPlaintext;
 
     results.tests.dpapi_storage_encryption = {

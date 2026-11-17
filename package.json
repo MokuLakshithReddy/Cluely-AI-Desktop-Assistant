@@ -21,7 +21,8 @@
     "validate:device-evidence": "node scripts/validate-device-evidence.cjs"
   },
   "devDependencies": {
-    "@types/electron": "^1.4.38"
+    "@types/electron": "^1.4.38",
+    "@isaacs/nonrecursive-glob-match": "^1.1.0"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.67.2"

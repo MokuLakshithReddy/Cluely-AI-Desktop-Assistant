@@ -112,6 +112,47 @@ describe('RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT)', () =>
     await manager.stop();
   });
 
+  it('processes raw PCM audio from jfk.wav fixture and converts to valid 16-bit little-endian chunks', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const jfkPath = path.join(__dirname, 'fixtures', 'jfk.wav');
+    if (fs.existsSync(jfkPath)) {
+      const wavBuffer = fs.readFileSync(jfkPath);
+      // WAV header is 44 bytes; remaining is 16-bit PCM at 16kHz
+      const pcmData = wavBuffer.subarray(44);
+      expect(pcmData.byteLength % 2).toBe(0);
+
+      await manager.start('tiny.en');
+      // Feed first 100ms (3200 bytes = 1600 samples)
+      const chunk = pcmData.subarray(0, 3200);
+      expect(() => manager.feedAudioChunk(chunk)).not.toThrow();
+      await manager.stop();
+    }
+  });
+
+  it('handles model-switch requests without improper coalescing', async () => {
+    await manager.start('tiny.en');
+    expect(manager.getStatus().model).toBe('tiny.en');
+
+    // Switch to base.en
+    const switched = await manager.start('base.en');
+    expect(switched).toBe(true);
+    expect(manager.getStatus().model).toBe('base.en');
+    await manager.stop();
+  });
+
+  it('allows subscription to stabilized event listener', async () => {
+    let stabilizedCalled = false;
+    const unStabilized = manager.onStabilized((text, ts) => {
+      stabilizedCalled = true;
+      expect(text).toBe('my fellow Americans');
+      expect(ts).toBeGreaterThan(0);
+    });
+
+    expect(typeof unStabilized).toBe('function');
+    unStabilized();
+  });
+
   it('returns model cache info and handles model deletion gracefully', async () => {
     await manager.start('tiny.en');
     const info = await manager.getModelsInfo();

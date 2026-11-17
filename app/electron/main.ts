@@ -255,13 +255,22 @@ if (!gotSingleInstanceLock) {
     });
   });
 
-  app.on('before-quit', () => {
+  let isAppShuttingDown = false;
+
+  app.on('before-quit', (event) => {
     writePackagedSmokeStatus({ beforeQuit: true });
     console.log('[APP_BEFORE_QUIT] Application lifecycle before-quit triggered.');
-    realtimeSTTManager.shutdown().catch((err) => {
-      console.warn('[Main] Error shutting down RealtimeSTT:', err);
-    });
-    stateManager.flushSave();
+    if (!isAppShuttingDown) {
+      event.preventDefault();
+      isAppShuttingDown = true;
+      stateManager.flushSave();
+      realtimeSTTManager.shutdown().catch((err) => {
+        console.warn('[Main] Error shutting down RealtimeSTT:', err);
+      }).finally(() => {
+        app.quit();
+      });
+      return;
+    }
   });
 
   app.on('will-quit', () => {
