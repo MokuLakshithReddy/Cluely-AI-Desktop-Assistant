@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (250/250 Passing)](#6-automated-verification--test-suites-250250-passing)
+6. [Automated Verification & Release Packaging](#6-automated-verification--release-packaging)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -311,11 +311,13 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 ---
 
-## 6. Automated Verification & Test Suites (250/250 Passing)
+## 6. Automated Verification & Release Packaging
 
-The latest verified CI run recorded **250 passing automated checks**: 249 Vitest tests across 24 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The main-branch baseline run #237 passed the source verification job (249 Vitest tests plus one Electron UI/preload/IPC smoke test) but failed all three native packaging jobs. Remediation PR #78 then passed CI run #243 on Windows, macOS, and Linux: each platform provisioned the bundled CPython runtime, completed a real RealtimeSTT transcription from the committed JFK audio fixture, built its native distributable, and passed the packaged Electron renderer/preload/IPC launch and shutdown smoke test.
 
-Evidence: [CI run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)  
+This is strong hosted-CI packaging evidence, not proof of every physical customer's audio-device/OS-permission configuration. The real-device campaign is still incomplete, and production release remains NO-GO until device sign-off and the merged main-branch release gates are complete.
+
+Evidence: [Baseline main CI run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254) · [Remediation CI run #243](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44134523573)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |
@@ -364,7 +366,7 @@ The following summarizes implementation behavior and available automated evidenc
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
 3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
 4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. Credential writes fail closed if supported OS-backed secure storage is unavailable.
-5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Scandium.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
+5. **Packaged Application Validation**: CI run #243 successfully built and launch-tested the Windows portable executable, macOS DMG, and Linux AppImage. Each packaged smoke test verified the control/chat renderer, preload bridge, IPC readiness, and graceful shutdown. This validates the hosted CI artifacts, not every end-user hardware or operating-system configuration.
 6. **Screen-Sharing Display Protection**: Uses the OS-provided Electron content-protection mechanism. Its behavior depends on the OS and capture stack and is not a universal invisibility guarantee.
 
 ---
