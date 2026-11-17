@@ -140,6 +140,9 @@ class ScandiumSTTEngine:
                 allowed_latency_limit=1000,
                 silero_use_onnx=True,
                 silero_backend="onnx",
+                # Keep start and end-of-speech detection on the same Silero
+                # ONNX backend so final segments close reliably for loopback audio.
+                silero_deactivity_detection=True,
                 download_root=self.download_root,
                 post_speech_silence_duration=0.6,
                 min_length_of_recording=0.5,
