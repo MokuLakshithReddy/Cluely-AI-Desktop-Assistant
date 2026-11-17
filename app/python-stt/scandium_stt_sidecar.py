@@ -134,6 +134,9 @@ class ScandiumSTTEngine:
                 use_microphone=False,
                 spinner=False,
                 enable_realtime_transcription=True,
+                # Reuse the selected CPU model for interim and final results.
+                # This avoids loading a second Whisper model on memory-constrained machines.
+                use_main_model_for_realtime=True,
                 allowed_latency_limit=1000,
                 silero_use_onnx=True,
                 silero_backend="onnx",
