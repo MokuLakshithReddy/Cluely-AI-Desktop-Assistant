@@ -80,6 +80,13 @@ def main() -> int:
                 download_root=str(model_cache),
                 silero_use_onnx=True,
                 silero_backend="onnx",
+                silero_deactivity_detection=True,
+                on_vad_start=lambda: print(
+                    "[RealtimeSTTIntegration] VAD_START", flush=True
+                ),
+                on_vad_stop=lambda: print(
+                    "[RealtimeSTTIntegration] VAD_STOP", flush=True
+                ),
                 allowed_latency_limit=1000,
                 post_speech_silence_duration=0.6,
                 min_length_of_recording=0.5,
