@@ -563,6 +563,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
               <p className="text-xs text-slate-400 mt-1">
                 Scandium is a commercial desktop software licensed via monthly subscriptions. All local AI and transcription execute on your hardware without owner-hosted cloud fees.
               </p>
+              {licenseStatus?.developerMode && (
+                <div role="status" className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  <div className="font-semibold flex items-center gap-2">
+                    <Terminal className="w-3.5 h-3.5" /> Developer Mode enabled — Pro entitlements active
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-amber-100/80">
+                    Local testing override only. This is not a purchased subscription or a customer license. Packaged production builds ignore this setting.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Current Status Card */}
