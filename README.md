@@ -5,7 +5,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Scandium-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-250%2F250%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
+[![CI Release Matrix](https://img.shields.io/badge/CI%20release%20matrix-validation%20pending-yellow)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (250/250 Passing)](#6-automated-verification--test-suites-250250-passing)
+6. [Automated Verification & Release Matrix](#6-automated-verification--release-matrix)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -311,11 +311,13 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 ---
 
-## 6. Automated Verification & Test Suites (250/250 Passing)
+## 6. Automated Verification & Release Matrix
 
-The latest verified CI run recorded **250 passing automated checks**: 249 Vitest tests across 24 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The latest main-branch CI run (#237, commit `94acb0a`) passed the Windows build/verification job: 249 Vitest tests and the Electron UI/IPC smoke test passed, and `npm audit` reported zero vulnerabilities. The separate Python test command ran 12 tests with one skipped because the real-audio fixture path was wrong. **All three native packaging jobs failed**, so no current Windows, macOS, or Linux release artifact has passed its packaged smoke test.
 
-Evidence: [CI run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)  
+The fix branch is correcting the bundled Python runtime, removing the unused PortAudio microphone dependency, and requiring a real RealtimeSTT transcription test. These changes remain subject to PR CI; do not treat this section as release approval.
+
+Evidence: [CI run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |
@@ -364,7 +366,7 @@ The following summarizes implementation behavior and available automated evidenc
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
 3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
 4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. Credential writes fail closed if supported OS-backed secure storage is unavailable.
-5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Scandium.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
+5. **Packaged Application Status**: A clean-machine packaged launch is a required release gate. The latest main-branch CI did not finish Python provisioning, Electron packaging, or the packaged smoke test on Windows; macOS and Linux packaging also failed. The exact release candidate must pass all three native package and launch checks before distribution.
 6. **Screen-Sharing Display Protection**: Uses the OS-provided Electron content-protection mechanism. Its behavior depends on the OS and capture stack and is not a universal invisibility guarantee.
 
 ---
