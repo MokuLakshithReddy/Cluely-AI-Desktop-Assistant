@@ -96,6 +96,14 @@ function clearRuntimeDirectory() {
   }
 }
 
+function copyPortAudioLicense(pyaudioDir) {
+  const licenseSource = path.join(repoRoot, 'docs', 'licenses', 'PORTAUDIO-LICENSE.txt');
+  if (!fs.existsSync(licenseSource)) {
+    throw new Error('Required PortAudio license notice is missing: ' + licenseSource);
+  }
+  fs.copyFileSync(licenseSource, path.join(pyaudioDir, 'PORTAUDIO-LICENSE.txt'));
+}
+
 function provisionPortAudio(sitePackages) {
   const pyaudioDir = path.join(sitePackages, 'pyaudio');
   if (!fs.existsSync(pyaudioDir)) {
@@ -108,6 +116,8 @@ function provisionPortAudio(sitePackages) {
   if (extensions.length === 0) {
     throw new Error('PyAudio native extension was not found under ' + pyaudioDir);
   }
+
+  copyPortAudioLicense(pyaudioDir);
 
   if (process.platform === 'linux') {
     let linkerCache = '';
