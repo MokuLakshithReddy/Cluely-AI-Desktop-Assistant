@@ -110,9 +110,11 @@ function provisionPortAudio(sitePackages) {
     throw new Error('PyAudio package directory is missing after requirements installation: ' + pyaudioDir);
   }
 
-  const extensions = findFiles(pyaudioDir, (file) =>
-    file.startsWith('_portaudio') && (file.endsWith('.so') || file.endsWith('.pyd'))
-  );
+  const extensions = findFiles(pyaudioDir, (file) => {
+    const name = path.basename(file);
+    return name.startsWith('_portaudio') &&
+      (name.endsWith('.so') || name.endsWith('.pyd'));
+  });
   if (extensions.length === 0) {
     throw new Error('PyAudio native extension was not found under ' + pyaudioDir);
   }
