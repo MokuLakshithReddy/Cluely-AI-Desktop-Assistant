@@ -4,11 +4,12 @@
 **Audited main revision:** [`94acb0a`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/94acb0a5286af7c4c065df27bcc877d9917b9c6f)  
 **Baseline CI evidence:** [main run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254)  
 **Remediation CI evidence:** [PR #78 run #243](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44134523573)  
+**Current branch CI:** [PR #78 run #250](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44140663069) — source verification and production npm audit passed; three platform packaging jobs are still running  
 **Remediation branch:** [fix/portable-python-runtime-and-packaging](https://github.com/MokuLakshithReddy/Scandium-Assistant/tree/fix/portable-python-runtime-and-packaging)
 
 ## Status
 
-**NO-GO for production distribution.** The last main-branch CI run passed the Windows source verification job but failed all three native packaging jobs. No current Windows, macOS, or Linux installer has passed packaged launch validation.
+**NO-GO for production distribution.** Main-branch run #237 failed all three native packaging jobs. The remediation branch's earlier CI run #243 successfully built and launch-tested the Windows portable executable, macOS DMG, and Linux AppImage, including real RealtimeSTT inference. The latest corrected head, PR run #250, has passed source verification, the generated test report, and the production dependency audit; its three native packaging jobs are still in progress. Keep release blocked until run #250 completes its packaged launch tests and the physical-device campaign is signed off.
 
 The known baseline failures were:
 
@@ -20,21 +21,21 @@ The known baseline failures were:
 
 The remediation branch replaces runner-derived Python copies with a checksum-pinned CPython standalone distribution, installs dependencies into that distribution, bundles the PortAudio runtime where needed, and runs real external-audio RealtimeSTT inference. PR #78 CI run #243 completed successfully on Windows, macOS, and Linux: all three platform runtime-provisioning checks, real-audio transcription checks, distributable builds, and packaged Electron launch/shutdown smoke tests passed. This validates the hosted build matrix; it does not replace physical device acceptance.
 
-## What the baseline run actually verified
+## What CI has actually verified
 
 | Area | Evidence | Scope and limitation |
 |---|---|---|
-| JavaScript dependency audit | Run #237 had reported 0; later full-tree audit in PR #78 run #245 reports 18 high `picomatch` development-tooling findings | The branch now enforces `npm audit --omit=dev` for the production dependency graph and retains the full audit report; the new production-only check must pass before merge |
+| JavaScript dependency audit | PR #78 run #250: `npm audit --omit=dev` reports 0 vulnerabilities; full workspace report records 18 high `picomatch` development-tooling findings | Production dependency audit passed; full development/build tree remains under an explicit upstream-patch exception and is not audit-clean |
 | TypeScript and lint | Run #237: `npm run lint` passed | Static checks only |
-| Unit and integration tests | 249 Vitest tests passed | Includes mocks, synthetic fixtures, and simulated inputs |
-| Electron development smoke | 1 Electron UI/preload/IPC smoke passed | Not the packaged runtime |
-| Python sidecar protocol tests | 11 passed, 1 skipped | The skipped test was real model inference; it did not validate bundled runtime packaging |
+| Unit and integration tests | PR #78 run #250: 249 Vitest tests passed; Electron UI/IPC smoke passed | Includes mocks, synthetic fixtures, and simulated inputs |
+| Electron development smoke | PR #78 run #250: 1 Electron UI/preload/IPC smoke passed | Not the packaged runtime |
+| Python sidecar protocol tests | PR #78 run #250 protocol step passed (12 tests, 1 legacy test skipped); separate bundled-runtime inference passed in run #243 on all three platforms | The skipped protocol test is not the real packaged inference test; the package jobs run a separate actual STT transcription check |
 | Windows packaged application | PR #78 run #243 | Portable executable built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
 | macOS packaged application | PR #78 run #243 | DMG built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
 | Linux packaged application | PR #78 run #243 | AppImage built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
 | Physical-device campaign | Incomplete | The checked-in Windows snapshot is not the required 40-case campaign across claimed OS targets |
 
-## Source-level automated verification status (Windows CI run #237)
+## Source-level automated verification status (PR #78 Windows CI run #250)
 
 **250/250 automated checks passing (249/249 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
 
@@ -78,11 +79,11 @@ Grand Total:                        250 passing checks / 250 total (100% Pass Ra
 ======================================================================================
 ```
 
-The native packaging jobs did not complete in run #237. The Windows, macOS, and Linux packaged-app launch checks were never reached.
+Main-branch run #237 never reached native packaging. PR #78 run #243 later passed all three platform packaged-app launch checks. The updated head's rerun #250 has passed source verification and is currently repeating the Windows, macOS, and Linux package/smoke matrix.
 
 ## Dependency security status
 
-The main baseline run #237 previously reported a clean npm audit, but the advisory database has since added high-severity [GHSA-fc5q-39xc-vjpf / CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) affecting `picomatch` through 4.0.7. The subsequent full-workspace audit in runs #244 and #245 reports 18 high-severity findings through development/build-tooling dependency paths. The upstream remediation proposal [picomatch PR #237](https://github.com/micromatch/picomatch/pull/237) is still open; there is no validated patched release in the current lockfile.
+The main baseline run #237 previously reported a clean npm audit, but the advisory database has since added high-severity [GHSA-fc5q-39xc-vjpf / CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) affecting `picomatch` through 4.0.7. The full-workspace audit reports 18 high-severity findings through development/build-tooling dependency paths. PR #78 run #250 now enforces `npm audit --omit=dev` and reports 0 vulnerabilities in the production dependency graph, while retaining the full audit report with 18 high findings. The upstream remediation proposal [picomatch PR #237](https://github.com/micromatch/picomatch/pull/237) remains open; there is no validated patched release in the current lockfile.
 
 `picomatch` is not a direct app production dependency; it is reached through tooling paths including `tailwindcss`, `chokidar`, and glob/build utilities. The branch CI now retains the full audit report and enforces `npm audit --omit=dev` as a blocking check on the production dependency graph. That production-only audit must pass before merge. Until a patched upstream picomatch release is available, do not claim the entire dependency tree is audit-clean or suppress the full-tree finding.
 
