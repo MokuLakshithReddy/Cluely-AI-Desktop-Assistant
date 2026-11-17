@@ -1,11 +1,16 @@
-# Scandium Local RealtimeSTT Dependencies
-# License Notice: All packages are under commercial-friendly permissive licenses (MIT / BSD).
-# Pinned versions ensure 100% compatibility with Windows 11 Smart App Control and Intel CPU INT8 inference.
+# Scandium RealtimeSTT external-audio runtime dependencies
+# RealtimeSTT is installed separately with --no-deps so its optional PyAudio
+# microphone dependency is not pulled in. Scandium feeds system-loopback PCM
+# with use_microphone=False and therefore does not need PortAudio.
 
-RealtimeSTT==1.2.0
 faster-whisper==1.2.1
 ctranslate2==4.8.0
-silero-vad==6.2.3
-webrtcvad-wheels>=2.0.14
-onnxruntime>=1.16.0
-numpy>=1.24.0
+silero-vad[onnx-cpu]==6.2.3
+webrtcvad-wheels==2.0.14
+onnxruntime==1.32.0
+numpy==2.5.5
+scipy==1.17.1
+soundfile==0.13.1
+torch==2.15.0
+halo==0.0.31
+colorama==0.4.6
