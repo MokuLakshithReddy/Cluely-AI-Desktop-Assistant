@@ -3,6 +3,8 @@ import {
   getEntitlements,
   isModeAllowed,
   canUseByokProvider,
+  isDeveloperEntitlementOverrideEnabled,
+  getEffectiveEntitlementTier,
   TIER_ENTITLEMENTS,
   SubscriptionTier,
 } from '../electron/domains/entitlements';
@@ -80,6 +82,23 @@ describe('Commercial Subscription & Entitlements Matrix', () => {
 
     expect(canUseByokProvider('pro', 'openai')).toBe(true);
     expect(canUseByokProvider('pro', 'anthropic')).toBe(true);
+  });
+
+  it('enables the developer override only with an explicit flag in an unpackaged non-production build', () => {
+    expect(isDeveloperEntitlementOverrideEnabled('true', false, 'development')).toBe(true);
+    expect(isDeveloperEntitlementOverrideEnabled('true', false, undefined)).toBe(true);
+    expect(isDeveloperEntitlementOverrideEnabled(undefined, false, 'development')).toBe(false);
+    expect(isDeveloperEntitlementOverrideEnabled('false', false, 'development')).toBe(false);
+    expect(isDeveloperEntitlementOverrideEnabled('TRUE', false, 'development')).toBe(false);
+    expect(isDeveloperEntitlementOverrideEnabled('true', false, 'production')).toBe(false);
+    expect(isDeveloperEntitlementOverrideEnabled('true', true, 'development')).toBe(false);
+  });
+
+  it('maps developer override to Pro without altering the underlying licensed tier', () => {
+    expect(getEffectiveEntitlementTier('free', true)).toBe('pro');
+    expect(getEffectiveEntitlementTier('plus', true)).toBe('pro');
+    expect(getEffectiveEntitlementTier('free', false)).toBe('free');
+    expect(getEffectiveEntitlementTier('plus', false)).toBe('plus');
   });
 
   it('keeps client frontend entitlements in exact sync with main process rules', () => {
