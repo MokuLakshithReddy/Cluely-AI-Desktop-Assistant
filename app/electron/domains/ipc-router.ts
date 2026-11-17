@@ -16,7 +16,7 @@ import { whisperRuntime } from '../services/whisper-runtime';
 import { modelManager } from '../services/model-manager';
 import { licenseManager } from '../services/license-manager';
 import { realtimeSTTManager } from '../services/realtime-stt-manager';
-import { isModeAllowed, canUseByokProvider } from './entitlements';
+import { getEffectiveEntitlementTier, getEntitlements, isDeveloperEntitlementOverrideEnabled, isModeAllowed, canUseByokProvider } from './entitlements';
 
 const BOOLEAN_STATE_KEYS = new Set([
   'showChat',
@@ -194,6 +194,29 @@ export class IpcRouter {
       this.customTrustedHtmlPath = path.normalize(customTrustedHtmlPath).toLowerCase();
     }
     this.forceProductionMode = forceProductionMode;
+  }
+
+  /**
+   * Grants Pro entitlements only to an explicitly opted-in, unpackaged local
+   * developer build. Packaged customer builds always use verified licenses.
+   */
+  private isDeveloperModeEnabled(): boolean {
+    return isDeveloperEntitlementOverrideEnabled(
+      process.env.SCANDIUM_DEVELOPER_MODE,
+      app.isPackaged,
+      process.env.NODE_ENV,
+    );
+  }
+
+  private getEffectiveTier(): ReturnType<typeof licenseManager.getCurrentTier> {
+    return getEffectiveEntitlementTier(
+      licenseManager.getCurrentTier(),
+      this.isDeveloperModeEnabled(),
+    );
+  }
+
+  private getEffectiveEntitlements(): ReturnType<typeof licenseManager.getEntitlements> {
+    return getEntitlements(this.getEffectiveTier());
   }
 
   /** Immediately stops capture and aborts active AI/STT work without deleting session history. */
@@ -628,7 +651,7 @@ export class IpcRouter {
           throw new Error('[IpcRouter] Invalid knowledgeDocs: Expected an array of documents');
         }
         if (process.env.VITEST !== 'true' && !process.env.ELECTRON_TEST) {
-          const entitlements = licenseManager.getEntitlements();
+          const entitlements = this.getEffectiveEntitlements();
           if (!entitlements.canUseKnowledgeRag && val.length > 0) {
             throw new Error('[IpcRouter] Personal Knowledge Base RAG requires a Plus or Pro subscription.');
           }
@@ -996,7 +1019,7 @@ export class IpcRouter {
         else if (model && model.includes('ollama')) providerName = 'ollama';
 
         const currentState = stateManager.getState();
-        const currentTier = licenseManager.getCurrentTier();
+        const currentTier = this.getEffectiveTier();
 
         // Enforce main-process mode entitlement
         if (mode && !isModeAllowed(currentTier, mode)) {
@@ -1250,7 +1273,7 @@ export class IpcRouter {
 
         // Zero-Cost Local Mode / Default Local Whisper STT
         if (state.privacyMode === 'local' || !activeKey) {
-          const entitlements = licenseManager.getEntitlements();
+          const entitlements = this.getEffectiveEntitlements();
           if (!entitlements.canUseLocalWhisper) {
             return { text: '[Scandium Free: Local Whisper speech recognition requires a Plus or Pro subscription. Please upgrade in Settings.]' };
           }
@@ -1266,7 +1289,7 @@ export class IpcRouter {
         }
 
         // Customer BYOK Cloud Transcription
-        const currentTier = licenseManager.getCurrentTier();
+        const currentTier = this.getEffectiveTier();
         if (!canUseByokProvider(currentTier, provider)) {
           const requiredTier = provider === 'openai' ? 'Pro' : 'Plus or Pro';
           return {
@@ -1350,7 +1373,7 @@ export class IpcRouter {
       const lower = modelName.toLowerCase();
       const isVision = lower.includes('llava') || lower.includes('moondream') || lower.includes('vision');
       if (process.env.VITEST !== 'true') {
-        const entitlements = licenseManager.getEntitlements();
+        const entitlements = this.getEffectiveEntitlements();
         if (isVision && !entitlements.canUseLocalVision) {
           throw new Error('[IpcRouter] Local Vision models require a Plus or Pro subscription.');
         }

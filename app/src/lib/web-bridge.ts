@@ -670,6 +670,7 @@ export function initWebBridge(defaultState?: Partial<SharedState>): DesktopBridg
       hasLicense: false,
       tier: 'free',
       status: 'none',
+      developerMode: false,
       instanceName: 'Scandium-Web',
     }),
     activateLicense: async (key: string) => ({

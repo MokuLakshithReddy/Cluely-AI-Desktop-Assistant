@@ -65,3 +65,23 @@ export function canUseByokProvider(tier: SubscriptionTier, provider: string): bo
   const e = getEntitlements(tier);
   return e.canUseCloudByok && (e.allowedByokProviders.includes(provider) || e.allowedByokProviders.includes('all'));
 }
+
+/**
+ * Developer entitlements are a local testing convenience, never a customer
+ * license. They require an explicit environment flag and an unpackaged app.
+ */
+export function isDeveloperEntitlementOverrideEnabled(
+  enabled: unknown,
+  isPackaged: boolean,
+  nodeEnv?: string,
+): boolean {
+  return enabled === 'true' && isPackaged === false && nodeEnv !== 'production';
+}
+
+/** Resolve the effective tier without mutating or fabricating a license record. */
+export function getEffectiveEntitlementTier(
+  licensedTier: SubscriptionTier,
+  developerOverrideEnabled: boolean,
+): SubscriptionTier {
+  return developerOverrideEnabled ? 'pro' : licensedTier;
+}
