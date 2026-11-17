@@ -375,6 +375,8 @@ The following summarizes implementation behavior and available automated evidenc
 
 ## 8. Getting Started & Developer Guide
 
+For local model-provider testing without purchasing a subscription, see the [Developer Mode guide](docs/development/DEVELOPER_MODE.md). The override grants temporary Pro feature entitlements only to unpackaged local builds; it does not bypass provider API keys, quotas, billing, privacy controls, or outbound-data protections.
+
 ### Prerequisites
 * **Operating System**: Windows 10/11 x64 (macOS and Linux also supported for development)
 * **Node.js**: v24.22.2 (CI runtime)
