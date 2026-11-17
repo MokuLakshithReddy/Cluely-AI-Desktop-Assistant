@@ -1,7 +1,7 @@
 # Production Readiness Assessment
 
 **Assessment date:** 2026-11-16 (Asia/Kolkata)  
-**Audited source revision:** [`2fb14fb`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/2fb14fb47b03128d428c312000961140ad6c660d)  
+**Audited source revision:** [`3626485`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/362648548442b54cd7d9445244b74535d9573bb0)  
 **Baseline CI evidence:** [CI Verification Suite (run 43873876041)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041)
 
 ## Status
@@ -55,10 +55,10 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 18.  tests/whisper-runtime.test.ts        7 passed (Local Speech Recognition (whisper.cpp) Subsystem)
 19.  tests/window-coordinator.test.ts     6 passed (Window close recovery, macOS reinitialization & listener idempotency)
 20.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
-21.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
+21.  tests/dashboard-routing.test.ts      4 passed (Dashboard Route and Hash Parsing)
 22.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
-23.  tests/screen-capture.test.ts         5 passed (Screen Capture & Thumbnail Scaling Subsystem)
-24.  tests/dashboard-routing.test.ts      4 passed (Dashboard Route and Hash Parsing)
+23.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
+24.  tests/screen-capture.test.ts         5 passed (Screen Capture & Thumbnail Scaling Subsystem)
 25.  tests/electron-smoke.cjs         1/1 passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)
 --------------------------------------------------------------------------------------
 Subtotal (Vitest Test Suites):      249 passing unit & integration tests

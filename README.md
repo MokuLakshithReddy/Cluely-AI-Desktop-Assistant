@@ -340,10 +340,10 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
 | `ai-context.test.ts` | AI context assembly and operating modes | 14 |
-| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
-| `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
-| `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 4 |
+| `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
+| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
+| `screen-capture.test.ts` | Display thumbnail scaling | 5 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
 | **Total** | **24 Vitest suites + 1 Electron smoke check** | **250** |
 
