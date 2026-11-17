@@ -4,7 +4,7 @@ import os from 'os';
 import crypto from 'crypto';
 import https from 'https';
 import { app } from 'electron';
-import { SubscriptionTier, TierEntitlements, getEntitlements } from '../domains/entitlements';
+import { SubscriptionTier, TierEntitlements, getEntitlements, isDeveloperEntitlementOverrideEnabled } from '../domains/entitlements';
 import { encryptStoragePayload, decryptStoragePayload } from './storage-encryption';
 import { BILLING_PRODUCTS } from '../config/billing-products';
 
@@ -91,8 +91,17 @@ export class LicenseManager {
     return getEntitlements(this.getCurrentTier());
   }
 
+  public isDeveloperModeEnabled(): boolean {
+    return isDeveloperEntitlementOverrideEnabled(
+      process.env.SCANDIUM_DEVELOPER_MODE,
+      app.isPackaged,
+      process.env.NODE_ENV,
+    );
+  }
+
   public getLicenseStatus(): {
     hasLicense: boolean;
+    developerMode: boolean;
     tier: SubscriptionTier;
     status: LicenseRecord['status'] | 'none';
     licenseKeyMasked?: string;
@@ -112,6 +121,7 @@ export class LicenseManager {
         hasLicense: false,
         tier: 'free',
         status: 'none',
+        developerMode: this.isDeveloperModeEnabled(),
         instanceName,
       };
     }
@@ -127,6 +137,7 @@ export class LicenseManager {
       hasLicense: true,
       tier: this.getCurrentTier(),
       status: this.currentLicense.status,
+      developerMode: this.isDeveloperModeEnabled(),
       licenseKeyMasked: masked,
       expiresAt: this.currentLicense.expiresAt,
       customerEmail: this.currentLicense.customerEmail,
