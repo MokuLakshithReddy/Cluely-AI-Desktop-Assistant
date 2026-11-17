@@ -206,7 +206,7 @@ class TestRealtimeSTTRealAudioTranscription(unittest.TestCase):
     """End-to-end integration test executing real INT8 audio transcription against jfk.wav fixture."""
 
     def test_real_audio_transcription_on_jfk_sample(self):
-        wav_path = os.path.join(os.path.dirname(__file__), "..", "resources", "whisper", "jfk.wav")
+        wav_path = os.path.join(os.path.dirname(__file__), "..", "tests", "fixtures", "jfk.wav")
         if not os.path.exists(wav_path):
             self.skipTest(f"Audio fixture {wav_path} not found")
 
