@@ -170,12 +170,26 @@ jobs:
       - name: Remove unused PDF.js optional Node canvas stub before packaging
         working-directory: app
         run: node -e "const fs=require('node:fs');const p='node_modules/pdfjs-dist/node_modules/@napi-rs/canvas';if(fs.existsSync(p)||fs.lstatSync(p,{throwIfNoEntry:false})){fs.rmSync(p,{recursive:true,force:true});console.log('Removed PDF.js optional Node canvas stub; renderer uses the browser build.')}else{console.log('No optional Node canvas stub present.')}"
-      - name: Set up Python 3.12 for STT sidecar runtime
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Provision Python runtime and dependencies
+      - name: Install PortAudio build dependencies (Linux)
+        if: matrix.platform == 'linux-appimage'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends portaudio19-dev libportaudio2 patchelf
+      - name: Install PortAudio build dependencies (macOS)
+        if: matrix.platform == 'macos-dmg'
+        run: brew install portaudio
+      - name: Provision checksum-verified standalone Python runtime
         run: node scripts/provision-python-runtime.cjs
+      - name: Verify real RealtimeSTT transcription with the bundled runtime
+        shell: bash
+        run: |
+          if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+            PYTHON_EXE="app/resources/python/python.exe"
+          else
+            PYTHON_EXE="app/resources/python/bin/python3"
+          fi
+          export HF_HOME="$RUNNER_TEMP/huggingface-cache"
+          "$PYTHON_EXE" app/python-stt/test_realtime_inference.py
       - name: Provision native macOS Whisper.cpp binary
         if: matrix.platform == 'macos-dmg'
         run: |
