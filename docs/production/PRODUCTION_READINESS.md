@@ -2,7 +2,8 @@
 
 **Assessment date:** 2026-11-17 (Asia/Kolkata)  
 **Audited main revision:** [`94acb0a`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/94acb0a5286af7c4c065df27bcc877d9917b9c6f)  
-**Baseline CI evidence:** [CI Verification Suite run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254)  
+**Baseline CI evidence:** [main run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254)  
+**Remediation CI evidence:** [PR #78 run #243](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44134523573)  
 **Remediation branch:** [fix/portable-python-runtime-and-packaging](https://github.com/MokuLakshithReddy/Scandium-Assistant/tree/fix/portable-python-runtime-and-packaging)
 
 ## Status
@@ -17,7 +18,7 @@ The known baseline failures were:
 | Linux | PyAudio could not compile because `portaudio.h` was missing | Packaging stopped before installer creation |
 | macOS | PyAudio could not compile because `portaudio.h` was missing | Packaging stopped before installer creation |
 
-The remediation branch replaces runner-derived Python copies with a checksum-pinned CPython standalone distribution, installs dependencies into that distribution, bundles the PortAudio runtime where needed, and adds a real external-audio RealtimeSTT inference check. These changes remain **unverified until the branch CI matrix completes**.
+The remediation branch replaces runner-derived Python copies with a checksum-pinned CPython standalone distribution, installs dependencies into that distribution, bundles the PortAudio runtime where needed, and runs real external-audio RealtimeSTT inference. PR #78 CI run #243 completed successfully on Windows, macOS, and Linux: all three platform runtime-provisioning checks, real-audio transcription checks, distributable builds, and packaged Electron launch/shutdown smoke tests passed. This validates the hosted build matrix; it does not replace physical device acceptance.
 
 ## What the baseline run actually verified
 
@@ -28,9 +29,9 @@ The remediation branch replaces runner-derived Python copies with a checksum-pin
 | Unit and integration tests | 249 Vitest tests passed | Includes mocks, synthetic fixtures, and simulated inputs |
 | Electron development smoke | 1 Electron UI/preload/IPC smoke passed | Not the packaged runtime |
 | Python sidecar protocol tests | 11 passed, 1 skipped | The skipped test was real model inference; it did not validate bundled runtime packaging |
-| Windows packaged application | Failed during Python provisioning | Packaged launch smoke did not run |
-| macOS packaged application | Failed during Python provisioning | DMG creation and launch smoke did not run |
-| Linux packaged application | Failed during Python provisioning | AppImage creation and launch smoke did not run |
+| Windows packaged application | PR #78 run #243 | Portable executable built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
+| macOS packaged application | PR #78 run #243 | DMG built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
+| Linux packaged application | PR #78 run #243 | AppImage built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
 | Physical-device campaign | Incomplete | The checked-in Windows snapshot is not the required 40-case campaign across claimed OS targets |
 
 ## Source-level automated verification status (Windows CI run #237)
@@ -88,8 +89,8 @@ Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/iss
 ## Release gates and operational status
 
 1. **Real-device validation — INCOMPLETE:** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a Windows host snapshot. It is not a signed campaign with all required test IDs, per-test evidence, packaged artifact hashes, and coverage for each claimed platform. Do not describe it as production hardware acceptance.
-2. **Native release packaging — BLOCKED:** The last main-branch matrix failed on all three platforms. The remediation branch adds isolated-runtime provisioning and PortAudio packaging, but must pass Windows/macOS/Linux build and packaged smoke jobs before release sign-off.
-3. **Real RealtimeSTT inference — NOT YET VERIFIED ON THE REMEDIATION BRANCH:** The new packaging matrix runs the bundled runtime against a real speech fixture. A successful result must be visible in CI before claiming that packaged STT works.
+2. **Native release packaging — CI VALIDATED IN PR #78:** All Windows/macOS/Linux package jobs and their packaged smoke tests passed in run #243. Merge the reviewed remediation to main and require the same checks on the resulting main commit before publishing.
+3. **Real RealtimeSTT inference — PASSED IN PR #78 RUN #243:** Each platform's bundled runtime transcribed the checked-in JFK audio fixture with CPU INT8 RealtimeSTT. This verifies model loading and external-PCM inference; it is not a physical loopback-device, microphone-permission, or live-meeting acceptance test.
 4. **Branch protection — DISABLED:** The main branch currently has no required status checks. Enable required CI checks before merging a release candidate.
 
 ## Important implementation facts
