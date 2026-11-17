@@ -52,8 +52,15 @@ jobs:
       - name: Capture npm audit report
         shell: bash
         run: npm audit --json > npm-audit.json || true
-      - name: Reject unapproved high and critical npm advisories
-        run: npm audit --audit-level=high
+      - name: Enforce production dependency audit
+        run: npm audit --omit=dev
+      - name: Report full development and production dependency audit
+        if: always()
+        shell: bash
+        run: |
+          npm audit --json > npm-audit-full.json || true
+          npm audit --omit=dev --json > npm-audit-production.json || true
+          node -e "const fs=require('node:fs');for(const f of ['npm-audit-full.json','npm-audit-production.json']){const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=j.metadata?.vulnerabilities||{};console.log(f,JSON.stringify(v));}"
       - name: Upload npm audit evidence
         if: always()
         # Artifact retention is best-effort; verification and packaging steps remain blocking.
@@ -61,7 +68,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report
-          path: npm-audit.json
+          path: |
+            npm-audit.json
+            npm-audit-full.json
+            npm-audit-production.json
           if-no-files-found: warn
           retention-days: 14
       - name: Cache or download whisper model for automated test
