@@ -27,6 +27,15 @@ All direct runtime dependencies for the local inference pipeline operate under p
 | `tokenizers` | `0.23.3` | Apache-2.0 | HuggingFace byte-pair tokenization |
 | `huggingface-hub` | `2.4.0` | Apache-2.0 | Offline model caching utilities |
 
+## Packaged Native Runtime Components
+
+| Component | Pinned source | License | Distribution handling |
+|---|---|---|---|
+| CPython | 3.12.16, python-build-standalone release `20261110` | Python Software Foundation License 2.0; review bundled third-party notices in the upstream distribution | Architecture-specific install-only archive; SHA-256 is pinned in `scripts/provision-python-runtime.cjs` and checked before extraction |
+| PortAudio | PortAudio V19 (Homebrew formula 19.7.0 on macOS; Ubuntu distribution package on Linux; bundled with the official Windows PyAudio wheel) | MIT | Linux/macOS shared library is copied beside the PyAudio extension and its loader path is rewritten to be relative to that extension |
+
+The packaged runtime must ship applicable upstream license and copyright notices. The PortAudio MIT license is available at https://portaudio.com/license.html. The CPython standalone archive source and release metadata are available at https://github.com/astral-sh/python-build-standalone/releases/tag/20261110. The SBOM above lists the Python package dependency set; it is not a substitute for a full license scan of every wheel and every native library in each final installer.
+
 ## Isolation & Security Boundaries
 
 1. **Inter-Process Boundary**: The Python STT engine runs as an isolated unprivileged child process communicating exclusively with Electron via bidirectional NDJSON stdio pipes (`stdin`/`stdout`).
