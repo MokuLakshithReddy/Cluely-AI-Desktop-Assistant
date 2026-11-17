@@ -203,45 +203,58 @@ class TestTranscriptionPipeline(unittest.TestCase):
 
 
 class TestRealtimeSTTRealAudioTranscription(unittest.TestCase):
-    """End-to-end integration test executing real INT8 audio transcription against jfk.wav fixture."""
+    """Runs actual RealtimeSTT inference through the external-audio input API."""
 
     def test_real_audio_transcription_on_jfk_sample(self):
-        wav_path = os.path.join(os.path.dirname(__file__), "..", "resources", "whisper", "jfk.wav")
-        if not os.path.exists(wav_path):
-            self.skipTest(f"Audio fixture {wav_path} not found")
-
-        # Ensure PyAV compatibility shim is active
-        try:
-            import av
-            if not hasattr(av, '_orig_open'):
-                _orig_av_open = av.open
-                def _patched_av_open(*args, **kwargs):
-                    try:
-                        return _orig_av_open(*args, **kwargs)
-                    except TypeError:
-                        kwargs.pop('metadata_errors', None)
-                        return _orig_av_open(*args, **kwargs)
-                av.open = _patched_av_open
-                av._orig_open = _orig_av_open
-        except Exception:
-            pass
-
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            self.skipTest("faster_whisper not installed in test environment")
-
-        # Initialize real INT8 quantized CPU model
-        model = WhisperModel("tiny.en", device="cpu", compute_type="int8")
-        segments, info = model.transcribe(wav_path)
-        transcribed_text = " ".join([s.text for s in segments]).strip()
-
-        # Assert JFK historic speech is transcribed accurately
-        self.assertTrue(len(transcribed_text) > 0, "Transcribed text must not be empty")
+        app_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        wav_path = os.path.join(app_root, "tests", "fixtures", "jfk.wav")
         self.assertTrue(
-            "country" in transcribed_text.lower() or "americans" in transcribed_text.lower(),
-            f"Expected JFK speech content, got: {transcribed_text}"
+            os.path.isfile(wav_path),
+            "Committed JFK audio fixture is required: " + wav_path
         )
+
+        from RealtimeSTT import AudioToTextRecorder
+
+        # This test deliberately exercises the same external-audio mode used by
+        # the Electron loopback pipeline. PyAudio must never be imported.
+        self.assertNotIn("pyaudio", sys.modules)
+        recorder = None
+        try:
+            recorder = AudioToTextRecorder(
+                model="tiny.en",
+                language="en",
+                device="cpu",
+                compute_type="int8",
+                use_microphone=False,
+                spinner=False,
+                enable_realtime_transcription=False,
+                silero_use_onnx=True,
+                silero_backend="onnx",
+                no_log_file=True,
+            )
+            self.assertNotIn(
+                "pyaudio",
+                sys.modules,
+                "External-audio mode must not load the microphone backend"
+            )
+
+            # Feed the committed WAV through RealtimeSTT's real manual-audio
+            # queue and wait for the actual faster-whisper final transcript.
+            recorder.feed_audio_file(wav_path, normalize=True)
+            transcribed_text = recorder.text().strip()
+
+            self.assertTrue(
+                transcribed_text,
+                "Real RealtimeSTT transcription must not be empty"
+            )
+            self.assertTrue(
+                "country" in transcribed_text.lower() or
+                "americans" in transcribed_text.lower(),
+                "Expected JFK speech content, got: " + transcribed_text
+            )
+        finally:
+            if recorder is not None:
+                recorder.shutdown()
 
 
 if __name__ == "__main__":
