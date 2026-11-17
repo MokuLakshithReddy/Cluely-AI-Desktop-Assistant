@@ -24,7 +24,7 @@ The remediation branch replaces runner-derived Python copies with a checksum-pin
 
 | Area | Evidence | Scope and limitation |
 |---|---|---|
-| JavaScript dependency audit | Run #237: `npm audit` reported 0 vulnerabilities | Does not cover Python/native dependencies |
+| JavaScript dependency audit | Run #237 had reported 0; later full-tree audit in PR #78 run #245 reports 18 high `picomatch` development-tooling findings | The branch now enforces `npm audit --omit=dev` for the production dependency graph and retains the full audit report; the new production-only check must pass before merge |
 | TypeScript and lint | Run #237: `npm run lint` passed | Static checks only |
 | Unit and integration tests | 249 Vitest tests passed | Includes mocks, synthetic fixtures, and simulated inputs |
 | Electron development smoke | 1 Electron UI/preload/IPC smoke passed | Not the packaged runtime |
@@ -82,16 +82,17 @@ The native packaging jobs did not complete in run #237. The Windows, macOS, and 
 
 ## Dependency security status
 
-The committed-lockfile audit reports **zero vulnerabilities (0 critical, 0 high, 0 moderate, 0 low)**. The previous `minimatch` build-tooling advisory GHSA-g3hv-75wg-m249 has been resolved across all packaging toolchains by overriding `minimatch` to `^11.0.8` in `package.json` with `@isaacs/nonrecursive-glob-match` provided in devDependencies.
+The main baseline run #237 previously reported a clean npm audit, but the advisory database has since added high-severity [GHSA-fc5q-39xc-vjpf / CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) affecting `picomatch` through 4.0.7. The subsequent full-workspace audit in runs #244 and #245 reports 18 high-severity findings through development/build-tooling dependency paths. The upstream remediation proposal [picomatch PR #237](https://github.com/micromatch/picomatch/pull/237) is still open; there is no validated patched release in the current lockfile.
 
-Issue [#60](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/60) is closed as fully resolved. No temporary exceptions remain active; the dependency tree is completely audit-clean.
+`picomatch` is not a direct app production dependency; it is reached through tooling paths including `tailwindcss`, `chokidar`, and glob/build utilities. The branch CI now retains the full audit report and enforces `npm audit --omit=dev` as a blocking check on the production dependency graph. That production-only audit must pass before merge. Until a patched upstream picomatch release is available, do not claim the entire dependency tree is audit-clean or suppress the full-tree finding.
 
 ## Release gates and operational status
 
 1. **Real-device validation — INCOMPLETE:** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a Windows host snapshot. It is not a signed campaign with all required test IDs, per-test evidence, packaged artifact hashes, and coverage for each claimed platform. Do not describe it as production hardware acceptance.
 2. **Native release packaging — CI VALIDATED IN PR #78:** All Windows/macOS/Linux package jobs and their packaged smoke tests passed in run #243. Merge the reviewed remediation to main and require the same checks on the resulting main commit before publishing.
 3. **Real RealtimeSTT inference — PASSED IN PR #78 RUN #243:** Each platform's bundled runtime transcribed the checked-in JFK audio fixture with CPU INT8 RealtimeSTT. This verifies model loading and external-PCM inference; it is not a physical loopback-device, microphone-permission, or live-meeting acceptance test.
-4. **Branch protection — DISABLED:** The main branch currently has no required status checks. Enable required CI checks before merging a release candidate.
+4. **Development-tooling advisory — OPEN:** The full npm tree currently reports the picomatch ReDoS advisory in development/build dependencies. The branch enforces a separate production dependency audit, but the full build-toolchain advisory remains recorded pending an upstream patch and re-audit.
+5. **Branch protection — DISABLED:** The main branch currently has no required status checks. Enable required CI checks before merging a release candidate.
 
 ## Important implementation facts
 
