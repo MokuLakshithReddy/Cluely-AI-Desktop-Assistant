@@ -116,6 +116,7 @@ export interface SharedState {
   encryptedStorageEnabled: boolean;
   licenseStatus?: {
     tier: 'free' | 'plus' | 'pro';
+    developerMode?: boolean;
     status: 'active' | 'inactive' | 'expired' | 'disabled' | 'grace_period' | 'none';
     licenseKeyMasked?: string;
     expiresAt?: string | null;
