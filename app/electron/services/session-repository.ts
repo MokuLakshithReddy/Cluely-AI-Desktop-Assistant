@@ -17,10 +17,24 @@ export function encryptLocalSession(data: string | any, encryptionKey?: Buffer):
 }
 
 /**
+ * Asynchronously encrypts arbitrary session data using AES-256-GCM authenticated encryption.
+ */
+export async function encryptLocalSessionAsync(data: string | any, encryptionKey?: Buffer): Promise<string> {
+  return encryptStoragePayload(data, encryptionKey);
+}
+
+/**
  * Decrypts AES-256-GCM encrypted session data.
  * Gracefully falls back to plaintext if the string is unencrypted JSON for backwards compatibility.
  */
 export function decryptLocalSession(dataStr: string, encryptionKey?: Buffer): string {
+  return decryptStoragePayload(dataStr, encryptionKey);
+}
+
+/**
+ * Asynchronously decrypts AES-256-GCM encrypted session data.
+ */
+export async function decryptLocalSessionAsync(dataStr: string, encryptionKey?: Buffer): Promise<string> {
   return decryptStoragePayload(dataStr, encryptionKey);
 }
 

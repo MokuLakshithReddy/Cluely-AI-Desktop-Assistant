@@ -1,6 +1,7 @@
 import { BrowserWindow, screen, app } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 import { stateManager } from './state';
 
 export class WindowCoordinator {
@@ -39,14 +40,24 @@ export class WindowCoordinator {
       return `${process.env.VITE_DEV_SERVER_URL}#${hash}`;
     }
     const htmlPath = path.join(app.getAppPath(), 'dist/index.html');
-    return `file://${htmlPath}#${hash}`;
+    const fileUrl = pathToFileURL(htmlPath).toString();
+    return `${fileUrl}#${hash}`;
   }
 
   public createControlWindow(): BrowserWindow {
     if (this.controlWin && !this.controlWin.isDestroyed()) return this.controlWin;
 
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workArea;
+    let screenWidth = 1920;
+    let screenHeight = 1080;
+    try {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      if (primaryDisplay && primaryDisplay.workArea) {
+        screenWidth = primaryDisplay.workArea.width;
+        screenHeight = primaryDisplay.workArea.height;
+      }
+    } catch (e) {
+      console.warn('[WindowCoordinator] Failed to query display geometry:', e);
+    }
 
     // Center horizontally, placed near the top
     const winWidth = 620;

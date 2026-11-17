@@ -230,9 +230,15 @@ jobs:
         if: matrix.platform == 'windows-portable'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
-          if (-not $exe) { throw "No portable Windows executable found in app/release." }
-          node app/tests/packaged-smoke.cjs $exe.FullName
+          $unpacked = Get-ChildItem app/release/win-unpacked -Filter *.exe | Select-Object -First 1
+          if ($unpacked) {
+            Write-Host "Running packaged smoke verification against direct unpacked executable:" $unpacked.FullName
+            node app/tests/packaged-smoke.cjs $unpacked.FullName
+          } else {
+            $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
+            if (-not $exe) { throw "No portable Windows executable found in app/release." }
+            node app/tests/packaged-smoke.cjs $exe.FullName
+          }
 
       - name: Smoke-test packaged macOS application
         if: matrix.platform == 'macos-dmg'

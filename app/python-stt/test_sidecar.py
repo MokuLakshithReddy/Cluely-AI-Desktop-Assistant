@@ -202,5 +202,47 @@ class TestTranscriptionPipeline(unittest.TestCase):
         self.assertIsInstance(final_event.get("timestamp"), int)
 
 
+class TestRealtimeSTTRealAudioTranscription(unittest.TestCase):
+    """End-to-end integration test executing real INT8 audio transcription against jfk.wav fixture."""
+
+    def test_real_audio_transcription_on_jfk_sample(self):
+        wav_path = os.path.join(os.path.dirname(__file__), "..", "resources", "whisper", "jfk.wav")
+        if not os.path.exists(wav_path):
+            self.skipTest(f"Audio fixture {wav_path} not found")
+
+        # Ensure PyAV compatibility shim is active
+        try:
+            import av
+            if not hasattr(av, '_orig_open'):
+                _orig_av_open = av.open
+                def _patched_av_open(*args, **kwargs):
+                    try:
+                        return _orig_av_open(*args, **kwargs)
+                    except TypeError:
+                        kwargs.pop('metadata_errors', None)
+                        return _orig_av_open(*args, **kwargs)
+                av.open = _patched_av_open
+                av._orig_open = _orig_av_open
+        except Exception:
+            pass
+
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            self.skipTest("faster_whisper not installed in test environment")
+
+        # Initialize real INT8 quantized CPU model
+        model = WhisperModel("tiny.en", device="cpu", compute_type="int8")
+        segments, info = model.transcribe(wav_path)
+        transcribed_text = " ".join([s.text for s in segments]).strip()
+
+        # Assert JFK historic speech is transcribed accurately
+        self.assertTrue(len(transcribed_text) > 0, "Transcribed text must not be empty")
+        self.assertTrue(
+            "country" in transcribed_text.lower() or "americans" in transcribed_text.lower(),
+            f"Expected JFK speech content, got: {transcribed_text}"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

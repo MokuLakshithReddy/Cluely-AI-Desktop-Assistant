@@ -10,17 +10,39 @@ import { licenseManager } from './services/license-manager';
 import { initStorageEncryptionAsync } from './services/storage-encryption';
 import { realtimeSTTManager } from './services/realtime-stt-manager';
 
+const smokeStatusFile = process.env.SMOKE_TEST_STATUS_FILE;
+const smokeLogFile = smokeStatusFile && path.isAbsolute(smokeStatusFile)
+  ? path.join(path.dirname(smokeStatusFile), 'packaged-smoke-startup.log')
+  : null;
+
+function logSmokeDiagnostic(msg: string): void {
+  if (!smokeLogFile) return;
+  try {
+    fs.mkdirSync(path.dirname(smokeLogFile), { recursive: true });
+    fs.appendFileSync(smokeLogFile, `[${new Date().toISOString()}] ${msg}\n`, 'utf8');
+  } catch {}
+}
+
+logSmokeDiagnostic(`[MAIN_INIT] pid=${process.pid} execPath=${process.execPath} isPackaged=${app.isPackaged}`);
+
 process.on('uncaughtException', (error) => {
-  console.error('[MAIN_UNCAUGHT_EXCEPTION]', error?.stack || error);
+  const errText = error?.stack || String(error);
+  logSmokeDiagnostic('[MAIN_UNCAUGHT_EXCEPTION] ' + errText);
+  console.error('[MAIN_UNCAUGHT_EXCEPTION]', errText);
+  writePackagedSmokeStatus({ packagedFailed: true, error: errText });
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[MAIN_UNHANDLED_REJECTION]', reason);
+  const errText = String(reason);
+  logSmokeDiagnostic('[MAIN_UNHANDLED_REJECTION] ' + errText);
+  console.error('[MAIN_UNHANDLED_REJECTION]', errText);
+  writePackagedSmokeStatus({ packagedFailed: true, error: errText });
 });
 
 if (process.env.SMOKE_TEST_USER_DATA && path.isAbsolute(process.env.SMOKE_TEST_USER_DATA)) {
   try {
     app.setPath('userData', process.env.SMOKE_TEST_USER_DATA);
+    logSmokeDiagnostic('[USERDATA_OVERRIDDEN] ' + process.env.SMOKE_TEST_USER_DATA);
   } catch (err) {
     console.warn('[Main] Failed to set custom smoke test userData:', err);
   }
@@ -29,6 +51,7 @@ if (process.env.SMOKE_TEST_USER_DATA && path.isAbsolute(process.env.SMOKE_TEST_U
 let isQuitting = false;
 
 const packagedSmokeStatus: Record<string, unknown> = {
+  processStarted: true,
   appReady: false,
   packagedReady: false,
   packagedFailed: false,
@@ -45,11 +68,14 @@ function writePackagedSmokeStatus(patch: Record<string, unknown>): void {
   try {
     Object.assign(packagedSmokeStatus, patch);
     fs.mkdirSync(path.dirname(statusPath), { recursive: true });
-    fs.writeFileSync(statusPath, JSON.stringify(packagedSmokeStatus), 'utf8');
+    fs.writeFileSync(statusPath, JSON.stringify(packagedSmokeStatus, null, 2), 'utf8');
   } catch (error: any) {
     console.error('[PACKAGED_SMOKE_STATUS_WRITE_FAILED]', error?.message || error);
   }
 }
+
+// Initial status write on process boot
+writePackagedSmokeStatus({ processStarted: true, pid: process.pid, isPackaged: app.isPackaged });
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -142,71 +168,82 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
-    ipcRouter.init();
-    shortcutManager.setEmergencyStopHandler(() => ipcRouter.emergencyStop());
-    windowCoordinator.init();
-    shortcutManager.init();
-
-    if (process.env.SMOKE_TEST !== 'true') {
-      windowCoordinator.openDashboardWindow('models');
-    }
-
-    // Reload encrypted state once secure storage subsystem is available, and actively migrate legacy plaintext sessions
-    try {
-      await initStorageEncryptionAsync();
-      stateManager.reloadFromDisk();
-      await sessionRepository.migrateAllLegacySessions();
-      licenseManager.init();
-      stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
-    } catch (migErr: any) {
-      console.error('[Startup] Critical migration failure:', migErr);
-      sessionRepository.lock(migErr?.message || 'Startup migration failure');
-      stateManager.patchState({
-        persistenceError: `Critical: Local storage migration failed (${migErr?.message || migErr}). In-memory state purged and session repository locked.`,
-      });
-    }
-
-    // Validate stored subscription license at startup and schedule background checks
-    if (process.env.SMOKE_TEST !== 'true') {
-      const initialStatus = licenseManager.getLicenseStatus();
-      if (initialStatus.hasLicense) {
-        licenseManager.validateLicense().then(() => {
-          stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
-        }).catch(err => {
-          console.warn('[Startup] License validation engaged offline grace:', err?.message || err);
-        });
-      }
-
-      // Schedule periodic background license revalidation every 12 hours
-      setInterval(() => {
-        if (licenseManager.getLicenseStatus().hasLicense) {
-          licenseManager.validateLicense().then(() => {
-            stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
-          }).catch(err => {
-            console.warn('[Background] License revalidation check:', err?.message || err);
-          });
-        }
-      }, 12 * 60 * 60 * 1000);
-    }
-
+    logSmokeDiagnostic('[APP_WHEN_READY_RESOLVED]');
     if (process.env.SMOKE_TEST_MODE === 'packaged') {
-      writePackagedSmokeStatus({ appReady: true });
+      writePackagedSmokeStatus({ appReady: true, readyAt: Date.now() });
     }
     console.log('[APP_READY] Scandium Desktop Coordinator Ready');
 
-    if (process.env.SMOKE_TEST === 'true') {
-      if (process.env.SMOKE_TEST_MODE === 'packaged') {
-        void runPackagedSmoke();
-      } else {
-        try {
-          const { runDesktopE2E } = require(path.join(app.getAppPath(), 'tests', 'electron-e2e.cjs'));
-          runDesktopE2E({ windowCoordinator }).then(
-            () => console.log('[E2E_COMPLETE] Electron UI, preload bridge, IPC, and persistence flows passed.'),
-            (error: any) => console.log('[E2E_FAILED]', error?.stack || error?.message || error)
-          );
-        } catch (error: any) {
-          console.log('[E2E_FAILED]', error?.stack || error?.message || error);
+    try {
+      ipcRouter.init();
+      shortcutManager.setEmergencyStopHandler(() => ipcRouter.emergencyStop());
+      windowCoordinator.init();
+      shortcutManager.init();
+
+      if (process.env.SMOKE_TEST !== 'true') {
+        windowCoordinator.openDashboardWindow('models');
+      }
+
+      // Reload encrypted state once secure storage subsystem is available, and actively migrate legacy plaintext sessions
+      try {
+        await initStorageEncryptionAsync();
+        stateManager.reloadFromDisk();
+        await sessionRepository.migrateAllLegacySessions();
+        licenseManager.init();
+        stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
+      } catch (migErr: any) {
+        logSmokeDiagnostic('[STARTUP_MIGRATION_ERROR] ' + (migErr?.message || migErr));
+        console.error('[Startup] Critical migration failure:', migErr);
+        sessionRepository.lock(migErr?.message || 'Startup migration failure');
+        stateManager.patchState({
+          persistenceError: `Critical: Local storage migration failed (${migErr?.message || migErr}). In-memory state purged and session repository locked.`,
+        });
+      }
+
+      // Validate stored subscription license at startup and schedule background checks
+      if (process.env.SMOKE_TEST !== 'true') {
+        const initialStatus = licenseManager.getLicenseStatus();
+        if (initialStatus.hasLicense) {
+          licenseManager.validateLicense().then(() => {
+            stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
+          }).catch(err => {
+            console.warn('[Startup] License validation engaged offline grace:', err?.message || err);
+          });
         }
+
+        // Schedule periodic background license revalidation every 12 hours
+        setInterval(() => {
+          if (licenseManager.getLicenseStatus().hasLicense) {
+            licenseManager.validateLicense().then(() => {
+              stateManager.patchState({ licenseStatus: licenseManager.getLicenseStatus() });
+            }).catch(err => {
+              console.warn('[Background] License revalidation check:', err?.message || err);
+            });
+          }
+        }, 12 * 60 * 60 * 1000);
+      }
+
+      if (process.env.SMOKE_TEST === 'true') {
+        if (process.env.SMOKE_TEST_MODE === 'packaged') {
+          void runPackagedSmoke();
+        } else {
+          try {
+            const { runDesktopE2E } = require(path.join(app.getAppPath(), 'tests', 'electron-e2e.cjs'));
+            runDesktopE2E({ windowCoordinator }).then(
+              () => console.log('[E2E_COMPLETE] Electron UI, preload bridge, IPC, and persistence flows passed.'),
+              (error: any) => console.log('[E2E_FAILED]', error?.stack || error?.message || error)
+            );
+          } catch (error: any) {
+            console.log('[E2E_FAILED]', error?.stack || error?.message || error);
+          }
+        }
+      }
+    } catch (startupError: any) {
+      const errDetail = startupError?.stack || startupError?.message || String(startupError);
+      logSmokeDiagnostic('[STARTUP_CRITICAL_FAILURE] ' + errDetail);
+      console.error('[Startup] Critical failure:', startupError);
+      if (process.env.SMOKE_TEST_MODE === 'packaged') {
+        writePackagedSmokeStatus({ packagedFailed: true, error: errDetail });
       }
     }
 

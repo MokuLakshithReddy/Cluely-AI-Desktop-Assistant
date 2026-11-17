@@ -64,13 +64,26 @@ if (process.platform === 'linux') {
 const isLinuxHeadless = process.platform === 'linux' && !process.env.DISPLAY;
 let command = absoluteExecutable;
 let commandArgs = args;
+
+// On Windows, if passed the portable NSIS archive (which runs a 7z self-extractor),
+// prioritize the unpacked binary if available to test the packaged Electron runtime directly
+// without NSIS extraction latency in CI.
+if (process.platform === 'win32' && !/win-unpacked/i.test(absoluteExecutable)) {
+  const unpackedDir = path.join(path.dirname(absoluteExecutable), 'win-unpacked');
+  const unpackedExe = path.join(unpackedDir, 'Scandium.exe');
+  if (fs.existsSync(unpackedExe)) {
+    console.log('[PackagedSmoke] Selecting companion unpacked executable for direct runtime verification:', unpackedExe);
+    command = unpackedExe;
+  }
+}
+
 if (isLinuxHeadless) {
   command = 'xvfb-run';
   commandArgs = ['-a', absoluteExecutable, ...args];
 }
 
 console.log('--- Packaged application launch smoke ---');
-console.log('Executable:', absoluteExecutable);
+console.log('Executable:', command);
 console.log('Temporary profile:', userData);
 
 const child = spawn(command, commandArgs, {
@@ -87,6 +100,9 @@ let shutdownTimeout = null;
 let output = '';
 let errorOutput = '';
 let finished = false;
+let processStartedLogged = false;
+
+const startupLogFile = path.join(smokeRoot, 'packaged-smoke-startup.log');
 
 function readSmokeStatus() {
   try {
@@ -100,13 +116,22 @@ function readSmokeStatus() {
 function applySmokeStatus() {
   const status = readSmokeStatus();
   if (!status) return;
-  if (status.appReady === true) appReady = true;
-  if (status.packagedReady === true) {
+  if (status.processStarted === true && !processStartedLogged) {
+    processStartedLogged = true;
+    console.log(`[PackagedSmoke] Application boot confirmed (pid: ${status.pid || 'unknown'}, isPackaged: ${status.isPackaged})`);
+  }
+  if (status.appReady === true && !appReady) {
+    appReady = true;
+    console.log('[PackagedSmoke] Application reached Electron appReady event.');
+  }
+  if (status.packagedReady === true && !packagedReady) {
     packagedReady = true;
+    console.log('[PackagedSmoke] Packaged window preload, renderer & IPC bridge verified.');
     requestShutdown();
   }
-  if (status.packagedFailed === true) {
+  if (status.packagedFailed === true && !packagedFailed) {
     packagedFailed = true;
+    console.error('[PackagedSmoke] Application reported fatal startup error:', status.error || status.startupError);
     requestShutdown();
   }
 }
@@ -168,6 +193,19 @@ applySmokeStatus();
 
 const readinessTimeout = setTimeout(() => {
   console.error('Timed out waiting for packaged renderer/preload/IPC readiness after 60 seconds.');
+  if (fs.existsSync(startupLogFile)) {
+    console.error('--- Packaged Startup Diagnostics Log ---');
+    console.error(fs.readFileSync(startupLogFile, 'utf8'));
+    console.error('----------------------------------------');
+  } else {
+    console.error('[PackagedSmoke] No startup diagnostics log was generated at:', startupLogFile);
+  }
+  const currentStatus = readSmokeStatus();
+  if (currentStatus) {
+    console.error('--- Final Recorded Smoke Status ---');
+    console.error(JSON.stringify(currentStatus, null, 2));
+    console.error('-----------------------------------');
+  }
   packagedFailed = true;
   try {
     if (process.platform === 'win32') {

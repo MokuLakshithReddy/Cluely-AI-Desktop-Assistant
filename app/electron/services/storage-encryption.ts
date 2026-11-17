@@ -162,7 +162,8 @@ export async function initStorageEncryptionAsync(): Promise<Buffer> {
 /**
  * Retrieves the 256-bit AES master key.
  * In production, the key is asynchronously initialized during startup via initStorageEncryptionAsync().
- * Synchronous safeStorage.encryptString and decryptString were deprecated in Electron v45 and removed in v46.
+ * Non-blocking safeStorage.encryptStringAsync and safeStorage.decryptStringAsync are used exclusively;
+ * legacy synchronous methods were deprecated in Electron v45 and removed in v46.
  * Fails closed in production environments if secure OS-backed storage was not initialized.
  */
 export function getMasterEncryptionKey(): Buffer {

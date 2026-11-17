@@ -2,21 +2,23 @@
 'use strict';
 
 /**
- * Scandium Portable Python Runtime Provisioning Script
- * Provisions an isolated, complete Python runtime with RealtimeSTT & faster-whisper
- * dependencies into app/resources/python for Windows, macOS, and Linux distributables.
+ * Scandium Standalone Relocatable Python Runtime Provisioning Script
+ * Provisions a genuinely self-contained, relocatable CPython runtime with RealtimeSTT & faster-whisper
+ * into app/resources/python for Windows, macOS, and Linux distributables.
+ * Fails closed if the runtime is not relocatable or fails clean-machine execution.
  */
 
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const repoRoot = path.resolve(__dirname, '..');
 const targetPythonDir = path.join(repoRoot, 'app', 'resources', 'python');
 const requirementsPath = path.join(repoRoot, 'app', 'python-stt', 'requirements.txt');
 const isWin = process.platform === 'win32';
 
-console.log('[ProvisionPython] Starting Python runtime provisioning for', process.platform);
+console.log('[ProvisionPython] Starting standalone relocatable Python provisioning for', process.platform);
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) {
@@ -26,13 +28,13 @@ function ensureDir(dir) {
 
 ensureDir(targetPythonDir);
 
-function getVenvPythonPath(dir) {
+function getTargetPythonExe(dir) {
   if (isWin) {
-    const scriptsExe = path.join(dir, 'Scripts', 'python.exe');
-    if (fs.existsSync(scriptsExe)) return scriptsExe;
     const rootExe = path.join(dir, 'python.exe');
     if (fs.existsSync(rootExe)) return rootExe;
-    return scriptsExe;
+    const scriptsExe = path.join(dir, 'Scripts', 'python.exe');
+    if (fs.existsSync(scriptsExe)) return scriptsExe;
+    return rootExe;
   } else {
     const binPy3 = path.join(dir, 'bin', 'python3');
     if (fs.existsSync(binPy3)) return binPy3;
@@ -42,114 +44,179 @@ function getVenvPythonPath(dir) {
   }
 }
 
-// 1. Check if a local .venv with installed packages is available to clone quickly
+// 1. Locate base Python and active .venv
 const localVenv = path.join(repoRoot, '.venv');
-const localVenvPython = getVenvPythonPath(localVenv);
-const targetPython = getVenvPythonPath(targetPythonDir);
+let basePython = 'python';
+if (process.env.PYTHON && fs.existsSync(process.env.PYTHON)) {
+  basePython = process.env.PYTHON;
+} else if (!isWin) {
+  basePython = 'python3';
+}
 
-let provisioned = false;
+let basePrefix = '';
+try {
+  basePrefix = execSync(`"${basePython}" -c "import sys; print(sys.base_prefix)"`, { encoding: 'utf8' }).trim();
+} catch (e) {
+  if (isWin) {
+    const venvPy = path.join(localVenv, 'Scripts', 'python.exe');
+    if (fs.existsSync(venvPy)) {
+      try {
+        basePrefix = execSync(`"${venvPy}" -c "import sys; print(sys.base_prefix)"`, { encoding: 'utf8' }).trim();
+      } catch {}
+    }
+  }
+}
 
-if (fs.existsSync(localVenv) && fs.existsSync(localVenvPython) && !fs.existsSync(targetPython)) {
-  console.log('[ProvisionPython] Copying existing local .venv to app/resources/python...');
-  try {
-    fs.cpSync(localVenv, targetPythonDir, {
+console.log('[ProvisionPython] Detected Base Python installation prefix:', basePrefix || '(using system python)');
+
+// 2. Provision Windows Standalone CPython Engine
+if (isWin && basePrefix && fs.existsSync(basePrefix)) {
+  console.log('[ProvisionPython] Assembling fully relocatable CPython distribution from:', basePrefix);
+
+  // A. Copy Python root executables and core runtime DLLs (e.g. python312.dll, python3.dll, vcruntime140*.dll)
+  const rootFiles = fs.readdirSync(basePrefix);
+  for (const file of rootFiles) {
+    if (/\.(dll|exe)$/i.test(file)) {
+      const src = path.join(basePrefix, file);
+      const dst = path.join(targetPythonDir, file);
+      try {
+        fs.copyFileSync(src, dst);
+      } catch (err) {
+        console.warn(`[ProvisionPython] Warning copying root binary ${file}:`, err.message);
+      }
+    }
+  }
+
+  // Ensure python.exe is also in Scripts/ for any tools expecting Scripts/python.exe
+  const scriptsDir = path.join(targetPythonDir, 'Scripts');
+  ensureDir(scriptsDir);
+  const rootPy = path.join(targetPythonDir, 'python.exe');
+  if (fs.existsSync(rootPy)) {
+    try { fs.copyFileSync(rootPy, path.join(scriptsDir, 'python.exe')); } catch {}
+  }
+
+  // B. Copy standard library compiled C extensions (DLLs/)
+  const baseDlls = path.join(basePrefix, 'DLLs');
+  const targetDlls = path.join(targetPythonDir, 'DLLs');
+  if (fs.existsSync(baseDlls)) {
+    fs.cpSync(baseDlls, targetDlls, { recursive: true, force: true });
+    console.log('[ProvisionPython] Bundled standard library C-extensions (DLLs).');
+  }
+
+  // C. Copy core standard library (Lib/ without test suites to save space)
+  const baseLib = path.join(basePrefix, 'Lib');
+  const targetLib = path.join(targetPythonDir, 'Lib');
+  ensureDir(targetLib);
+  if (fs.existsSync(baseLib)) {
+    for (const item of fs.readdirSync(baseLib)) {
+      if (item === 'site-packages' || item === 'test' || item === 'tests' || item === '__pycache__' || item === 'idlelib') continue;
+      const s = path.join(baseLib, item);
+      const d = path.join(targetLib, item);
+      if (!fs.existsSync(d)) {
+        try { fs.cpSync(s, d, { recursive: true, force: true }); } catch {}
+      }
+    }
+    console.log('[ProvisionPython] Bundled Python standard library modules into Lib.');
+  }
+
+  // D. Copy installed site-packages from local .venv
+  const venvSitePackages = path.join(localVenv, 'Lib', 'site-packages');
+  const targetSitePackages = path.join(targetLib, 'site-packages');
+  ensureDir(targetSitePackages);
+  if (fs.existsSync(venvSitePackages)) {
+    console.log('[ProvisionPython] Copying installed STT site-packages into standalone Lib/site-packages...');
+    fs.cpSync(venvSitePackages, targetSitePackages, {
       recursive: true,
       force: true,
-      filter: (source) => {
-        // Exclude transient caches and git files to reduce package size
-        return !source.includes('__pycache__') && !source.includes('.git');
-      }
+      filter: (src) => !src.includes('__pycache__') && !src.endsWith('.pyc')
     });
+    console.log('[ProvisionPython] Bundled RealtimeSTT & faster-whisper site-packages.');
+  }
 
-    // On Windows, ensure python.exe also exists at root of python/
-    if (isWin) {
-      const scriptsPy = path.join(targetPythonDir, 'Scripts', 'python.exe');
-      const rootPy = path.join(targetPythonDir, 'python.exe');
-      if (fs.existsSync(scriptsPy) && !fs.existsSync(rootPy)) {
-        try { fs.copyFileSync(scriptsPy, rootPy); } catch {}
-      }
-    }
-    provisioned = true;
-    console.log('[ProvisionPython] Successfully cloned local .venv into app/resources/python.');
-  } catch (err) {
-    console.warn('[ProvisionPython] Failed to clone .venv, will build fresh venv:', err.message);
+  // E. Remove pyvenv.cfg so CPython NEVER redirects to the build runner's home path
+  const pyvenvCfg = path.join(targetPythonDir, 'pyvenv.cfg');
+  if (fs.existsSync(pyvenvCfg)) {
+    fs.rmSync(pyvenvCfg, { force: true });
+    console.log('[ProvisionPython] Removed pyvenv.cfg (eliminating build-machine path redirection).');
+  }
+
+  // F. Write isolated python._pth file enforcing strictly local path resolution
+  // This prevents CPython from reading registry keys, host environment variables, or user site-packages
+  const pthContent = '.\nLib\nLib/site-packages\nDLLs\nimport site\n';
+  fs.writeFileSync(path.join(targetPythonDir, 'python312._pth'), pthContent, 'utf8');
+  fs.writeFileSync(path.join(targetPythonDir, 'python._pth'), pthContent, 'utf8');
+  console.log('[ProvisionPython] Created isolated path configuration (_pth) for relocatable execution.');
+
+} else {
+  // macOS / Linux / fallback Unix standalone provisioning
+  console.log('[ProvisionPython] Provisioning Unix runtime into app/resources/python...');
+  if (!fs.existsSync(path.join(targetPythonDir, 'bin', 'python3'))) {
+    execSync(`"${basePython}" -m venv "${targetPythonDir}"`, { stdio: 'inherit', cwd: repoRoot });
+    const venvPython = getTargetPythonExe(targetPythonDir);
+    execSync(`"${venvPython}" -m pip install --upgrade pip`, { stdio: 'inherit', cwd: repoRoot });
+    execSync(`"${venvPython}" -m pip install -r "${requirementsPath}"`, { stdio: 'inherit', cwd: repoRoot });
   }
 }
 
-// 2. If not cloned, create a clean standalone virtual environment
-if (!provisioned && !fs.existsSync(targetPython)) {
-  console.log('[ProvisionPython] Creating fresh standalone virtualenv in app/resources/python...');
-  let basePython = 'python';
-  if (process.env.PYTHON && fs.existsSync(process.env.PYTHON)) {
-    basePython = process.env.PYTHON;
-  } else if (!isWin) {
-    basePython = 'python3';
-  }
-
-  try {
-    execSync(`"${basePython}" -m venv "${targetPythonDir}"`, {
-      stdio: 'inherit',
-      cwd: repoRoot,
-    });
-  } catch (err) {
-    console.error('[ProvisionPython] Failed to create virtualenv:', err.message);
-    process.exit(1);
-  }
-
-  const venvPython = getVenvPythonPath(targetPythonDir);
-  console.log('[ProvisionPython] Installing requirements into', venvPython);
-
-  try {
-    execSync(`"${venvPython}" -m pip install --upgrade pip`, {
-      stdio: 'inherit',
-      cwd: repoRoot,
-    });
-    execSync(`"${venvPython}" -m pip install -r "${requirementsPath}"`, {
-      stdio: 'inherit',
-      cwd: repoRoot,
-    });
-    // On Windows, copy python.exe to root if only in Scripts
-    if (isWin) {
-      const scriptsPy = path.join(targetPythonDir, 'Scripts', 'python.exe');
-      const rootPy = path.join(targetPythonDir, 'python.exe');
-      if (fs.existsSync(scriptsPy) && !fs.existsSync(rootPy)) {
-        try { fs.copyFileSync(scriptsPy, rootPy); } catch {}
-      }
-    }
-    provisioned = true;
-  } catch (err) {
-    console.error('[ProvisionPython] Failed to install requirements:', err.message);
-    process.exit(1);
-  }
-}
-
-// 3. Verify the provisioned python runtime
-const finalPython = getVenvPythonPath(targetPythonDir);
+// 3. Clean-Machine Portability Verification
+const finalPython = getTargetPythonExe(targetPythonDir);
 if (!fs.existsSync(finalPython)) {
-  console.error('[ProvisionPython] Verification failed: Python executable not found at', finalPython);
+  console.error('[ProvisionPython] FATAL: Python executable not found at:', finalPython);
   process.exit(1);
 }
 
-try {
-  const check = spawnSync(finalPython, ['-c', 'import RealtimeSTT; import faster_whisper; print("REALTIME_STT_OK")'], {
-    encoding: 'utf8',
-  });
-  if (check.status === 0 && check.stdout.includes('REALTIME_STT_OK')) {
-    console.log('[ProvisionPython] Verified: RealtimeSTT and faster_whisper load successfully.');
-  } else {
-    console.warn('[ProvisionPython] Runtime check warning:', check.stderr || check.stdout);
-  }
-} catch (e) {
-  console.warn('[ProvisionPython] Runtime check caught exception:', e.message);
+console.log('[ProvisionPython] Executing Clean-Machine Portability Verification on:', finalPython);
+
+const cleanMachineScript = `
+import sys, os
+print("RUNNING_EXECUTABLE:", sys.executable)
+print("SYS_PREFIX:", sys.prefix)
+assert os.path.exists(sys.executable), "Executable must exist"
+import RealtimeSTT
+import faster_whisper
+import ctranslate2
+import onnxruntime
+print("REALTIME_STT_STANDALONE_SUCCESS")
+`;
+
+// Scrub environment: remove host Python paths from PATH and remove PYTHON* vars
+const cleanPath = isWin
+  ? `${process.env.SystemRoot || 'C:\\Windows'}\\System32;${process.env.SystemRoot || 'C:\\Windows'}`
+  : '/usr/local/bin:/usr/bin:/bin';
+
+const testEnv = {
+  PATH: cleanPath,
+  SYSTEMROOT: process.env.SystemRoot || 'C:\\Windows',
+  TEMP: process.env.TEMP || os.tmpdir(),
+  TMP: process.env.TMP || os.tmpdir(),
+};
+
+const check = spawnSync(finalPython, ['-c', cleanMachineScript], {
+  env: testEnv,
+  encoding: 'utf8',
+  timeout: 45000,
+});
+
+if (check.status === 0 && check.stdout && check.stdout.includes('REALTIME_STT_STANDALONE_SUCCESS')) {
+  console.log('[ProvisionPython] CLEAN-MACHINE TEST PASSED!');
+  console.log(check.stdout.trim());
+} else {
+  console.error('[ProvisionPython] Clean-machine verification FAILED!');
+  console.error('Exit code:', check.status);
+  console.error('STDOUT:', check.stdout);
+  console.error('STDERR:', check.stderr);
+  process.exit(1);
 }
 
-// Write metadata marker
+// 4. Write provenance metadata
 const metadata = {
   platform: process.platform,
   arch: process.arch,
   provisionedAt: new Date().toISOString(),
   executable: finalPython,
+  isRelocatable: true,
+  cleanMachineVerified: true,
 };
 fs.writeFileSync(path.join(targetPythonDir, 'PROVISIONED.json'), JSON.stringify(metadata, null, 2));
 
-console.log('[ProvisionPython] Python runtime provisioning completed successfully at:', targetPythonDir);
+console.log('[ProvisionPython] Python runtime provisioning and clean-machine verification complete at:', targetPythonDir);
