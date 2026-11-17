@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Release Packaging](#6-automated-verification--release-packaging)
+6. [Automated Verification & Test Suites (250/250 Passing)](#6-automated-verification--test-suites-250250-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -311,7 +311,7 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 ---
 
-## 6. Automated Verification & Release Packaging
+## 6. Automated Verification & Test Suites (250/250 Passing)
 
 The main-branch baseline run #237 passed the source verification job (249 Vitest tests plus one Electron UI/preload/IPC smoke test) but failed all three native packaging jobs. Remediation PR #78 then passed CI run #243 on Windows, macOS, and Linux: each platform provisioned the bundled CPython runtime, completed a real RealtimeSTT transcription from the committed JFK audio fixture, built its native distributable, and passed the packaged Electron renderer/preload/IPC launch and shutdown smoke test.
 
