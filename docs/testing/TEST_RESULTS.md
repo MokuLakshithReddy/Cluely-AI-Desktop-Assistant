@@ -9,6 +9,8 @@
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-17  
 
+> **Scope warning:** This is the Windows source-verification report, not a production release sign-off. CI run [#237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254) passed the 249 Vitest tests and one Electron development smoke check. The separate Python sidecar protocol runner reported 11 passed and 1 skipped; the skipped case was real STT inference because the test environment did not contain the bundled runtime. All three native packaging jobs failed before installer creation. See [PRODUCTION_READINESS.md](../production/PRODUCTION_READINESS.md).
+
 ---
 
 ## Execution Summary

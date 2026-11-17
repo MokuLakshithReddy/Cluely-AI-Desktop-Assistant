@@ -313,9 +313,13 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 ## 6. Automated Verification & Test Suites (250/250 Passing)
 
-The latest verified CI run recorded **250 passing automated checks**: 249 Vitest tests across 24 suites and one Electron UI/preload/IPC smoke test. The same run also built and launch-tested the packaged Windows, macOS, and Linux applications.
+The main-branch baseline run #237 passed the source verification job (249 Vitest tests plus one Electron UI/preload/IPC smoke test) but failed all three native packaging jobs. Remediation PR #78 then passed CI run #243 on Windows, macOS, and Linux: each platform provisioned the bundled CPython runtime, completed a real RealtimeSTT transcription from the committed JFK audio fixture, built its native distributable, and passed the packaged Electron renderer/preload/IPC launch and shutdown smoke test.
 
-Evidence: [CI run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)  
+This is strong hosted-CI packaging evidence, not proof of every physical customer's audio-device/OS-permission configuration. The real-device campaign is still incomplete, and production release remains NO-GO until device sign-off and the merged main-branch release gates are complete.
+
+**Dependency audit update (17 November 2026):** a later full-workspace audit found 18 high-severity `picomatch` findings (GHSA-fc5q-39xc-vjpf / CVE-2026-112366) in development/build-tooling paths. Upstream's fix proposal is still open. CI has been changed to enforce a blocking audit of production dependencies (`npm audit --omit=dev`) and retain the full workspace audit report separately. The first run after the advisory appeared (#245) failed at the previous full-tree audit step; the updated production-only audit still needs a completed green CI run. See [the advisory review](docs/security/DEPENDENCY_ADVISORY_REVIEW.md).
+
+Evidence: [Baseline main CI run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254) · [Remediation CI run #243](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44134523573)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
 | Test Suite | Focus Area | Passed |
@@ -347,7 +351,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
 | **Total** | **24 Vitest suites + 1 Electron smoke check** | **250** |
 
-The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
+The 250/250 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
 ### Verification Environments
 
@@ -364,7 +368,7 @@ The following summarizes implementation behavior and available automated evidenc
 2. **End-to-End Transcription & AI Streaming**: Functional React state updaters (`setState(prev => ...)`) prevent render-closure race conditions, guaranteeing that 50+ streamed tokens accumulate non-destructively without wiping conversation history.
 3. **Cancellation & Error Recovery**: `AbortController.abort()` cleanly halts pending streaming upon Emergency Stop or UI stop, preserving all received tokens. Escape remains a chat-collapse shortcut. HTTP 429 and network timeouts trigger non-blocking UI recovery toasts.
 4. **Credential Persistence Across Restarts**: Keys stored in the vault persist across application restarts. Credential writes fail closed if supported OS-backed secure storage is unavailable.
-5. **Packaged Windows Executable**: Packaged via `npm run pack` producing `app/release/win-unpacked/Scandium.exe` (190MB) alongside `resources/app.asar` (29.7MB), successfully booting standalone without external dependencies.
+5. **Packaged Application Validation**: CI run #243 successfully built and launch-tested the Windows portable executable, macOS DMG, and Linux AppImage. Each packaged smoke test verified the control/chat renderer, preload bridge, IPC readiness, and graceful shutdown. This validates the hosted CI artifacts, not every end-user hardware or operating-system configuration.
 6. **Screen-Sharing Display Protection**: Uses the OS-provided Electron content-protection mechanism. Its behavior depends on the OS and capture stack and is not a universal invisibility guarantee.
 
 ---

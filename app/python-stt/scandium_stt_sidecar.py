@@ -134,9 +134,15 @@ class ScandiumSTTEngine:
                 use_microphone=False,
                 spinner=False,
                 enable_realtime_transcription=True,
+                # Reuse the selected CPU model for interim and final results.
+                # This avoids loading a second Whisper model on memory-constrained machines.
+                use_main_model_for_realtime=True,
                 allowed_latency_limit=1000,
                 silero_use_onnx=True,
                 silero_backend="onnx",
+                # Keep start and end-of-speech detection on the same Silero
+                # ONNX backend so final segments close reliably for loopback audio.
+                silero_deactivity_detection=True,
                 download_root=self.download_root,
                 post_speech_silence_duration=0.6,
                 min_length_of_recording=0.5,
