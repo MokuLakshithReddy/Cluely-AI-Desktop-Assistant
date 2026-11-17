@@ -56,6 +56,9 @@ scratch/
 release-assets/
 publish-v1.0.2/
 
+# Local developer convenience launchers (never ship or commit)
+launch-scandium-dev.bat
+
 # Runtime state & vault storage
 *.vault
 *shared-state.json
