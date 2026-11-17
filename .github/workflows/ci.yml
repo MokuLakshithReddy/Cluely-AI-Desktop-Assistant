@@ -76,7 +76,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run Python STT protocol tests
+      - name: Install RealtimeSTT external-audio dependencies for integration tests
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check --no-warn-script-location -r app/python-stt/requirements.txt
+          python -m pip install --disable-pip-version-check --no-warn-script-location --no-deps RealtimeSTT==1.2.0
+          python -c "from RealtimeSTT import AudioToTextRecorder; import torch, faster_whisper; print('RealtimeSTT external-audio test runtime ready')"
+      - name: Run Python STT protocol and real-audio integration tests
         shell: bash
         run: |
           python app/python-stt/test_sidecar.py
@@ -170,11 +176,7 @@ jobs:
       - name: Remove unused PDF.js optional Node canvas stub before packaging
         working-directory: app
         run: node -e "const fs=require('node:fs');const p='node_modules/pdfjs-dist/node_modules/@napi-rs/canvas';if(fs.existsSync(p)||fs.lstatSync(p,{throwIfNoEntry:false})){fs.rmSync(p,{recursive:true,force:true});console.log('Removed PDF.js optional Node canvas stub; renderer uses the browser build.')}else{console.log('No optional Node canvas stub present.')}"
-      - name: Set up Python 3.12 for STT sidecar runtime
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Provision Python runtime and dependencies
+      - name: Provision standalone Python runtime and dependencies
         run: node scripts/provision-python-runtime.cjs
       - name: Provision native macOS Whisper.cpp binary
         if: matrix.platform == 'macos-dmg'
