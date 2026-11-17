@@ -2,221 +2,298 @@
 'use strict';
 
 /**
- * Scandium Standalone Relocatable Python Runtime Provisioning Script
- * Provisions a genuinely self-contained, relocatable CPython runtime with RealtimeSTT & faster-whisper
- * into app/resources/python for Windows, macOS, and Linux distributables.
- * Fails closed if the runtime is not relocatable or fails clean-machine execution.
+ * Builds a relocatable CPython runtime from a checksum-pinned python-build-standalone
+ * release, installs the STT requirements into that runtime, and verifies native imports
+ * with host Python search paths removed.
  */
-
-const { execSync, spawnSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const crypto = require('node:crypto');
+const { execFileSync, spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const targetPythonDir = path.join(repoRoot, 'app', 'resources', 'python');
 const requirementsPath = path.join(repoRoot, 'app', 'python-stt', 'requirements.txt');
-const isWin = process.platform === 'win32';
+const releaseTag = '20261110';
+const pythonVersion = '3.12.16';
 
-console.log('[ProvisionPython] Starting standalone relocatable Python provisioning for', process.platform);
+const assets = {
+  win32: {
+    x64: {
+      name: 'cpython-3.12.16+20261110-x86_64-pc-windows-msvc-install_only.tar.gz',
+      sha256: 'e23fe5b16926de1d81661b1a97352e89fb167549c55a6825796ccd0f32ec7f1b',
+    },
+  },
+  darwin: {
+    arm64: {
+      name: 'cpython-3.12.16+20261110-aarch64-apple-darwin-install_only.tar.gz',
+      sha256: 'e956e60bc9465d577ef8062059aa05cd3a2665b4b8678a2ed24e432368330b8f',
+    },
+    x64: {
+      name: 'cpython-3.12.16+20261110-x86_64-apple-darwin-install_only.tar.gz',
+      sha256: '83f2922437e6d546d0fcdb8c11f150a8e52787e8d9ea8651b1974e20908eb1bc',
+    },
+  },
+  linux: {
+    x64: {
+      name: 'cpython-3.12.16+20261110-x86_64-unknown-linux-gnu-install_only.tar.gz',
+      sha256: 'c2f87d4b4e8db3abddb0f116c6ccfc503d0cbdbb9ee8faacddad1b679ec12e99',
+    },
+    arm64: {
+      name: 'cpython-3.12.16+20261110-aarch64-unknown-linux-gnu-install_only.tar.gz',
+      sha256: '4792f81750282597fb2a3389fe18b945ed2ba6aad5e45ad406d122c58cb33081',
+    },
+  },
+};
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+function log(message) {
+  console.log('[ProvisionPython] ' + message);
+}
+
+function run(command, args, options = {}) {
+  execFileSync(command, args, {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    ...options,
+  });
+}
+
+function capture(command, args, options = {}) {
+  return execFileSync(command, args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+    ...options,
+  }).trim();
+}
+
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function getPythonExecutable() {
+  return process.platform === 'win32'
+    ? path.join(targetPythonDir, 'python.exe')
+    : path.join(targetPythonDir, 'bin', 'python3');
+}
+
+function findFiles(root, predicate, found = []) {
+  if (!fs.existsSync(root)) return found;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) findFiles(fullPath, predicate, found);
+    else if (entry.isFile() && predicate(fullPath)) found.push(fullPath);
+  }
+  return found;
+}
+
+function clearRuntimeDirectory() {
+  fs.mkdirSync(targetPythonDir, { recursive: true });
+  for (const name of fs.readdirSync(targetPythonDir)) {
+    if (name === 'README.md') continue;
+    fs.rmSync(path.join(targetPythonDir, name), { recursive: true, force: true });
   }
 }
 
-ensureDir(targetPythonDir);
-
-function getTargetPythonExe(dir) {
-  if (isWin) {
-    const rootExe = path.join(dir, 'python.exe');
-    if (fs.existsSync(rootExe)) return rootExe;
-    const scriptsExe = path.join(dir, 'Scripts', 'python.exe');
-    if (fs.existsSync(scriptsExe)) return scriptsExe;
-    return rootExe;
-  } else {
-    const binPy3 = path.join(dir, 'bin', 'python3');
-    if (fs.existsSync(binPy3)) return binPy3;
-    const binPy = path.join(dir, 'bin', 'python');
-    if (fs.existsSync(binPy)) return binPy;
-    return binPy3;
+function provisionPortAudio(sitePackages) {
+  const pyaudioDir = path.join(sitePackages, 'pyaudio');
+  if (!fs.existsSync(pyaudioDir)) {
+    throw new Error('PyAudio package directory is missing after requirements installation: ' + pyaudioDir);
   }
+
+  const extensions = findFiles(pyaudioDir, (file) =>
+    file.startsWith('_portaudio') && (file.endsWith('.so') || file.endsWith('.pyd'))
+  );
+  if (extensions.length === 0) {
+    throw new Error('PyAudio native extension was not found under ' + pyaudioDir);
+  }
+
+  if (process.platform === 'linux') {
+    let linkerCache = '';
+    try {
+      linkerCache = capture('ldconfig', ['-p']);
+    } catch (error) {
+      throw new Error('ldconfig is required to locate the system PortAudio library: ' + error.message);
+    }
+    const libraryLine = linkerCache.split(/\r?\n/).find((line) => /libportaudio\.so\.2/.test(line) && line.includes('=>'));
+    if (!libraryLine) {
+      throw new Error('libportaudio.so.2 was not found. Install portaudio19-dev and libportaudio2 first.');
+    }
+    const sourceLibrary = libraryLine.split('=>').pop().trim();
+    const bundledLibrary = path.join(pyaudioDir, 'libportaudio.so.2');
+    fs.copyFileSync(fs.realpathSync(sourceLibrary), bundledLibrary);
+    for (const extension of extensions) {
+      run('patchelf', ['--set-rpath', '$ORIGIN', extension]);
+    }
+    log('Bundled libportaudio.so.2 beside the PyAudio extension and set an origin-relative RPATH.');
+    return;
+  }
+
+  if (process.platform === 'darwin') {
+    const brewPrefix = capture('brew', ['--prefix', 'portaudio']);
+    const libDir = path.join(brewPrefix, 'lib');
+    const candidateNames = ['libportaudio.2.dylib', 'libportaudio.dylib'];
+    const sourceLibrary = candidateNames
+      .map((name) => path.join(libDir, name))
+      .find((file) => fs.existsSync(file));
+    if (!sourceLibrary) {
+      throw new Error('Homebrew PortAudio dylib was not found under ' + libDir);
+    }
+
+    const bundledName = 'libportaudio.2.dylib';
+    const bundledLibrary = path.join(pyaudioDir, bundledName);
+    fs.copyFileSync(fs.realpathSync(sourceLibrary), bundledLibrary);
+
+    for (const extension of extensions) {
+      const dependencies = capture('otool', ['-L', extension]);
+      const portAudioDependency = dependencies
+        .split(/\r?\n/)
+        .map((line) => line.trim().split(' (')[0].trim())
+        .find((line) => /libportaudio[^/]*\.dylib$/.test(line) || /libportaudio.*\.dylib$/.test(line));
+      if (!portAudioDependency) {
+        throw new Error('Could not identify the PortAudio dependency in ' + extension);
+      }
+      run('install_name_tool', ['-change', portAudioDependency, '@loader_path/' + bundledName, extension]);
+    }
+    log('Bundled libportaudio.2.dylib beside the PyAudio extension and patched its install name.');
+    return;
+  }
+
+  if (process.platform === 'win32') {
+    // The official Windows PyAudio wheel bundles its PortAudio runtime dependency.
+    log('Using the official Windows PyAudio wheel with its bundled PortAudio runtime.');
+    return;
+  }
+
+  throw new Error('Unsupported platform for PortAudio runtime bundling: ' + process.platform);
 }
 
-// 1. Locate base Python and active .venv
-const localVenv = path.join(repoRoot, '.venv');
-let basePython = 'python';
-if (process.env.PYTHON && fs.existsSync(process.env.PYTHON)) {
-  basePython = process.env.PYTHON;
-} else if (!isWin) {
-  basePython = 'python3';
+function main() {
+  const platformAssets = assets[process.platform];
+  const targetAsset = platformAssets && platformAssets[process.arch];
+  if (!targetAsset) {
+    throw new Error('No pinned CPython ' + pythonVersion + ' runtime is available for ' +
+      process.platform + '/' + process.arch);
+  }
+
+  log('Provisioning CPython ' + pythonVersion + ' for ' + process.platform + '/' + process.arch + '.');
+  clearRuntimeDirectory();
+
+  const archivePath = path.join(os.tmpdir(), targetAsset.name);
+  const archiveUrl = 'https://github.com/astral-sh/python-build-standalone/releases/download/' +
+    releaseTag + '/' + encodeURIComponent(targetAsset.name);
+
+  log('Downloading checksum-pinned standalone runtime: ' + targetAsset.name);
+  run(process.platform === 'win32' ? 'curl.exe' : 'curl', [
+    '--fail', '--location', '--retry', '3', '--output', archivePath, archiveUrl,
+  ]);
+
+  const actualDigest = sha256File(archivePath);
+  if (actualDigest !== targetAsset.sha256) {
+    throw new Error('CPython archive SHA-256 mismatch. Expected ' + targetAsset.sha256 + ', got ' + actualDigest);
+  }
+  log('CPython archive SHA-256 verified.');
+
+  run('tar', ['-xzf', archivePath, '-C', targetPythonDir, '--strip-components=1']);
+  fs.rmSync(archivePath, { force: true });
+
+  const pythonExe = getPythonExecutable();
+  if (!fs.existsSync(pythonExe)) {
+    throw new Error('Standalone CPython executable was not found at ' + pythonExe);
+  }
+
+  // Install into the standalone distribution itself. No runner .venv or absolute build path is copied.
+  try {
+    run(pythonExe, ['-m', 'pip', '--version']);
+  } catch {
+    run(pythonExe, ['-m', 'ensurepip', '--upgrade']);
+  }
+  run(pythonExe, [
+    '-m', 'pip', 'install', '--no-cache-dir', '--disable-pip-version-check',
+    '-r', requirementsPath,
+  ]);
+
+  const sitePackages = capture(pythonExe, [
+    '-c', "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+  ]);
+  if (!path.isAbsolute(sitePackages) || !fs.existsSync(sitePackages)) {
+    throw new Error('Standalone Python resolved an invalid site-packages directory: ' + sitePackages);
+  }
+
+  provisionPortAudio(sitePackages);
+
+  const smokeScript = [
+    'import os, sys',
+    'print("RUNNING_EXECUTABLE:", sys.executable)',
+    'print("SYS_PREFIX:", sys.prefix)',
+    'assert os.path.exists(sys.executable), "Python executable must exist"',
+    'import pyaudio',
+    'assert pyaudio.get_portaudio_version() is not None, "PortAudio must load"',
+    'import RealtimeSTT',
+    'import faster_whisper',
+    'import ctranslate2',
+    'import onnxruntime',
+    'print("REALTIME_STT_STANDALONE_SUCCESS")',
+  ].join('\n');
+
+  // Do not inherit Python, virtualenv, or dynamic-loader paths from the CI runner.
+  const cleanPath = process.platform === 'win32'
+    ? (process.env.SystemRoot || 'C:\\Windows') + '\\System32'
+    : '/usr/bin:/bin:/usr/sbin:/sbin';
+  const testEnv = {
+    PATH: cleanPath,
+    SYSTEMROOT: process.env.SystemRoot || 'C:\\Windows',
+    WINDIR: process.env.WINDIR || process.env.SystemRoot || 'C:\\Windows',
+    TEMP: process.env.TEMP || os.tmpdir(),
+    TMP: process.env.TMP || os.tmpdir(),
+    HOME: process.env.HOME || os.tmpdir(),
+  };
+
+  log('Running isolated runtime import verification without runner Python or loader paths.');
+  const check = spawnSync(pythonExe, ['-c', smokeScript], {
+    cwd: os.tmpdir(),
+    env: testEnv,
+    encoding: 'utf8',
+    timeout: 90000,
+  });
+
+  if (check.status !== 0 || !check.stdout || !check.stdout.includes('REALTIME_STT_STANDALONE_SUCCESS')) {
+    console.error('[ProvisionPython] Clean-runtime verification failed.');
+    console.error('Exit code:', check.status, 'signal:', check.signal);
+    console.error('STDOUT:', check.stdout);
+    console.error('STDERR:', check.stderr);
+    throw new Error('Bundled CPython runtime failed its isolated RealtimeSTT dependency check.');
+  }
+
+  log('ISOLATED RUNTIME VERIFICATION PASSED.');
+  process.stdout.write(check.stdout);
+
+  const metadata = {
+    pythonVersion,
+    pythonBuildRelease: releaseTag,
+    archive: targetAsset.name,
+    archiveSha256: targetAsset.sha256,
+    platform: process.platform,
+    arch: process.arch,
+    provisionedAt: new Date().toISOString(),
+    executable: process.platform === 'win32' ? 'python.exe' : 'bin/python3',
+    isRelocatable: true,
+    cleanRuntimeVerified: true,
+    portAudioBundled: true,
+  };
+  fs.writeFileSync(
+    path.join(targetPythonDir, 'PROVISIONED.json'),
+    JSON.stringify(metadata, null, 2) + '\n',
+    'utf8'
+  );
+
+  log('Standalone CPython and RealtimeSTT dependencies are ready in ' + targetPythonDir + '.');
 }
 
-let basePrefix = '';
 try {
-  basePrefix = execSync(`"${basePython}" -c "import sys; print(sys.base_prefix)"`, { encoding: 'utf8' }).trim();
-} catch (e) {
-  if (isWin) {
-    const venvPy = path.join(localVenv, 'Scripts', 'python.exe');
-    if (fs.existsSync(venvPy)) {
-      try {
-        basePrefix = execSync(`"${venvPy}" -c "import sys; print(sys.base_prefix)"`, { encoding: 'utf8' }).trim();
-      } catch {}
-    }
-  }
+  main();
+} catch (error) {
+  console.error('[ProvisionPython] FATAL:', error && error.stack ? error.stack : error);
+  process.exitCode = 1;
 }
-
-console.log('[ProvisionPython] Detected Base Python installation prefix:', basePrefix || '(using system python)');
-
-// 2. Provision Windows Standalone CPython Engine
-if (isWin && basePrefix && fs.existsSync(basePrefix)) {
-  console.log('[ProvisionPython] Assembling fully relocatable CPython distribution from:', basePrefix);
-
-  // A. Copy Python root executables and core runtime DLLs (e.g. python312.dll, python3.dll, vcruntime140*.dll)
-  const rootFiles = fs.readdirSync(basePrefix);
-  for (const file of rootFiles) {
-    if (/\.(dll|exe)$/i.test(file)) {
-      const src = path.join(basePrefix, file);
-      const dst = path.join(targetPythonDir, file);
-      try {
-        fs.copyFileSync(src, dst);
-      } catch (err) {
-        console.warn(`[ProvisionPython] Warning copying root binary ${file}:`, err.message);
-      }
-    }
-  }
-
-  // Ensure python.exe is also in Scripts/ for any tools expecting Scripts/python.exe
-  const scriptsDir = path.join(targetPythonDir, 'Scripts');
-  ensureDir(scriptsDir);
-  const rootPy = path.join(targetPythonDir, 'python.exe');
-  if (fs.existsSync(rootPy)) {
-    try { fs.copyFileSync(rootPy, path.join(scriptsDir, 'python.exe')); } catch {}
-  }
-
-  // B. Copy standard library compiled C extensions (DLLs/)
-  const baseDlls = path.join(basePrefix, 'DLLs');
-  const targetDlls = path.join(targetPythonDir, 'DLLs');
-  if (fs.existsSync(baseDlls)) {
-    fs.cpSync(baseDlls, targetDlls, { recursive: true, force: true });
-    console.log('[ProvisionPython] Bundled standard library C-extensions (DLLs).');
-  }
-
-  // C. Copy core standard library (Lib/ without test suites to save space)
-  const baseLib = path.join(basePrefix, 'Lib');
-  const targetLib = path.join(targetPythonDir, 'Lib');
-  ensureDir(targetLib);
-  if (fs.existsSync(baseLib)) {
-    for (const item of fs.readdirSync(baseLib)) {
-      if (item === 'site-packages' || item === 'test' || item === 'tests' || item === '__pycache__' || item === 'idlelib') continue;
-      const s = path.join(baseLib, item);
-      const d = path.join(targetLib, item);
-      if (!fs.existsSync(d)) {
-        try { fs.cpSync(s, d, { recursive: true, force: true }); } catch {}
-      }
-    }
-    console.log('[ProvisionPython] Bundled Python standard library modules into Lib.');
-  }
-
-  // D. Copy installed site-packages from local .venv
-  const venvSitePackages = path.join(localVenv, 'Lib', 'site-packages');
-  const targetSitePackages = path.join(targetLib, 'site-packages');
-  ensureDir(targetSitePackages);
-  if (fs.existsSync(venvSitePackages)) {
-    console.log('[ProvisionPython] Copying installed STT site-packages into standalone Lib/site-packages...');
-    fs.cpSync(venvSitePackages, targetSitePackages, {
-      recursive: true,
-      force: true,
-      filter: (src) => !src.includes('__pycache__') && !src.endsWith('.pyc')
-    });
-    console.log('[ProvisionPython] Bundled RealtimeSTT & faster-whisper site-packages.');
-  }
-
-  // E. Remove pyvenv.cfg so CPython NEVER redirects to the build runner's home path
-  const pyvenvCfg = path.join(targetPythonDir, 'pyvenv.cfg');
-  if (fs.existsSync(pyvenvCfg)) {
-    fs.rmSync(pyvenvCfg, { force: true });
-    console.log('[ProvisionPython] Removed pyvenv.cfg (eliminating build-machine path redirection).');
-  }
-
-  // F. Write isolated python._pth file enforcing strictly local path resolution
-  // This prevents CPython from reading registry keys, host environment variables, or user site-packages
-  const pthContent = '.\nLib\nLib/site-packages\nDLLs\nimport site\n';
-  fs.writeFileSync(path.join(targetPythonDir, 'python312._pth'), pthContent, 'utf8');
-  fs.writeFileSync(path.join(targetPythonDir, 'python._pth'), pthContent, 'utf8');
-  console.log('[ProvisionPython] Created isolated path configuration (_pth) for relocatable execution.');
-
-} else {
-  // macOS / Linux / fallback Unix standalone provisioning
-  console.log('[ProvisionPython] Provisioning Unix runtime into app/resources/python...');
-  if (!fs.existsSync(path.join(targetPythonDir, 'bin', 'python3'))) {
-    execSync(`"${basePython}" -m venv "${targetPythonDir}"`, { stdio: 'inherit', cwd: repoRoot });
-    const venvPython = getTargetPythonExe(targetPythonDir);
-    execSync(`"${venvPython}" -m pip install --upgrade pip`, { stdio: 'inherit', cwd: repoRoot });
-    execSync(`"${venvPython}" -m pip install -r "${requirementsPath}"`, { stdio: 'inherit', cwd: repoRoot });
-  }
-}
-
-// 3. Clean-Machine Portability Verification
-const finalPython = getTargetPythonExe(targetPythonDir);
-if (!fs.existsSync(finalPython)) {
-  console.error('[ProvisionPython] FATAL: Python executable not found at:', finalPython);
-  process.exit(1);
-}
-
-console.log('[ProvisionPython] Executing Clean-Machine Portability Verification on:', finalPython);
-
-const cleanMachineScript = `
-import sys, os
-print("RUNNING_EXECUTABLE:", sys.executable)
-print("SYS_PREFIX:", sys.prefix)
-assert os.path.exists(sys.executable), "Executable must exist"
-import RealtimeSTT
-import faster_whisper
-import ctranslate2
-import onnxruntime
-print("REALTIME_STT_STANDALONE_SUCCESS")
-`;
-
-// Scrub environment: remove host Python paths from PATH and remove PYTHON* vars
-const cleanPath = isWin
-  ? `${process.env.SystemRoot || 'C:\\Windows'}\\System32;${process.env.SystemRoot || 'C:\\Windows'}`
-  : '/usr/local/bin:/usr/bin:/bin';
-
-const testEnv = {
-  PATH: cleanPath,
-  SYSTEMROOT: process.env.SystemRoot || 'C:\\Windows',
-  TEMP: process.env.TEMP || os.tmpdir(),
-  TMP: process.env.TMP || os.tmpdir(),
-};
-
-const check = spawnSync(finalPython, ['-c', cleanMachineScript], {
-  env: testEnv,
-  encoding: 'utf8',
-  timeout: 45000,
-});
-
-if (check.status === 0 && check.stdout && check.stdout.includes('REALTIME_STT_STANDALONE_SUCCESS')) {
-  console.log('[ProvisionPython] CLEAN-MACHINE TEST PASSED!');
-  console.log(check.stdout.trim());
-} else {
-  console.error('[ProvisionPython] Clean-machine verification FAILED!');
-  console.error('Exit code:', check.status);
-  console.error('STDOUT:', check.stdout);
-  console.error('STDERR:', check.stderr);
-  process.exit(1);
-}
-
-// 4. Write provenance metadata
-const metadata = {
-  platform: process.platform,
-  arch: process.arch,
-  provisionedAt: new Date().toISOString(),
-  executable: finalPython,
-  isRelocatable: true,
-  cleanMachineVerified: true,
-};
-fs.writeFileSync(path.join(targetPythonDir, 'PROVISIONED.json'), JSON.stringify(metadata, null, 2));
-
-console.log('[ProvisionPython] Python runtime provisioning and clean-machine verification complete at:', targetPythonDir);
