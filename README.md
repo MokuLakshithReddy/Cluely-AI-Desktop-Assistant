@@ -317,6 +317,8 @@ The main-branch baseline run #237 passed the source verification job (249 Vitest
 
 This is strong hosted-CI packaging evidence, not proof of every physical customer's audio-device/OS-permission configuration. The real-device campaign is still incomplete, and production release remains NO-GO until device sign-off and the merged main-branch release gates are complete.
 
+**Dependency audit update (17 November 2026):** a later full-workspace audit found 18 high-severity `picomatch` findings (GHSA-fc5q-39xc-vjpf / CVE-2026-112366) in development/build-tooling paths. Upstream's fix proposal is still open. CI has been changed to enforce a blocking audit of production dependencies (`npm audit --omit=dev`) and retain the full workspace audit report separately. The first run after the advisory appeared (#245) failed at the previous full-tree audit step; the updated production-only audit still needs a completed green CI run. See [the advisory review](docs/security/DEPENDENCY_ADVISORY_REVIEW.md).
+
 Evidence: [Baseline main CI run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254) · [Remediation CI run #243](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44134523573)  
 Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 
@@ -349,7 +351,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
 | **Total** | **24 Vitest suites + 1 Electron smoke check** | **250** |
 
-The 125/125 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
+The 250/250 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
 ### Verification Environments
 
