@@ -1,35 +1,43 @@
-# Python Dependencies Software Bill of Materials (SBOM) & License Compliance
+# Python Runtime Inventory and Distribution Notes
 
-This document provides a verified Software Bill of Materials (SBOM) and license compliance audit for the local speech-to-text runtime (RealtimeSTT + faster-whisper) integrated into Scandium Assistant, generated directly from `app/python-stt/requirements.txt` and the resolved runtime environment.
+This document describes the packages declared for the local RealtimeSTT external-audio runtime. The exact resolved transitive package versions are recorded by the provisioning job in the generated `app/resources/python/PROVISIONED.json` and the CI logs; do not treat this declaration list as a complete transitive SBOM.
 
-## Declared Direct Dependencies (`requirements.txt`)
+## Interpreter
 
-All direct runtime dependencies for the local inference pipeline operate under permissive open-source licenses (Apache-2.0, MIT, BSD-3-Clause). There are zero GPL/AGPL copyleft dependencies or proprietary cloud service requirements, permitting royalty-free, zero-cost commercial distribution.
+| Item | Value |
+|---|---|
+| Distribution | Astral `python-build-standalone` install-only |
+| CPython | `3.12.16` |
+| Release tag | `20261110` |
+| Archive selection | Platform and architecture specific, pinned in `scripts/provision-python-runtime.cjs` |
+| Integrity | SHA-256 checked before extraction |
 
-| Package | Pinned Requirement | Installed / Resolved Version | License | Primary Purpose | Commercial Distribution Permitted |
-|---|---|---|---|---|---|
-| `RealtimeSTT` | `==1.2.0` | `1.2.0` | Apache-2.0 | Real-time voice activity detection, streaming audio chunk buffer, and transcript callback orchestrator | Yes (Permissive) |
-| `faster-whisper` | `==1.2.1` | `1.2.1` | MIT | CTranslate2-accelerated OpenAI Whisper inference engine | Yes (Permissive) |
-| `ctranslate2` | `==4.8.0` | `4.8.0` | MIT | Fast CPU/INT8 quantized inference engine optimized for Intel x86_64 AVX2/AVX-512 | Yes (Permissive) |
-| `silero-vad` | `==6.2.3` | `6.2.3` | MIT | Deep-learning voice activity detection model for accurate sentence boundary segmentation | Yes (Permissive) |
-| `webrtcvad-wheels` | `>=2.0.14` | `2.0.14` | MIT | WebRTC Voice Activity Detector compiled wheels | Yes (Permissive) |
-| `onnxruntime` | `>=1.16.0` | `1.32.0` | MIT | Portable runtime for neural network execution | Yes (Permissive) |
-| `numpy` | `>=1.24.0` | `2.5.5` | BSD-3-Clause | Vectorized 16-bit PCM buffer conversion and resampling math | Yes (Permissive) |
+## Direct runtime packages
 
-## Transitive Runtime Dependencies
+| Package | Version / requirement | Role |
+|---|---|---|
+| `RealtimeSTT` | `1.2.0` (`--no-deps`) | External-audio recorder, VAD orchestration, and transcription lifecycle |
+| `faster-whisper` | `1.2.1` | Whisper inference backend |
+| `ctranslate2` | `4.8.0` | CPU inference runtime |
+| `silero-vad` | `6.2.3` with `onnx-cpu` extra | Voice activity detection |
+| `webrtcvad-wheels` | `2.0.14` | WebRTC VAD |
+| `onnxruntime` | `1.32.0` | Silero ONNX execution |
+| `numpy` | `2.5.5` | PCM and numerical processing |
+| `scipy` | `1.17.1` | Resampling and signal processing |
+| `soundfile` | `0.13.1` | Audio-file decode for integration testing and manual-audio helpers |
+| `torch` | `2.15.0` | RealtimeSTT initialization and tensor runtime |
+| `halo` | `0.0.31` | RealtimeSTT recorder status output dependency |
+| `colorama` | `0.4.6` | RealtimeSTT terminal formatting dependency |
 
-| Package | Resolved Version | License | Note |
-|---|---|---|---|
-| `PyAudio` | `0.2.14` | MIT | Audio interface bindings |
-| `scipy` | `1.17.1` | BSD-3-Clause | Signal processing filters |
-| `torch` | `2.15.0` | BSD-style / Apache-2.0 | Underlying tensor library required by faster-whisper |
-| `torchaudio` | `2.11.1` | BSD-2-Clause | Audio waveform operations |
-| `tokenizers` | `0.23.3` | Apache-2.0 | HuggingFace byte-pair tokenization |
-| `huggingface-hub` | `2.4.0` | Apache-2.0 | Offline model caching utilities |
+## Deliberately excluded microphone stack
 
-## Isolation & Security Boundaries
+`PyAudio`, `PortAudio`, and `torchaudio` are not installed by this Scandium runtime. The application captures system audio in Electron, converts it to mono 16 kHz PCM, and feeds that data to RealtimeSTT using `use_microphone=False`. In RealtimeSTT 1.2.0, the PyAudio import is inside the microphone reader worker, which is not started when microphone capture is disabled.
 
-1. **Inter-Process Boundary**: The Python STT engine runs as an isolated unprivileged child process communicating exclusively with Electron via bidirectional NDJSON stdio pipes (`stdin`/`stdout`).
-2. **Offline Local Inference**: Speech models (`tiny.en`, `base.en`, `small.en`) are cached in the user's local application data directory. Once fetched, the sidecar operates 100% offline with zero outbound network calls.
-3. **No Microphone Access in RealtimeSTT Mode**: System loopback audio (`getDisplayMedia`) is the only audio source captured and fed to the sidecar. The microphone remains idle and disconnected.
-4. **Memory Safety & Backpressure**: The Electron-to-Python bridge enforces a strict bounded queue (`MAX_AUDIO_QUEUE = 100`) and halts input during backpressure until the stdin pipe drains.
+Changing the sidecar to enable microphone capture invalidates this dependency profile. A separate cross-platform native audio dependency and clean-machine test would be required.
+
+## Security and packaging notes
+
+1. The Python sidecar runs as an unprivileged child process and exchanges newline-delimited JSON messages over standard input/output.
+2. Model files are downloaded to the user's application data cache on first use; model downloads are separate from the bundled Python interpreter.
+3. Provisioning rejects unsupported platform/architecture combinations and fails if the downloaded interpreter archive does not match its pinned SHA-256.
+4. Runtime package resolution is recorded during provisioning. Review the resulting package inventory and each upstream license notice before commercial redistribution; this file alone is not legal advice or a complete license audit.
