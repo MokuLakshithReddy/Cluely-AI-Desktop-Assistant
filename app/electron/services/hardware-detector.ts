@@ -34,6 +34,65 @@ export interface HardwareProfile {
   warnings: string[];
 }
 
+const VIRTUAL_ADAPTER_PATTERNS = [
+  'parsec',
+  'virtual',
+  'microsoft basic',
+  'microsoft remote',
+  'rdp',
+  'mirror',
+  'indirect',
+  'idd sample',
+  'vmware',
+  'virtualbox',
+  'citrix',
+  'splashtop',
+  'spacedesk',
+  'displaylink',
+  'luminoncore',
+  'meta virtual',
+];
+
+const VENDOR_PRIORITY: Record<GpuInfo['vendor'], number> = {
+  nvidia: 5,
+  apple: 4,
+  amd: 3,
+  intel: 2,
+  unknown: 1,
+};
+
+export function isVirtualDisplayAdapter(name: string): boolean {
+  const lower = (name || '').toLowerCase();
+  return VIRTUAL_ADAPTER_PATTERNS.some(pattern => lower.includes(pattern));
+}
+
+/**
+ * Selects the best physical hardware GPU as primary, deprioritizing virtual/software
+ * display adapters (e.g., Parsec, RDP, Microsoft Basic Render Driver) even when
+ * Windows enumerates them first.
+ */
+export function selectPrimaryGpu(gpus: GpuInfo[]): GpuInfo {
+  if (!gpus || gpus.length === 0) {
+    return { name: 'Generic / Software Display', vendor: 'unknown' };
+  }
+
+  const scored = gpus.map((gpu, index) => {
+    const isVirtual = isVirtualDisplayAdapter(gpu.name);
+    const vendorScore = VENDOR_PRIORITY[gpu.vendor] ?? 1;
+    const vramScore = typeof gpu.vramMb === 'number' && gpu.vramMb > 0 ? gpu.vramMb : 0;
+    return { gpu, index, isVirtual, vendorScore, vramScore };
+  });
+
+  scored.sort((a, b) => {
+    if (a.isVirtual !== b.isVirtual) return a.isVirtual ? 1 : -1;
+    if (a.vendorScore !== b.vendorScore) return b.vendorScore - a.vendorScore;
+    if (a.vramScore !== b.vramScore) return b.vramScore - a.vramScore;
+    return a.index - b.index;
+  });
+
+  return scored[0].gpu;
+}
+
 export class HardwareDetector {
   private cachedProfile: HardwareProfile | null = null;
   private lastChecked = 0;
@@ -58,7 +117,7 @@ export class HardwareDetector {
 
     const { totalDiskMb, freeDiskMb } = this.getDiskSpace();
     const gpus = await this.detectGpus(platform);
-    const primaryGpu = gpus.length > 0 ? gpus[0] : { name: 'Generic / Software Display', vendor: 'unknown' as const };
+    const primaryGpu = selectPrimaryGpu(gpus);
 
     const isNvidiaCuda = gpus.some(g => g.vendor === 'nvidia');
     const isAppleSilicon = platform === 'darwin' && (arch === 'arm64' || cpuModel.toLowerCase().includes('apple'));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateThumbnailSize } from '../electron/domains/screenshot';
+import { calculateThumbnailSize, selectBestScreenSource } from '../electron/domains/screenshot';
 
 describe('Screen Capture & Thumbnail Scaling Subsystem', () => {
   it('passes unscaled bounds when screen resolution <= 1920x1080', () => {
@@ -40,5 +40,23 @@ describe('Screen Capture & Thumbnail Scaling Subsystem', () => {
     const res = calculateThumbnailSize(min);
     expect(res.width).toBe(1);
     expect(res.height).toBe(1);
+  });
+
+  it('prefers the exact display match when non-empty and falls back past empty virtual displays', () => {
+    const emptySource = {
+      id: 'screen:0:0',
+      display_id: '100',
+      thumbnail: { isEmpty: () => true, toPNG: () => Buffer.alloc(0) },
+    };
+    const activeSource = {
+      id: 'screen:1:0',
+      display_id: '200',
+      thumbnail: { isEmpty: () => false, toPNG: () => Buffer.from([1, 2, 3]) },
+    };
+
+    expect(selectBestScreenSource([emptySource, activeSource], '200')?.id).toBe('screen:1:0');
+    expect(selectBestScreenSource([emptySource, activeSource], '100')?.id).toBe('screen:1:0');
+    expect(selectBestScreenSource([emptySource], '100')).toBeNull();
+    expect(selectBestScreenSource([], '100')).toBeNull();
   });
 });

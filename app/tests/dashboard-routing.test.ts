@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseHashRoute } from '../src/App';
+import { normalizeDashboardTab } from '../src/components/Dashboard';
 
 describe('Dashboard Route and Hash Parsing', () => {
   it('parses empty or missing hash as default "all" view', () => {
@@ -42,6 +43,19 @@ describe('Dashboard Route and Hash Parsing', () => {
       route: 'dashboard',
       tab: 'knowledge',
     });
+  });
+
+  it('normalizes valid tabs, common aliases, and unknown tab names safely without blank panels', () => {
+    expect(normalizeDashboardTab('subscription')).toBe('subscription');
+    expect(normalizeDashboardTab('license')).toBe('subscription');
+    expect(normalizeDashboardTab('keys')).toBe('models');
+    expect(normalizeDashboardTab('api-keys')).toBe('models');
+    expect(normalizeDashboardTab('local')).toBe('hardware');
+    expect(normalizeDashboardTab('privacy')).toBe('security');
+    expect(normalizeDashboardTab('sessions')).toBe('history');
+    expect(normalizeDashboardTab('nonexistent-tab')).toBe('models');
+    expect(normalizeDashboardTab('')).toBe('models');
+    expect(normalizeDashboardTab(undefined)).toBe('models');
   });
 });
 

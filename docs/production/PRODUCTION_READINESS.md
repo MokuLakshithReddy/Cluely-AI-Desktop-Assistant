@@ -37,12 +37,12 @@ The remediation branch replaces runner-derived Python copies with a checksum-pin
 
 ## Source-level automated verification status (PR #78 Windows CI run #250)
 
-**250/250 automated checks passing (249/249 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
+**255/255 automated checks passing (254/254 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
 
-The test suite consists of **250 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
+The test suite consists of **255 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
 
-- `npm test — 249 automated tests across 24 suites
-- `npm run test:report — 250 total checks: 249 Vitest + 1 Electron E2E smoke
+- `npm test — 254 automated tests across 24 suites
+- `npm run test:report — 255 total checks: 254 Vitest + 1 Electron E2E smoke
 
 The following breakdown is regenerated from Vitest and Electron smoke evidence. Its counts are not a permanent product-quality or production-readiness claim.
 
@@ -53,8 +53,8 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 3.  tests/credential-vault.test.ts       14 passed (Credential Vault & Secret Protection Subsystem)
 4.  tests/device-evidence-validator.test.ts 13 passed (device evidence campaign validator)
 5.  tests/e2e-desktop-session.test.ts    6 passed (Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs))
-6.  tests/entitlements.test.ts           6 passed (Commercial Subscription & Entitlements Matrix)
-7.  tests/hardware-detector.test.ts      6 passed (Hardware Compatibility Subsystem & Model Recommendation)
+6.  tests/entitlements.test.ts           8 passed (Commercial Subscription & Entitlements Matrix)
+7.  tests/hardware-detector.test.ts      7 passed (Hardware Compatibility Subsystem & Model Recommendation)
 8.  tests/ipc-security.test.ts           35 passed (IPC Security & Origin Validation Subsystem)
 9.  tests/knowledge-rag.test.ts          12 passed (Knowledge Base & Document Retrieval (RAG) Subsystem)
 10.  tests/license-manager.test.ts        11 passed (Lemon Squeezy Licensing & Offline Grace Subsystem)
@@ -68,14 +68,14 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 18.  tests/whisper-runtime.test.ts        7 passed (Local Speech Recognition (whisper.cpp) Subsystem)
 19.  tests/window-coordinator.test.ts     6 passed (Window close recovery, macOS reinitialization & listener idempotency)
 20.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
-21.  tests/dashboard-routing.test.ts      4 passed (Dashboard Route and Hash Parsing)
-22.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
-23.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
-24.  tests/screen-capture.test.ts         5 passed (Screen Capture & Thumbnail Scaling Subsystem)
+21.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
+22.  tests/dashboard-routing.test.ts      5 passed (Dashboard Route and Hash Parsing)
+23.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
+24.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
 25.  tests/electron-smoke.cjs         1/1 passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)
 --------------------------------------------------------------------------------------
-Subtotal (Vitest Test Suites):      249 passing unit & integration tests
-Grand Total:                        250 passing checks / 250 total (100% Pass Rate)
+Subtotal (Vitest Test Suites):      254 passing unit & integration tests
+Grand Total:                        255 passing checks / 255 total (100% Pass Rate)
 ======================================================================================
 ```
 

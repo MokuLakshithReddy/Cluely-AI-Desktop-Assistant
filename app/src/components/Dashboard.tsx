@@ -35,7 +35,47 @@ import { StateUpdater } from '../hooks/useSharedState';
 import { createKnowledgeDoc, parseDocumentFile } from '../lib/knowledge';
 import { getSubscriptionPageUrl } from '../lib/subscription';
 
-type DashboardTab = 'models' | 'hardware' | 'subscription' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security';
+export type DashboardTab = 'models' | 'hardware' | 'subscription' | 'knowledge' | 'shortcuts' | 'history' | 'desktop' | 'security';
+
+const VALID_DASHBOARD_TABS = new Set<DashboardTab>([
+  'models',
+  'hardware',
+  'subscription',
+  'knowledge',
+  'shortcuts',
+  'history',
+  'desktop',
+  'security',
+]);
+
+const DASHBOARD_TAB_ALIASES: Record<string, DashboardTab> = {
+  license: 'subscription',
+  licensing: 'subscription',
+  subscriptions: 'subscription',
+  billing: 'subscription',
+  plans: 'subscription',
+  keys: 'models',
+  apikeys: 'models',
+  'api-keys': 'models',
+  local: 'hardware',
+  ollama: 'hardware',
+  whisper: 'hardware',
+  stt: 'hardware',
+  privacy: 'security',
+  rag: 'knowledge',
+  docs: 'knowledge',
+  sessions: 'history',
+  archive: 'history',
+};
+
+export function normalizeDashboardTab(tab?: string | null, fallback: DashboardTab = 'models'): DashboardTab {
+  if (!tab || typeof tab !== 'string') return fallback;
+  const normalized = tab.trim().toLowerCase();
+  if (VALID_DASHBOARD_TABS.has(normalized as DashboardTab)) {
+    return normalized as DashboardTab;
+  }
+  return DASHBOARD_TAB_ALIASES[normalized] || fallback;
+}
 
 interface DashboardProps {
   state: SharedState;
@@ -44,24 +84,24 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initialTab }) => {
-  const [activeTab, setActiveTab] = useState<DashboardTab>(
-    initialTab || 'models'
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() =>
+    normalizeDashboardTab(initialTab)
   );
 
   useEffect(() => {
     if (initialTab) {
-      setActiveTab(initialTab);
+      setActiveTab(normalizeDashboardTab(initialTab));
     }
   }, [initialTab]);
 
   useEffect(() => {
     const unsubscribe = window.desktopBridge?.onDashboardSwitchTab?.((tab: any) => {
-      setActiveTab(tab);
+      setActiveTab(normalizeDashboardTab(tab));
     });
 
     const handleCustomEvent = (e: any) => {
       const tab = e.detail;
-      if (tab) setActiveTab(tab);
+      if (tab) setActiveTab(normalizeDashboardTab(tab));
     };
     window.addEventListener('scandium-dashboard-tab', handleCustomEvent as EventListener);
     window.addEventListener('cluely-dashboard-tab', handleCustomEvent as EventListener);
@@ -413,7 +453,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
               </div>
               <div>
                 <h2 className="text-sm font-bold text-slate-100">Scandium</h2>
-                <p className="text-[10px] text-slate-500">v{state.appVersion} • Web Verified</p>
+                <p className="text-[10px] text-slate-500">v{state.appVersion} • {isWeb ? 'Web Preview' : 'Desktop Runtime'}</p>
               </div>
             </div>
           </div>

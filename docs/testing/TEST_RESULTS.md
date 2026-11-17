@@ -3,13 +3,11 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 250/250 Passing (100% Pass Rate)  
+**Test Status**: 255/255 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `362648548442b54cd7d9445244b74535d9573bb0`  
+**Source revision**: `3b3fba370914ab2b0aaf973f591594a0fcc85645`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-17  
-
-> **Scope warning:** This is the Windows source-verification report, not a production release sign-off. CI run [#237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254) passed the 249 Vitest tests and one Electron development smoke check. The separate Python sidecar protocol runner reported 11 passed and 1 skipped; the skipped case was real STT inference because the test environment did not contain the bundled runtime. All three native packaging jobs failed before installer creation. See [PRODUCTION_READINESS.md](../production/PRODUCTION_READINESS.md).
 
 ---
 
@@ -22,8 +20,8 @@
 | `credential-vault.test.ts` | Credential Vault & Secret Protection Subsystem | 14 | 14 | 0 | **PASSED** |
 | `device-evidence-validator.test.ts` | device evidence campaign validator | 13 | 13 | 0 | **PASSED** |
 | `e2e-desktop-session.test.ts` | Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs) | 6 | 6 | 0 | **PASSED** |
-| `entitlements.test.ts` | Commercial Subscription & Entitlements Matrix | 6 | 6 | 0 | **PASSED** |
-| `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 6 | 6 | 0 | **PASSED** |
+| `entitlements.test.ts` | Commercial Subscription & Entitlements Matrix | 8 | 8 | 0 | **PASSED** |
+| `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 7 | 7 | 0 | **PASSED** |
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 35 | 35 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
 | `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 11 | 11 | 0 | **PASSED** |
@@ -37,12 +35,12 @@
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 | 7 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
-| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 4 | 4 | 0 | **PASSED** |
-| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
-| `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 5 | 5 | 0 | **PASSED** |
+| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 5 | 5 | 0 | **PASSED** |
+| `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 6 | 6 | 0 | **PASSED** |
+| `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **250** | **250** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **255** | **255** | **0** | **100% PASS** |
 
 ---
 
@@ -121,6 +119,8 @@
 ✓ correctly maps Pro tier capabilities
 ✓ enforces mode gating across tiers
 ✓ enforces BYOK provider gating across tiers
+✓ enables the developer override only with an explicit flag in an unpackaged non-production build
+✓ maps developer override to Pro without altering the underlying licensed tier
 ✓ keeps client frontend entitlements in exact sync with main process rules
 ```
 
@@ -132,6 +132,7 @@
 ✓ falls back to 1B model when available free RAM is constrained despite 16GB total RAM
 ✓ recommends lightweight 1B models and warns when RAM is constrained (<8GB)
 ✓ classifies GPU vendors accurately
+✓ prefers physical GPUs over virtual display adapters such as Parsec or RDP
 ```
 
 ### 8. IPC Security & Origin Validation Subsystem (`tests/ipc-security.test.ts`)
@@ -359,24 +360,7 @@
 ✓ hides incomplete context preamble while streaming so it does not flicker on screen
 ```
 
-### 21. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
-```text
-✓ parses empty or missing hash as default "all" view
-✓ parses direct routes without query parameters
-✓ correctly extracts route and tab query parameters from complex hashes
-✓ handles leading slash with query parameters
-```
-
-### 22. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
-```text
-✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
-✓ purgeAllData wipes in-memory vault keys and stored session archives
-✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
-✓ abortAiStream returns false for unknown requestId without aborting other requests
-✓ exposes window lifecycle controls minimizeApp and quitApp safely
-```
-
-### 23. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+### 21. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
 ```text
 ✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
 ✓ preserves multi-turn conversation history across multiple consecutive queries
@@ -384,13 +368,32 @@
 ✓ guarantees state immutability when updating session records
 ```
 
-### 24. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 22. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+```text
+✓ parses empty or missing hash as default "all" view
+✓ parses direct routes without query parameters
+✓ correctly extracts route and tab query parameters from complex hashes
+✓ handles leading slash with query parameters
+✓ normalizes valid tabs, common aliases, and unknown tab names safely without blank panels
+```
+
+### 23. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
 ✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
 ✓ preserves aspect ratio when height is greater than width (portrait display)
 ✓ handles boundary 1x1 minimal screen dimension safely
+✓ prefers the exact display match when non-empty and falls back past empty virtual displays
+```
+
+### 24. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+```text
+✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
+✓ purgeAllData wipes in-memory vault keys and stored session archives
+✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
+✓ abortAiStream returns false for unknown requestId without aborting other requests
+✓ exposes window lifecycle controls minimizeApp and quitApp safely
 ```
 
 ### 25. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)

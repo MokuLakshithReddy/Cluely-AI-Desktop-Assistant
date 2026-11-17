@@ -25,6 +25,35 @@ export function calculateThumbnailSize(bounds: { width: number; height: number }
   };
 }
 
+export interface ScreenSourceLike {
+  id: string;
+  display_id?: string;
+  thumbnail: {
+    isEmpty(): boolean;
+    toPNG(): Buffer;
+  };
+}
+
+/**
+ * Selects the screen source matching targetDisplayId when it has a valid non-empty
+ * thumbnail, falling back to the first non-empty source (skipping offline virtual
+ * displays or adapters that report empty frames).
+ */
+export function selectBestScreenSource<T extends ScreenSourceLike>(
+  sources: T[],
+  targetDisplayId: string
+): T | null {
+  if (!sources || sources.length === 0) return null;
+
+  const exactMatch = sources.find(
+    s => s.display_id === targetDisplayId && s.thumbnail && !s.thumbnail.isEmpty()
+  );
+  if (exactMatch) return exactMatch;
+
+  const firstNonEmpty = sources.find(s => s.thumbnail && !s.thumbnail.isEmpty());
+  return firstNonEmpty || null;
+}
+
 export class ScreenshotService {
   private isCapturing = false;
 
@@ -56,12 +85,13 @@ export class ScreenshotService {
         throw new Error('No screen sources found by desktopCapturer');
       }
 
-      // Match source by display ID, or take the first source
-      const matchedSource =
-        sources.find(s => s.display_id === targetDisplay.id.toString()) || sources[0];
+      // Match source by display ID when non-empty, otherwise fall back to the first non-empty screen source
+      const matchedSource = selectBestScreenSource(sources, targetDisplay.id.toString());
 
       if (!matchedSource || matchedSource.thumbnail.isEmpty()) {
-        throw new Error('Captured screen thumbnail is empty or unavailable');
+        throw new Error(
+          'Captured screen thumbnail is empty or unavailable. Ensure your display is unlocked and screen-capture permissions are granted.'
+        );
       }
 
       const pngBuffer = matchedSource.thumbnail.toPNG();

@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { HardwareDetector } from '../electron/services/hardware-detector';
+import {
+  HardwareDetector,
+  isVirtualDisplayAdapter,
+  selectPrimaryGpu,
+} from '../electron/services/hardware-detector';
 import os from 'os';
 
 describe('Hardware Compatibility Subsystem & Model Recommendation', () => {
@@ -83,5 +87,26 @@ describe('Hardware Compatibility Subsystem & Model Recommendation', () => {
     expect(fn('Apple M3 Pro Max')).toBe('apple');
     expect(fn('AMD Radeon RX 7900 XTX')).toBe('amd');
     expect(fn('Microsoft Basic Render Driver')).toBe('unknown');
+  });
+
+  it('prefers physical GPUs over virtual display adapters such as Parsec or RDP', () => {
+    expect(isVirtualDisplayAdapter('Parsec Virtual Display Adapter')).toBe(true);
+    expect(isVirtualDisplayAdapter('Microsoft Basic Render Driver')).toBe(true);
+    expect(isVirtualDisplayAdapter('Intel(R) Arc(TM) 140V GPU (8GB)')).toBe(false);
+
+    const primary = selectPrimaryGpu([
+      { name: 'Parsec Virtual Display Adapter', vendor: 'unknown' },
+      { name: 'Intel(R) Arc(TM) 140V GPU (8GB)', vendor: 'intel', vramMb: 2048 },
+    ]);
+    expect(primary.name).toBe('Intel(R) Arc(TM) 140V GPU (8GB)');
+    expect(primary.vendor).toBe('intel');
+
+    const discretePrimary = selectPrimaryGpu([
+      { name: 'Intel(R) UHD Graphics', vendor: 'intel', vramMb: 1024 },
+      { name: 'NVIDIA GeForce RTX 4070', vendor: 'nvidia', vramMb: 12288 },
+    ]);
+    expect(discretePrimary.name).toBe('NVIDIA GeForce RTX 4070');
+
+    expect(selectPrimaryGpu([]).name).toBe('Generic / Software Display');
   });
 });
