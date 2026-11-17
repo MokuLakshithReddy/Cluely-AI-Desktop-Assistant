@@ -93,7 +93,36 @@ def main() -> int:
                 beam_size=1,
             )
             print(
-                "[RealtimeSTTIntegration] Recorder initialized; feeding system-audio PCM.",
+                "[RealtimeSTTIntegration] Recorder initialized; arming the app-style text consumer.",
+                flush=True,
+            )
+
+            # Scandium's production sidecar continuously calls recorder.text()
+            # on its worker thread before audio arrives. RealtimeSTT arms
+            # voice-activity start/stop handling while text() is waiting, so
+            # mirror that concurrency here rather than feeding a whole clip
+            # before requesting its transcript.
+            transcription_done = threading.Event()
+            transcription_result: dict[str, object] = {}
+
+            def collect_transcript() -> None:
+                try:
+                    transcription_result["text"] = recorder.text()
+                except BaseException as exc:
+                    transcription_result["error"] = exc
+                finally:
+                    transcription_done.set()
+
+            transcription_thread = threading.Thread(
+                target=collect_transcript,
+                name="RealtimeSTTIntegrationTextConsumer",
+                daemon=True,
+            )
+            transcription_thread.start()
+            time.sleep(0.1)
+
+            print(
+                "[RealtimeSTTIntegration] Text consumer armed; feeding system-audio PCM.",
                 flush=True,
             )
 
@@ -121,8 +150,24 @@ def main() -> int:
             raise TimeoutError("RealtimeSTT did not drain the queued audio within 60 seconds.")
 
         print("[RealtimeSTTIntegration] Audio queue drained; waiting for final transcript.", flush=True)
-        transcript = recorder.text()
-        transcript = " ".join((transcript or "").split())
+        if not transcription_done.wait(timeout=120):
+            print(
+                "[RealtimeSTTIntegration] Transcript consumer did not return after VAD finalization.",
+                file=sys.stderr,
+                flush=True,
+            )
+            try:
+                recorder.abort()
+            except Exception:
+                pass
+            transcription_thread.join(timeout=5)
+            raise TimeoutError("RealtimeSTT did not finalize the queued speech within 120 seconds.")
+
+        transcription_thread.join(timeout=5)
+        if "error" in transcription_result:
+            raise RuntimeError("RealtimeSTT text consumer failed.") from transcription_result["error"]
+
+        transcript = " ".join(str(transcription_result.get("text", "")).split())
         print("[RealtimeSTTIntegration] Transcript:", transcript, flush=True)
 
         if len(transcript) < 20:
