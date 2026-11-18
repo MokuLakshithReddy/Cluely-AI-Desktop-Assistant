@@ -27,7 +27,8 @@ export interface ModelDefinition {
 }
 
 export const MODEL_REGISTRY: readonly ModelDefinition[] = [
-  // Google Gemini (official Gemini API IDs on ai.google.dev)
+  // Google Gemini (official Gemini Developer API IDs verified on ai.google.dev for
+  // https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent)
   {
     id: 'gemini-3.5-flash-lite',
     displayName: 'Google Gemini 3.5 Flash-Lite (Sub-second <1s Latency - Recommended)',

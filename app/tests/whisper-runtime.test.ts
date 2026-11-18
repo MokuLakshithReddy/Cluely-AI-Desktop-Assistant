@@ -23,8 +23,13 @@ function createFakeChild(options: {
   autoCloseAfterMs?: number;
   exitCode?: number;
   stdoutText?: string;
+  neverExitOnKill?: boolean;
+  killThrows?: Error;
+  killReturnsFalse?: boolean;
+  pid?: number;
 } = {}) {
   const child = new EventEmitter() as any;
+  child.pid = options.pid ?? 65432;
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.exitCode = null;
@@ -40,9 +45,22 @@ function createFakeChild(options: {
     child.emit('close', code, signal);
   };
 
+  child.forceCloseNow = (code: number | null = null, signal: string | null = 'SIGKILL') => {
+    emitClose(code, signal);
+  };
+
   child.kill = vi.fn((sig?: string) => {
-    child.killed = true;
     child.killCalls.push(sig);
+    if (options.killThrows) {
+      throw options.killThrows;
+    }
+    if (options.killReturnsFalse) {
+      return false;
+    }
+    child.killed = true;
+    if (options.neverExitOnKill) {
+      return true;
+    }
     const delay = options.closeDelayAfterKillMs ?? 0;
     if (delay > 0) {
       setTimeout(() => emitClose(null, sig || 'SIGKILL'), delay);
@@ -317,6 +335,95 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
 
     await activeCheck;
     await expect(rt.transcribeAudio(new ArrayBuffer(64), 'en')).rejects.toThrow(/shutting down/i);
+  });
+
+  it('fails closed on Whisper child termination timeout without deleting WAV while child is still alive', async () => {
+    let spawnedAudioPath = '';
+    const hungChild = createFakeChild({ neverExitOnKill: true });
+
+    const rt = new WhisperRuntime({
+      baseTmpDir: isolatedTmp,
+      retryDelayMs: 10,
+      maxCleanupRetries: 2,
+      childExitTimeoutMs: 60,
+      spawnFn: ((_bin: string, args: string[]) => {
+        spawnedAudioPath = args[args.indexOf('-f') + 1];
+        return hungChild;
+      }) as any,
+    });
+    vi.spyOn(rt, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(rt, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+
+    const controller = new AbortController();
+    const activePromise = rt.transcribeAudio(new ArrayBuffer(256), 'en', controller.signal);
+    const activeCheck = expect(activePromise).rejects.toThrow(/did not terminate within 60ms deadline/i);
+
+    await new Promise(r => setTimeout(r, 20));
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+
+    controller.abort();
+    await activeCheck;
+
+    // Temp WAV MUST NOT be deleted while the unresponsive child might still be accessing it
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+    expect(rt.getActiveTempDirs()).toContain(path.dirname(spawnedAudioPath));
+
+    // abortAllAndCleanup must also fail closed while the child refuses to exit
+    const failReport = await rt.abortAllAndCleanup(isolatedTmp);
+    expect(failReport.success).toBe(false);
+    expect(failReport.failedPaths.length).toBeGreaterThan(0);
+    expect(failReport.failedPaths[0].error).toMatch(/did not terminate/i);
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+
+    // Once the child actually exits, recovery cleanup deletes the temp WAV cleanly
+    hungChild.forceCloseNow(null, 'SIGKILL');
+    const recoveryReport = await rt.abortAllAndCleanup(isolatedTmp);
+    expect(recoveryReport.success).toBe(true);
+    expect(fs.existsSync(spawnedAudioPath)).toBe(false);
+  });
+
+  it('fails closed on Whisper kill failure (EPERM / rejected kill) without deleting WAV under live process', async () => {
+    let spawnedAudioPath = '';
+    const epermErr: any = new Error('EPERM: cannot signal whisper-cli');
+    epermErr.code = 'EPERM';
+    const protectedChild = createFakeChild({ killThrows: epermErr });
+
+    const rt = new WhisperRuntime({
+      baseTmpDir: isolatedTmp,
+      retryDelayMs: 10,
+      maxCleanupRetries: 2,
+      childExitTimeoutMs: 60,
+      spawnFn: ((_bin: string, args: string[]) => {
+        spawnedAudioPath = args[args.indexOf('-f') + 1];
+        return protectedChild;
+      }) as any,
+    });
+    vi.spyOn(rt, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(rt, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+
+    const controller = new AbortController();
+    const activePromise = rt.transcribeAudio(new ArrayBuffer(256), 'en', controller.signal);
+    const activeCheck = expect(activePromise).rejects.toThrow(/Failed to kill whisper-cli.*EPERM/i);
+
+    await new Promise(r => setTimeout(r, 20));
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+
+    controller.abort();
+    await activeCheck;
+
+    // Must not delete temp WAV while child termination failed
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+
+    const report = await rt.abortAllAndCleanup(isolatedTmp);
+    expect(report.success).toBe(false);
+    expect(report.failedPaths[0].error).toMatch(/EPERM/i);
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+
+    // Also test direct terminateChildAndWait when kill() returns false for a live PID
+    const falseKillChild = createFakeChild({ killReturnsFalse: true, pid: process.pid });
+    const termRes = await rt.terminateChildAndWait(falseKillChild);
+    expect(termRes.exited).toBe(false);
+    expect(termRes.error).toMatch(/rejected by OS/i);
   });
 
   it('sweeps orphaned scandium-stt temp directories and legacy scandium_stt_* files while preserving other live processes', async () => {

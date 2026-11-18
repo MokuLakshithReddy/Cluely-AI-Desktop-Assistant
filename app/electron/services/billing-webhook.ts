@@ -59,7 +59,12 @@ export function verifyLemonSqueezyWebhookSignature(
 }
 
 /**
- * Bounded idempotency / replay protection store for processed webhook event IDs.
+ * Reusable Lemon Squeezy webhook verification and event-mapping helper.
+ *
+ * NOTE: This module is a standalone TypeScript utility — NOT a deployed HTTP webhook receiver.
+ * `WebhookEventDeduplicator` stores seen event IDs in memory within a single process only;
+ * a deployed commercial webhook receiver MUST pair `verifyLemonSqueezyWebhookSignature()`
+ * with durable persistent deduplication storage (e.g., a database unique constraint or Redis).
  */
 export class WebhookEventDeduplicator {
   private readonly seen = new Map<string, number>();

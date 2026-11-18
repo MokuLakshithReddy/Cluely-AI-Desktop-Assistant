@@ -15,7 +15,7 @@ import {
   isRegisteredModel,
 } from '../src/lib/model-registry';
 
-describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
+describe('AI Provider Model Propagation and Multi-Turn Serialization (Mocked HTTP)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -181,8 +181,12 @@ describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
     });
 
     expect(result).toBe('Gemini 3.6 Flash response');
-    expect(capturedUrl).toContain('/models/gemini-3.6-flash:streamGenerateContent');
+    expect(capturedUrl).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse'
+    );
     expect(capturedHeaders['x-goog-api-key']).toBe('AIzaSyGeminiKey2026');
+    // Deprecated sampling parameters must be omitted for Gemini 3.x / Gemini 4 v1beta compatibility
+    expect(capturedBody.generationConfig).toEqual({ maxOutputTokens: 1024 });
     expect(capturedBody.contents.length).toBe(3);
     expect(capturedBody.contents[0].role).toBe('user');
     expect(capturedBody.contents[1].role).toBe('model');

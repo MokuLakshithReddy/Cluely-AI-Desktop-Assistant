@@ -11,6 +11,7 @@
     "build": "npm run build:vite && npm run build:electron",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "test:live-providers": "npm run build:electron && node scripts/verify-live-providers.cjs",
     "test:report": "node scripts/generate-test-report.cjs",
     "start": "node scripts/start-app.cjs",
     "pack": "npm run build && electron-builder --dir",

@@ -3,9 +3,9 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 280/280 Passing (100% Pass Rate)  
+**Test Status**: 287/287 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `ef87cb099a9430bd27f7c2950a67b09e4f1c6dd9`  
+**Source revision**: `4fb8e65626a25ccec2cee70a717e9ab816b48406`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-18  
 
@@ -25,22 +25,22 @@
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 35 | 35 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
 | `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 15 | 15 | 0 | **PASSED** |
-| `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization | 14 | 14 | 0 | **PASSED** |
-| `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 13 | 13 | 0 | **PASSED** |
+| `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization (Mocked HTTP) | 14 | 14 | 0 | **PASSED** |
+| `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 18 | 18 | 0 | **PASSED** |
 | `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 46 | 46 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 12 | 12 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
 | `state-persistence.test.ts` | State persistence error reporting | 8 | 8 | 0 | **PASSED** |
 | `subscription-url.test.ts` | First-party subscription page URLs | 1 | 1 | 0 | **PASSED** |
-| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 16 | 16 | 0 | **PASSED** |
-| `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
-| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
-| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
-| `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 6 | 6 | 0 | **PASSED** |
-| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 5 | 5 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 6 | 6 | 0 | **PASSED** |
+| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 18 | 18 | 0 | **PASSED** |
+| `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
+| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
+| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
+| `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 5 | 5 | 0 | **PASSED** |
+| `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 6 | 6 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **280** | **280** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **287** | **287** | **0** | **100% PASS** |
 
 ---
 
@@ -212,7 +212,7 @@
 ✓ verifies Lemon Squeezy HMAC-SHA256 webhook signatures, blocks replays, and maps subscription lifecycle transitions
 ```
 
-### 11. AI Provider Model Propagation and Multi-Turn Serialization (`tests/provider-models.test.ts`)
+### 11. AI Provider Model Propagation and Multi-Turn Serialization (Mocked HTTP) (`tests/provider-models.test.ts`)
 ```text
 ✓ maintains a centralized model registry with distinct API IDs and display names for every advertised model
 ✓ propagates every configured cloud and local model ID from MODEL_REGISTRY accurately to its provider adapter
@@ -245,6 +245,11 @@
 ✓ allows subscription to stabilized event listener
 ✓ returns model cache info and handles model deletion gracefully
 ✓ rejects path traversal and parent-directory payloads in deleteModel without touching parent folders
+✓ confirms graceful shutdown only after sidecar exits cleanly without forcing SIGKILL
+✓ escalates to SIGKILL when graceful shutdown times out and resolves only after actual exit
+✓ rejects and preserves child reference when sidecar never exits within the bounded deadline, enabling later recovery
+✓ rejects explicitly and preserves child reference when SIGKILL throws or is rejected by OS
+✓ fails closed in IPC purge-all-data when RealtimeSTT sidecar termination fails
 ```
 
 ### 13. Security, Privacy & Sensitive-Content Hardening Subsystem (`tests/security-redaction.test.ts`)
@@ -336,7 +341,17 @@
 ✓ opens the Scandium pricing page with the selected plan highlighted
 ```
 
-### 18. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
+### 18. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+```text
+✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
+✓ purgeAllData wipes in-memory vault keys and stored session archives
+✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
+✓ abortAiStream returns false for unknown requestId without aborting other requests
+✓ exposes window lifecycle controls minimizeApp and quitApp safely
+✓ fails closed on activateLicense in Web Mode instead of trusting frontend input
+```
+
+### 19. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
 ```text
 ✓ provides verified registry of open-weight GGML Whisper models with exact SHA-256 hashes
 ✓ tracks active model selection safely
@@ -350,13 +365,15 @@
 ✓ recovers from Windows-style EBUSY file locks via bounded retries during temp cleanup
 ✓ explicitly reports failure instead of silently claiming success when temp deletion permanently fails
 ✓ terminates active transcription and deletes temp files on application shutdown, rejecting new jobs
+✓ fails closed on Whisper child termination timeout without deleting WAV while child is still alive
+✓ fails closed on Whisper kill failure (EPERM / rejected kill) without deleting WAV under live process
 ✓ sweeps orphaned scandium-stt temp directories and legacy scandium_stt_* files while preserving other live processes
 ✓ handles multiple simultaneous transcription jobs and repeated purge safely
 ✓ PROVES purge-all-data does NOT resolve while an active transcription temp file still exists on disk
 ✓ gracefully serializes concurrent overlapping audio streams without crashing or process starvation
 ```
 
-### 19. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
+### 20. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
 ```text
 ✓ clears closed control/chat references and recreates both windows on reinitialization
 ✓ keeps initialization idempotent and does not register duplicate state listeners
@@ -366,7 +383,15 @@
 ✓ moveControlWindow safely ignores invalid or NaN deltas
 ```
 
-### 20. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
+### 21. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+```text
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
+```
+
+### 22. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
 ```text
 ✓ builds context prompt including speaker-attributed transcripts
 ✓ filters out error and incomplete transcript segments from prompt context
@@ -384,24 +409,6 @@
 ✓ hides incomplete context preamble while streaming so it does not flicker on screen
 ```
 
-### 21. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
-```
-
-### 22. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
-```text
-✓ passes unscaled bounds when screen resolution <= 1920x1080
-✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
-✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
-✓ preserves aspect ratio when height is greater than width (portrait display)
-✓ handles boundary 1x1 minimal screen dimension safely
-✓ prefers the exact display match when non-empty and falls back past empty virtual displays
-```
-
 ### 23. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
 ```text
 ✓ parses empty or missing hash as default "all" view
@@ -411,14 +418,14 @@
 ✓ normalizes valid tabs, common aliases, and unknown tab names safely without blank panels
 ```
 
-### 24. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+### 24. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
-✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
-✓ purgeAllData wipes in-memory vault keys and stored session archives
-✓ rejects screen capture when mediaDevices.getDisplayMedia is rejected and does not fabricate canvas images
-✓ abortAiStream returns false for unknown requestId without aborting other requests
-✓ exposes window lifecycle controls minimizeApp and quitApp safely
-✓ fails closed on activateLicense in Web Mode instead of trusting frontend input
+✓ passes unscaled bounds when screen resolution <= 1920x1080
+✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
+✓ scales ultra-wide display (3440x1440) proportionally capped at 1920
+✓ preserves aspect ratio when height is greater than width (portrait display)
+✓ handles boundary 1x1 minimal screen dimension safely
+✓ prefers the exact display match when non-empty and falls back past empty virtual displays
 ```
 
 ### 25. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)

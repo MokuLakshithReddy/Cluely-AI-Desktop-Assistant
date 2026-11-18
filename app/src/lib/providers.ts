@@ -303,7 +303,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
           contents,
           systemInstruction: { parts: [{ text: systemInstruction }] },
           generationConfig: {
-            temperature: 0.2,
+            // Omit deprecated sampling params (temperature/top_p/top_k) for Gemini 3.x / Gemini 4 v1beta compatibility
             maxOutputTokens: 1024,
           },
         }),

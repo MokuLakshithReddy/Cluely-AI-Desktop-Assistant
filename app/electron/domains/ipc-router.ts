@@ -1201,11 +1201,22 @@ export class IpcRouter {
         ]);
         this.activeTranscriptionTasks.clear();
         this.activeTranscriptionControllers.clear();
-        try { await realtimeSTTManager.stop(); } catch {}
+        let realtimeStopError: Error | null = null;
+        try {
+          await realtimeSTTManager.stop();
+        } catch (err: any) {
+          realtimeStopError = err instanceof Error ? err : new Error(String(err));
+        }
 
         // Guarantee all active Whisper child processes have exited and temporary audio
         // directories/files are deleted before reporting purge completion.
         const whisperCleanup = await whisperRuntime.abortAllAndCleanup();
+
+        if (realtimeStopError) {
+          throw new Error(
+            `[IpcRouter] Data purge failed closed: RealtimeSTT sidecar could not be confirmed stopped (${realtimeStopError.message})`
+          );
+        }
         if (!whisperCleanup.success) {
           const details = whisperCleanup.failedPaths.map(f => `${f.path} (${f.error})`).join('; ');
           throw new Error(`[IpcRouter] Data purge incomplete: failed to remove temporary Whisper files: ${details}`);

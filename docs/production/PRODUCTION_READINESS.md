@@ -12,8 +12,8 @@ All confirmed code-level production blockers (including the Whisper `-otxt` leak
 
 1. **Physical-device validation campaign is incomplete (Issue #49 — P1 Release Blocker):** `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json` contains 120 `NOT_RUN` scaffold records (40 test cases × Windows, macOS, Linux) with zero-filled placeholder artifact digests and no detached GPG sign-off (`DEVICE_EVIDENCE_CAMPAIGN.json.asc`). CI validates only schema structure (`--allow-incomplete`); strict release validation fails closed until real physical-device runs (including microphone/loopback permission revocation, live conferencing compatibility across Zoom/Teams/Meet/Discord/OBS, 30-minute stability, and packaged-app runs on Windows, macOS, and Linux) are genuinely executed and GPG-signed.
 2. **No signed production release has been published (Issue #50 — P1 Release Blocker):** The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) GitHub release is an **unsigned prerelease** pointing to an older commit with no `SHA256SUMS.txt.asc`. `.github/workflows/release.yml` fails closed until owner-held GPG, Windows Authenticode, and Apple Developer ID/notarization secrets are configured, package versions are bumped together to `1.0.3`, and a signed `v1.0.3` tag is pushed on the verified `main` sign-off commit.
-3. **Paid commercial subscriptions are not configured (Commercial Launch Blocker — Free distribution unaffected):** `app/electron/config/billing-products.ts` intentionally leaves `plus` and `pro` Lemon Squeezy product/variant IDs empty and `website/index.html` keeps checkout buttons disabled until real Lemon Squeezy products/variants and live checkout URLs exist and are tested end-to-end. Free distribution (`Scandium Free` local mode) does not depend on paid billing.
-4. **Live third-party AI provider verification is partial & upstream dev-only `picomatch` advisory remains open:** Automated provider tests (`provider-models.test.ts`) verify every model in the centralized `MODEL_REGISTRY` via mocked responses, error/timeout handling, and secret redaction, while live network testing across all advertised OpenAI, Anthropic, Gemini, and Groq models requires owner/test API credentials. Production runtime audit (`npm audit --omit=dev`) reports **0 vulnerabilities**; the full dev/build tree retains 18 high-severity upstream `picomatch <=4.0.7` findings ([GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf), no patched version on npm as of 2026-11-18).
+3. **Paid commercial subscriptions are not configured (Commercial Launch Blocker — Free distribution unaffected):** `app/electron/config/billing-products.ts` intentionally leaves `plus` and `pro` Lemon Squeezy product/variant IDs empty and `website/index.html` keeps checkout buttons disabled until real Lemon Squeezy products/variants and live checkout URLs exist and are tested end-to-end. `app/electron/services/billing-webhook.ts` provides a unit-tested HMAC-SHA256 signature verification and in-memory deduplication **helper module only** — no deployed HTTP webhook receiver or durable persistent deduplication store exists yet. Free distribution (`Scandium Free` local mode) does not depend on paid billing.
+4. **Live third-party AI provider verification is partial & upstream dev-only `picomatch` advisory remains open:** Automated provider tests (`provider-models.test.ts`) verify every model in `MODEL_REGISTRY` via **mocked HTTP responses only**; live network testing across advertised Gemini (`v1beta/models/{model}:streamGenerateContent`), OpenAI, Anthropic, and Groq models requires owner/test API credentials (runnable via `npm run test:live-providers --workspace=app`) and remains part of Issue #49 (`E-01`–`E-05`). Production runtime audit (`npm audit --omit=dev`) reports **0 vulnerabilities**; the full dev/build tree retains 18 high-severity upstream `picomatch <=4.0.7` findings ([GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf), no patched version on npm as of 2026-11-18).
 
 ## What CI and local verification have actually proven
 
@@ -21,7 +21,7 @@ All confirmed code-level production blockers (including the Whisper `-otxt` leak
 |---|---|---|
 | JavaScript production dependency audit | `npm audit --omit=dev` reports **0 vulnerabilities** (enforced blocking in `ci.yml` and `release.yml`) | Full dev/build tree (`npm audit`) records 18 high `picomatch <=4.0.7` dev-only findings (`GHSA-fc5q-39xc-vjpf`), tracked in `DEPENDENCY_ADVISORY_REVIEW.md` |
 | TypeScript & build | `npm run lint` (`tsc --noEmit`) and `npm run build` (Vite + Electron) pass | Static checks and bundle compilation |
-| Unit & integration tests | 279 Vitest tests across 24 test files | Uses deterministic mocks, synthetic fixtures, real local `whisper-cli` + `jfk.wav` transcription, and local filesystem/crypto checks; mocked HTTP provider tests do **not** replace live provider network tests |
+| Unit & integration tests | 286 Vitest tests across 24 test files | Uses deterministic mocks, synthetic fixtures, real local `whisper-cli` + `jfk.wav` transcription, and local filesystem/crypto checks; mocked HTTP provider tests do **not** replace live provider network tests |
 | Electron development smoke | 1 Electron UI/preload/IPC smoke passed (`electron-smoke.cjs`) | Exercises real Electron windows, preload bridge, IPC, credential vault, persistence, purge, and clean exit |
 | Python sidecar & real RealtimeSTT inference | `test_sidecar.py` (12 protocol tests) + `test_realtime_inference.py` passed on Windows, macOS, and Linux bundled runtimes in `main` run #269 | Verifies checksum-pinned standalone CPython + PortAudio and CPU INT8 `jfk.wav` inference; does not replace physical microphone/loopback/meeting testing |
 | Cross-platform packaged builds & launch smoke | `main` run #269: Windows portable `.exe`, macOS `.dmg`, and Linux `.AppImage` all built and passed `packaged-smoke.cjs` | Unsigned CI validation builds (`forceCodeSigning: false`); not signed/notarized customer installers |
@@ -30,12 +30,12 @@ All confirmed code-level production blockers (including the Whisper `-otxt` leak
 
 ## Source-level automated verification status (regenerated from local/CI runner output)
 
-**280/280 automated checks passing (279/279 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
+**287/287 automated checks passing (286/286 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
 
-The test suite consists of **280 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
+The test suite consists of **287 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
 
-- `npm test — 279 automated tests across 24 suites
-- `npm run test:report — 280 total checks: 279 Vitest + 1 Electron E2E smoke
+- `npm test — 286 automated tests across 24 suites
+- `npm run test:report — 287 total checks: 286 Vitest + 1 Electron E2E smoke
 
 The following breakdown is regenerated automatically by `app/scripts/generate-test-report.cjs` from actual Vitest JSON output and Electron smoke exit verification. Its counts are not a substitute for physical-device or signed-release validation.
 
@@ -52,23 +52,23 @@ The following breakdown is regenerated automatically by `app/scripts/generate-te
 9.  tests/knowledge-rag.test.ts          12 passed (Knowledge Base & Document Retrieval (RAG) Subsystem)
 10.  tests/license-manager.test.ts        15 passed (Lemon Squeezy Licensing & Offline Grace Subsystem)
 11.  tests/provider-models.test.ts        14 passed (AI Provider Model Propagation and Multi-Turn Serialization)
-12.  tests/realtime-stt.test.ts           13 passed (RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT))
+12.  tests/realtime-stt.test.ts           18 passed (RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT))
 13.  tests/security-redaction.test.ts     46 passed (Security, Privacy & Sensitive-Content Hardening Subsystem)
 14.  tests/session-archive.test.ts        12 passed (Multi-Session Archive & Persistence Subsystem)
 15.  tests/state-broadcast.test.ts        2 passed (Shared-state renderer broadcast)
 16.  tests/state-persistence.test.ts      8 passed (State persistence error reporting)
 17.  tests/subscription-url.test.ts       1 passed (First-party subscription page URLs)
-18.  tests/whisper-runtime.test.ts        16 passed (Local Speech Recognition (whisper.cpp) Subsystem)
-19.  tests/window-coordinator.test.ts     6 passed (Window close recovery, macOS reinitialization & listener idempotency)
-20.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
+18.  tests/web-bridge.test.ts             6 passed (WebBridge Security and Memory Architecture)
+19.  tests/whisper-runtime.test.ts        18 passed (Local Speech Recognition (whisper.cpp) Subsystem)
+20.  tests/window-coordinator.test.ts     6 passed (Window close recovery, macOS reinitialization & listener idempotency)
 21.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
-22.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
+22.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
 23.  tests/dashboard-routing.test.ts      5 passed (Dashboard Route and Hash Parsing)
-24.  tests/web-bridge.test.ts             6 passed (WebBridge Security and Memory Architecture)
+24.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
 25.  tests/electron-smoke.cjs         1/1 passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)
 --------------------------------------------------------------------------------------
-Subtotal (Vitest Test Suites):      279 passing unit & integration tests
-Grand Total:                        280 passing checks / 280 total (100% Pass Rate)
+Subtotal (Vitest Test Suites):      286 passing unit & integration tests
+Grand Total:                        287 passing checks / 287 total (100% Pass Rate)
 ======================================================================================
 ```
 

@@ -98,6 +98,20 @@ function getAppVersionSafe(): string {
   }
 }
 
+const registeredWhisperRuntimes = new Set<WhisperRuntime>();
+let globalExitCleanupHookRegistered = false;
+
+function registerGlobalWhisperExitHook(instance: WhisperRuntime): void {
+  registeredWhisperRuntimes.add(instance);
+  if (globalExitCleanupHookRegistered) return;
+  globalExitCleanupHookRegistered = true;
+  process.once('exit', () => {
+    for (const rt of Array.from(registeredWhisperRuntimes)) {
+      rt.cleanupSyncOnProcessExit();
+    }
+  });
+}
+
 export class WhisperRuntime {
   private modelsDir: string;
   private activeModelId = 'ggml-tiny.en';
@@ -106,6 +120,7 @@ export class WhisperRuntime {
   private activeTempDirs = new Set<string>();
   private pendingCleanups = new Map<string, Promise<TempCleanupResult>>();
   private activeChildren = new Set<ChildProcess>();
+  private activeChildByTempDir = new Map<string, ChildProcess>();
   private activeExecutions = new Set<Promise<void>>();
   private activeAbortControllers = new Set<AbortController>();
   private isShuttingDown = false;
@@ -156,14 +171,21 @@ export class WhisperRuntime {
   private registerExitCleanupHook(): void {
     if (this.exitHookRegistered) return;
     this.exitHookRegistered = true;
-    process.once('exit', () => {
-      for (const child of Array.from(this.activeChildren)) {
-        try { child.kill('SIGKILL'); } catch {}
+    registerGlobalWhisperExitHook(this);
+  }
+
+  /** @internal Synchronous last-resort cleanup on Node process exit. */
+  public cleanupSyncOnProcessExit(): void {
+    for (const child of Array.from(this.activeChildren)) {
+      try { child.kill('SIGKILL'); } catch {}
+    }
+    for (const dir of Array.from(this.activeTempDirs)) {
+      const boundChild = this.activeChildByTempDir.get(dir);
+      if (boundChild && boundChild.exitCode === null && boundChild.signalCode === null) {
+        continue;
       }
-      for (const dir of Array.from(this.activeTempDirs)) {
-        this.removeTempDirSyncOnce(dir);
-      }
-    });
+      this.removeTempDirSyncOnce(dir);
+    }
   }
 
   /**
@@ -298,45 +320,109 @@ export class WhisperRuntime {
     return cleanupPromise;
   }
 
-  private terminateChildAndWait(child: ChildProcess): Promise<void> {
+  /**
+   * Terminates a spawned whisper-cli child process and waits for confirmed OS exit/close.
+   * Never reports `{ exited: true }` merely because a kill signal was sent or a deadline elapsed.
+   */
+  public terminateChildAndWait(child: ChildProcess): Promise<{ exited: boolean; error?: string }> {
     if (child.exitCode !== null || child.signalCode !== null) {
-      return Promise.resolve();
+      return Promise.resolve({ exited: true });
     }
 
-    return new Promise<void>(resolve => {
+    return new Promise<{ exited: boolean; error?: string }>(resolve => {
       let finished = false;
-      const done = () => {
+      let escalateTimer: NodeJS.Timeout | null = null;
+      let deadlineTimer: NodeJS.Timeout | null = null;
+
+      const finish = (result: { exited: boolean; error?: string }) => {
         if (finished) return;
         finished = true;
-        clearTimeout(escalateTimer);
-        clearTimeout(deadlineTimer);
-        child.removeListener('close', done);
-        child.removeListener('exit', done);
-        child.removeListener('error', done);
-        resolve();
+        if (escalateTimer) clearTimeout(escalateTimer);
+        if (deadlineTimer) clearTimeout(deadlineTimer);
+        child.removeListener('close', onExit);
+        child.removeListener('exit', onExit);
+        child.removeListener('error', onError);
+        resolve(result);
       };
 
-      child.once('close', done);
-      child.once('exit', done);
-      child.once('error', done);
+      const onExit = () => {
+        finish({ exited: true });
+      };
 
-      const halfTimeout = Math.max(50, Math.floor(this.childExitTimeoutMs / 2));
-      const escalateTimer = setTimeout(() => {
-        if (!finished) {
-          try { child.kill('SIGKILL'); } catch {}
+      const onError = (err: any) => {
+        // Spawn failure before an OS process ever started (pid undefined) means no process is running.
+        if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+          finish({ exited: true });
+          return;
         }
-      }, halfTimeout);
-      if (typeof escalateTimer.unref === 'function') escalateTimer.unref();
+        finish({
+          exited: false,
+          error: `whisper-cli process error during termination: ${err?.message || String(err)}`,
+        });
+      };
 
-      const deadlineTimer = setTimeout(done, this.childExitTimeoutMs);
-      if (typeof deadlineTimer.unref === 'function') deadlineTimer.unref();
+      const sendSignal = (sig: NodeJS.Signals): boolean => {
+        try {
+          const accepted = child.kill(sig);
+          if (accepted === false) {
+            if (child.exitCode !== null || child.signalCode !== null) {
+              finish({ exited: true });
+              return false;
+            }
+            if (typeof child.pid === 'number' && !this.isProcessAlive(child.pid)) {
+              finish({ exited: true });
+              return false;
+            }
+            finish({
+              exited: false,
+              error: `Failed to signal whisper-cli (${sig} rejected by OS); process may still be running`,
+            });
+            return false;
+          }
+          return true;
+        } catch (killErr: any) {
+          if (killErr?.code === 'ESRCH' && typeof child.pid === 'number' && !this.isProcessAlive(child.pid)) {
+            finish({ exited: true });
+            return false;
+          }
+          finish({
+            exited: false,
+            error: `Failed to kill whisper-cli (${sig}): ${killErr?.message || String(killErr)}`,
+          });
+          return false;
+        }
+      };
 
-      try {
-        // On Windows, SIGTERM maps to TerminateProcess; on POSIX give brief graceful window then SIGKILL.
-        child.kill(process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM');
-      } catch {
-        done();
+      child.once('close', onExit);
+      child.once('exit', onExit);
+      child.once('error', onError);
+
+      const initialSignal: NodeJS.Signals = process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM';
+      if (!sendSignal(initialSignal)) {
+        return;
       }
+
+      if (initialSignal !== 'SIGKILL') {
+        const halfTimeout = Math.max(25, Math.floor(this.childExitTimeoutMs / 2));
+        escalateTimer = setTimeout(() => {
+          if (!finished && child.exitCode === null && child.signalCode === null) {
+            sendSignal('SIGKILL');
+          }
+        }, halfTimeout);
+        if (typeof escalateTimer.unref === 'function') escalateTimer.unref();
+      }
+
+      deadlineTimer = setTimeout(() => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          finish({ exited: true });
+          return;
+        }
+        finish({
+          exited: false,
+          error: `whisper-cli child process did not terminate within ${this.childExitTimeoutMs}ms deadline`,
+        });
+      }, this.childExitTimeoutMs);
+      if (typeof deadlineTimer.unref === 'function') deadlineTimer.unref();
     });
   }
 
@@ -463,8 +549,26 @@ export class WhisperRuntime {
     const failedPaths: Array<{ path: string; error: string }> = [];
     const seenFailed = new Set<string>();
 
-    // 5. Explicitly verify/retry any activeTempDirs that survived a prior cleanup failure
+    // 5. Explicitly verify/retry any activeTempDirs that survived a prior termination or cleanup failure.
+    // Never delete a temporary WAV directory while its child process has not been confirmed terminated.
     for (const dir of Array.from(this.activeTempDirs)) {
+      const boundChild = this.activeChildByTempDir.get(dir);
+      if (boundChild) {
+        const termRes = await this.terminateChildAndWait(boundChild);
+        if (!termRes.exited) {
+          if (!seenFailed.has(dir)) {
+            seenFailed.add(dir);
+            failedPaths.push({
+              path: dir,
+              error: termRes.error || 'Whisper child process is still running; refusing to delete active temporary WAV',
+            });
+          }
+          continue;
+        }
+        this.activeChildren.delete(boundChild);
+        this.activeChildByTempDir.delete(dir);
+      }
+
       const res = await this.secureRemoveTempDirAsync(dir);
       if (res.removed) {
         removedCount++;
@@ -856,9 +960,17 @@ export class WhisperRuntime {
         }
 
         this.activeChildren.add(child);
+        this.activeChildByTempDir.set(tempDir, child);
+
+        const releaseChildTracking = () => {
+          this.activeChildren.delete(child);
+          if (this.activeChildByTempDir.get(tempDir) === child) {
+            this.activeChildByTempDir.delete(tempDir);
+          }
+        };
 
         const settleAfterCleanup = async (outcome: { ok: true; text: string } | { ok: false; err: Error }) => {
-          this.activeChildren.delete(child);
+          releaseChildTracking();
           internalController.signal.removeEventListener('abort', abortHandler);
           const cleanupRes = await this.secureRemoveTempDirAsync(tempDir);
           if (!cleanupRes.removed) {
@@ -882,9 +994,29 @@ export class WhisperRuntime {
           if (abortInProgress) return;
           isAborted = true;
           abortInProgress = (async () => {
-            // Wait for actual OS child process exit/close BEFORE removing tempDir
-            // so file handles are released and purge-all-data cannot resolve prematurely.
-            await this.terminateChildAndWait(child);
+            // Wait for confirmed OS child process exit/close BEFORE removing tempDir.
+            // If termination cannot be confirmed, do NOT delete the WAV under a live process
+            // and preserve both child and tempDir references for fail-closed error reporting / retry.
+            const termRes = await this.terminateChildAndWait(child);
+            if (!termRes.exited) {
+              internalController.signal.removeEventListener('abort', abortHandler);
+              // If the unresponsive child exits later, release tracking and remove tempDir then.
+              const onLateExit = () => {
+                releaseChildTracking();
+                void this.secureRemoveTempDirAsync(tempDir);
+              };
+              child.once('close', onLateExit);
+              child.once('exit', onLateExit);
+              if (!settled) {
+                settled = true;
+                reject(
+                  new Error(
+                    `Transcription cancellation failed: ${termRes.error || 'whisper-cli process did not terminate'}`
+                  )
+                );
+              }
+              return;
+            }
             await settleAfterCleanup({ ok: false, err: new Error('Transcription cancelled') });
           })();
         };
@@ -923,6 +1055,25 @@ export class WhisperRuntime {
         child.once('error', err => {
           if (isAborted || abortInProgress) return;
           console.warn('[WhisperRuntime] Failed to run whisper-cli:', err);
+          if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+            abortInProgress = (async () => {
+              const termRes = await this.terminateChildAndWait(child);
+              if (!termRes.exited) {
+                internalController.signal.removeEventListener('abort', abortHandler);
+                if (!settled) {
+                  settled = true;
+                  reject(
+                    new Error(
+                      `whisper-cli errored and termination could not be confirmed: ${termRes.error || err.message}`
+                    )
+                  );
+                }
+                return;
+              }
+              await settleAfterCleanup({ ok: true, text: '' });
+            })();
+            return;
+          }
           void settleAfterCleanup({ ok: true, text: '' });
         });
 
