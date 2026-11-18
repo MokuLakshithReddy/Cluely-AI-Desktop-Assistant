@@ -33,14 +33,23 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
   });
 
   it('generates a stable deterministic hardware fingerprint and anonymous instance name without hostname', () => {
+    const hostnameSpy = vi.spyOn(os, 'hostname');
+    hostnameSpy.mockReturnValue('Workstation-Alpha-Private');
     const fp1 = manager.getHardwareFingerprint();
+    const inst1 = manager.getInstanceName();
+
+    hostnameSpy.mockReturnValue('Workstation-Beta-Different');
     const fp2 = manager.getHardwareFingerprint();
+    const inst2 = manager.getInstanceName();
+    hostnameSpy.mockRestore();
+
     expect(fp1).toBe(fp2);
     expect(fp1.length).toBe(16);
-
-    const instanceName = manager.getInstanceName();
-    expect(instanceName.startsWith(`Scandium-${os.platform()}-`)).toBe(true);
-    expect(instanceName).toContain(fp1.slice(0, 8));
+    expect(inst1).toBe(inst2);
+    expect(inst1.startsWith(`Scandium-${os.platform()}-`)).toBe(true);
+    expect(inst1).toContain(fp1.slice(0, 8));
+    expect(inst1).not.toContain('Workstation-Alpha-Private');
+    expect(inst1).not.toContain('Workstation-Beta-Different');
   });
 
   it('defaults to Free tier when no license is configured', () => {
