@@ -5,7 +5,10 @@ const {
   validateCampaign,
 } = require('../../scripts/validate-device-evidence.cjs') as {
   REQUIRED_TEST_IDS: string[];
-  validateCampaign: (campaign: unknown, options?: { allowIncomplete?: boolean }) => {
+  validateCampaign: (
+    campaign: unknown,
+    options?: { allowIncomplete?: boolean; expectedCommit?: string; expectedVersion?: string }
+  ) => {
     errors: Array<{ path: string; message: string }>;
     requiredTestCount: number;
     pendingRecordCount: number;
@@ -196,5 +199,28 @@ describe('device evidence campaign validator', () => {
 
     expect(result.errors.some((error) => error.message.includes('HTTPS URL'))).toBe(true);
     expect(result.errors.some((error) => error.path === 'signOff')).toBe(true);
+  });
+
+  it('enforces exact release commit and version matching when supplied by the release workflow', () => {
+    const campaign = buildCampaign();
+
+    expect(
+      validateCampaign(campaign, {
+        expectedCommit: 'A'.repeat(40),
+        expectedVersion: '1.0.2',
+      }).errors
+    ).toEqual([]);
+
+    const wrongCommit = validateCampaign(campaign, {
+      expectedCommit: 'f'.repeat(40),
+      expectedVersion: '1.0.2',
+    });
+    expect(wrongCommit.errors.some((error) => error.path === 'candidate.commit' && error.message.includes('expected release commit'))).toBe(true);
+
+    const wrongVersion = validateCampaign(campaign, {
+      expectedCommit: 'a'.repeat(40),
+      expectedVersion: '1.0.3',
+    });
+    expect(wrongVersion.errors.some((error) => error.path === 'candidate.version' && error.message.includes('expected release version'))).toBe(true);
   });
 });

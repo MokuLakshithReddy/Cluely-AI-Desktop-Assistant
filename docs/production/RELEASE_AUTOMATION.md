@@ -8,6 +8,7 @@ The release workflow is `.github/workflows/release.yml` (**Signed Production Rel
 - the tag version matches both root and app package versions;
 - the tag points to the exact current `main` commit;
 - `RELEASE_GPG_PUBLIC_KEY` is configured and `git verify-tag` succeeds;
+- `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json` exists and passes strict 40-case validation via `node scripts/validate-device-evidence.cjs docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json --expected-commit <SHA> --expected-version <semver>` (incomplete campaigns, missing platforms, or stale commits fail closed);
 - readiness issues #19, #47, #48, #49, #50, #51, #52, #60, and #73 are closed with the `completed` reason;
 - the production dependency audit (`npm audit --omit=dev --audit-level=high`) passes with 0 critical/high findings (while capturing and uploading both full and production audit reports);
 - source verification passes on Node.js 24.22.2 (Python STT protocol tests, lint, Vitest, build, Electron smoke, test report);

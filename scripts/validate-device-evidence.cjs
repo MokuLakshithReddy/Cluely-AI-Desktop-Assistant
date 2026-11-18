@@ -41,6 +41,8 @@ function isIsoDateTime(value) {
 
 function validateCampaign(campaign, options = {}) {
   const allowIncomplete = options.allowIncomplete === true;
+  const expectedCommit = nonEmptyString(options.expectedCommit) ? options.expectedCommit.trim() : null;
+  const expectedVersion = nonEmptyString(options.expectedVersion) ? options.expectedVersion.trim() : null;
   const errors = [];
   const add = (path, message) => errors.push({ path, message });
   const checkString = (value, path) => {
@@ -67,9 +69,13 @@ function validateCampaign(campaign, options = {}) {
   } else {
     if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(candidate.version || '')) {
       add('candidate.version', 'must be a semantic version such as 1.0.2');
+    } else if (expectedVersion && candidate.version !== expectedVersion) {
+      add('candidate.version', 'must match expected release version ' + expectedVersion + ' (found ' + candidate.version + ')');
     }
     if (!/^[a-f0-9]{40}$/i.test(candidate.commit || '')) {
       add('candidate.commit', 'must be the exact 40-character Git commit SHA');
+    } else if (expectedCommit && candidate.commit.toLowerCase() !== expectedCommit.toLowerCase()) {
+      add('candidate.commit', 'must match expected release commit ' + expectedCommit + ' (found ' + candidate.commit + ')');
     }
     checkUrl(candidate.ciRunUrl, 'candidate.ciRunUrl');
     checkString(candidate.electronVersion, 'candidate.electronVersion');
@@ -287,10 +293,11 @@ function validateCampaign(campaign, options = {}) {
 
 function printUsage() {
   process.stdout.write(
-    'Usage: node scripts/validate-device-evidence.cjs <campaign.json> [--allow-incomplete]\n' +
+    'Usage: node scripts/validate-device-evidence.cjs <campaign.json> [--allow-incomplete] [--expected-commit <sha>] [--expected-version <semver>]\n' +
     'Default mode requires all 40 test records per run, all three release platforms,\n' +
     'PASS or justified NOT_APPLICABLE results, evidence links for PASS, and owner sign-off.\n' +
-    '--allow-incomplete validates the campaign structure while evidence is being collected.\n'
+    '--allow-incomplete validates the campaign structure while evidence is being collected.\n' +
+    '--expected-commit / --expected-version fail closed if the campaign targets a different commit or version.\n'
   );
 }
 
@@ -301,8 +308,36 @@ function runCli(argv) {
     return 0;
   }
 
-  const allowIncomplete = args.includes('--allow-incomplete');
-  const paths = args.filter((arg) => arg !== '--allow-incomplete');
+  let allowIncomplete = false;
+  let expectedCommit = null;
+  let expectedVersion = null;
+  const paths = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--allow-incomplete') {
+      allowIncomplete = true;
+    } else if (arg === '--expected-commit') {
+      if (i + 1 >= args.length || !nonEmptyString(args[i + 1])) {
+        process.stderr.write('--expected-commit requires a 40-character Git commit SHA\n');
+        return 2;
+      }
+      expectedCommit = args[++i];
+    } else if (arg === '--expected-version') {
+      if (i + 1 >= args.length || !nonEmptyString(args[i + 1])) {
+        process.stderr.write('--expected-version requires a semantic version string\n');
+        return 2;
+      }
+      expectedVersion = args[++i];
+    } else if (arg.startsWith('--')) {
+      process.stderr.write('Unknown option: ' + arg + '\n');
+      printUsage();
+      return 2;
+    } else {
+      paths.push(arg);
+    }
+  }
+
   if (paths.length !== 1) {
     printUsage();
     return 2;
@@ -316,7 +351,7 @@ function runCli(argv) {
     return 2;
   }
 
-  const result = validateCampaign(campaign, { allowIncomplete });
+  const result = validateCampaign(campaign, { allowIncomplete, expectedCommit, expectedVersion });
   if (result.errors.length > 0) {
     process.stderr.write('Device evidence validation failed:\n');
     for (const error of result.errors) {

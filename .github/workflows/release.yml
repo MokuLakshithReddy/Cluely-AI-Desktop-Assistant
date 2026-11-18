@@ -68,6 +68,19 @@ jobs:
           echo "Verifying GPG-signed release tag..."
           printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
           git verify-tag "$GITHUB_REF_NAME"
+      - name: Validate complete 40-case physical-device evidence campaign (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          campaign_file="docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json"
+          if [[ ! -f "$campaign_file" ]]; then
+            echo "Release blocked: required 40-case physical-device evidence campaign '$campaign_file' does not exist."
+            echo "Complete all 40 physical-device test cases per supported platform per docs/testing/DEVICE_EVIDENCE_FORMAT.md and verify with:"
+            echo "  node scripts/validate-device-evidence.cjs $campaign_file --expected-commit $GITHUB_SHA --expected-version $tag_version"
+            exit 1
+          fi
+          node scripts/validate-device-evidence.cjs "$campaign_file" --expected-commit "$GITHUB_SHA" --expected-version "$tag_version"
 
   verify:
     name: Verify release source

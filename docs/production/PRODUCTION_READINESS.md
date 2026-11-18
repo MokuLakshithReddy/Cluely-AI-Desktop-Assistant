@@ -1,7 +1,7 @@
 # Production Readiness Assessment
 
 **Assessment date:** 2026-11-18 (Asia/Kolkata)  
-**Audited source revision:** [`82c1245`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/82c12452c441e731cfb62b2f4f40f51bf2517916)  
+**Audited source revision:** [`a235b10`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/a235b10dd2ad8895ce215be9fed930853df7131d)  
 **Latest verified main CI:** [CI Verification Suite (run #44170502005)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44170502005) — **PASSED** across source verification, 255/255 automated checks, production dependency audit, and native Windows, macOS, and Linux packaging + packaged launch smoke tests
 
 ## Status
@@ -21,7 +21,7 @@ Hosted CI on `main` (`2b8d50a`, run #44170502005) is completely green across Win
 |---|---|---|
 | JavaScript dependency audit | `main` run #44170502005: `npm audit --omit=dev` reports **0 vulnerabilities**; full workspace report records 18 high `picomatch` dev/build findings | Production dependency audit enforced in both `ci.yml` and `release.yml`; full development/build tree remains under an explicit upstream-patch disclosure and is not audit-clean |
 | TypeScript and lint | `main` run #44170502005: `npm run lint` passed | Static checks only |
-| Unit and integration tests | 254 Vitest tests across 24 test files | Includes mocks, synthetic fixtures, and simulated inputs |
+| Unit and integration tests | 255 Vitest tests across 24 test files | Includes mocks, synthetic fixtures, and simulated inputs |
 | Electron development smoke | 1 Electron UI/preload/IPC smoke passed | Exercises real Electron windows, preload bridge, IPC, persistence, and clean exit |
 | Python sidecar & real RealtimeSTT inference | `test_sidecar.py` (12 tests) + `test_realtime_inference.py` passed on Windows, macOS, and Linux bundled runtimes | Verifies model loading and external-PCM CPU INT8 transcription of `jfk.wav`; does not replace physical loopback/microphone/meeting acceptance |
 | Windows packaged application | `main` run #44170502005 | Unsigned portable `.exe` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
@@ -32,12 +32,12 @@ Hosted CI on `main` (`2b8d50a`, run #44170502005) is completely green across Win
 
 ## Source-level automated verification status (`main` CI run #44170502005)
 
-**255/255 automated checks passing (254/254 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
+**256/256 automated checks passing (255/255 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
 
-The test suite consists of **255 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
+The test suite consists of **256 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
 
-- `npm test — 254 automated tests across 24 suites
-- `npm run test:report — 255 total checks: 254 Vitest + 1 Electron E2E smoke
+- `npm test — 255 automated tests across 24 suites
+- `npm run test:report — 256 total checks: 255 Vitest + 1 Electron E2E smoke
 
 The following breakdown is regenerated from Vitest and Electron smoke evidence. Its counts are not a permanent product-quality or production-readiness claim.
 
@@ -46,7 +46,7 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 1.  tests/audio-ownership.test.ts        3 passed (Dual-Channel Audio Ownership and Capture Lifecycle)
 2.  tests/audio-vad.test.ts              10 passed (Audio Processing, VAD & Crosstalk Subsystem)
 3.  tests/credential-vault.test.ts       14 passed (Credential Vault & Secret Protection Subsystem)
-4.  tests/device-evidence-validator.test.ts 13 passed (device evidence campaign validator)
+4.  tests/device-evidence-validator.test.ts 14 passed (device evidence campaign validator)
 5.  tests/e2e-desktop-session.test.ts    6 passed (Synthetic Desktop Data-Pipeline Integration (Mocked Hardware/Provider Inputs))
 6.  tests/entitlements.test.ts           8 passed (Commercial Subscription & Entitlements Matrix)
 7.  tests/hardware-detector.test.ts      7 passed (Hardware Compatibility Subsystem & Model Recommendation)
@@ -62,15 +62,15 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 17.  tests/subscription-url.test.ts       1 passed (First-party subscription page URLs)
 18.  tests/whisper-runtime.test.ts        7 passed (Local Speech Recognition (whisper.cpp) Subsystem)
 19.  tests/window-coordinator.test.ts     6 passed (Window close recovery, macOS reinitialization & listener idempotency)
-20.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
-21.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
+20.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
+21.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
 22.  tests/dashboard-routing.test.ts      5 passed (Dashboard Route and Hash Parsing)
-23.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
-24.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
+23.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
+24.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
 25.  tests/electron-smoke.cjs         1/1 passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)
 --------------------------------------------------------------------------------------
-Subtotal (Vitest Test Suites):      254 passing unit & integration tests
-Grand Total:                        255 passing checks / 255 total (100% Pass Rate)
+Subtotal (Vitest Test Suites):      255 passing unit & integration tests
+Grand Total:                        256 passing checks / 256 total (100% Pass Rate)
 ======================================================================================
 ```
 
@@ -82,7 +82,7 @@ Both `.github/workflows/ci.yml` and `.github/workflows/release.yml` enforce `npm
 
 ## Release gates and operational status
 
-1. **Real-device validation — INCOMPLETE:** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a 7-check Windows host snapshot, and `docs/testing/DEVICE_VALIDATION_MATRIX.md` marks all platforms `NOT APPROVED (INCOMPLETE)`. A complete 40-case signed campaign validated by `scripts/validate-device-evidence.cjs` plus live conferencing tests (Zoom, Teams, Google Meet, Discord, OBS) are required before production approval.
+1. **Real-device validation — INCOMPLETE (ENFORCED IN RELEASE PIPELINE):** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a 7-check Windows host snapshot, and `docs/testing/DEVICE_VALIDATION_MATRIX.md` marks all platforms `NOT APPROVED (INCOMPLETE)`. `.github/workflows/release.yml` now executes `node scripts/validate-device-evidence.cjs docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json --expected-commit "$GITHUB_SHA" --expected-version "$tag_version"` in strict mode and rejects any release without a complete 40-case signed campaign matching the exact release commit and version. Issue #49 is reopened until completed.
 2. **Signed production release — BLOCKED:** Published `v1.0.2` is an unsigned prerelease from an older commit without a GPG-signed `SHA256SUMS.txt.asc`. `.github/workflows/release.yml` fails closed until `RELEASE_GPG_PUBLIC_KEY`, `RELEASE_GPG_PRIVATE_KEY`, `RELEASE_GPG_PASSPHRASE`, Windows Authenticode (`WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD`, `WINDOWS_EXPECTED_CERT_THUMBPRINT`), and Apple Developer ID/notarization (`MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) secrets are configured and a new signed tag matching current `main` is pushed.
 3. **Paid subscriptions & checkout — NOT READY:** `app/electron/config/billing-products.ts` intentionally leaves `plus` and `pro` product/variant IDs empty, and checkout in `website/index.html` is intentionally disabled. Configure real Lemon Squeezy products/variants and verify live license activation end-to-end before commercial launch.
 4. **Native CI packaging & bundled RealtimeSTT inference — PASSED ON `main`:** Windows, macOS, and Linux unsigned validation packages, bundled CPython + PortAudio provisioning, real `jfk.wav` CPU INT8 RealtimeSTT transcription, and packaged Electron smoke tests all passed in `main` run #44170502005.
