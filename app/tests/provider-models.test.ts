@@ -177,6 +177,39 @@ describe('AI Provider Model Propagation and Multi-Turn Serialization', () => {
     expect(capturedBody.messages[2].role).toBe('user');
   });
 
+  it('streamClaude preserves exact selected Claude 5.5 model IDs without downgrading aliases', async () => {
+    const models = ['claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5'] as const;
+
+    for (const selectedModel of models) {
+      let capturedBody: any = null;
+      let capturedHeaders: Record<string, string> = {};
+
+      global.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+        capturedHeaders = init.headers as Record<string, string>;
+        capturedBody = JSON.parse(init.body as string);
+        return createMockSseResponse([
+          JSON.stringify({
+            type: 'content_block_delta',
+            delta: { text: `Response from ${selectedModel}` },
+          }),
+        ]);
+      });
+
+      const result = await streamClaude({
+        model: selectedModel,
+        apiKey: 'sk-ant-claude55',
+        mode: 'copilot',
+        query: 'Verify exact model propagation',
+        recentTranscript: [],
+      });
+
+      expect(result).toBe(`Response from ${selectedModel}`);
+      expect(capturedBody.model).toBe(selectedModel);
+      expect(capturedHeaders['x-api-key']).toBe('sk-ant-claude55');
+      expect(capturedHeaders['anthropic-version']).toBe('2026-10-21');
+    }
+  });
+
   it('streamClaude provides diagnostic error when Claude returns model_not_found error', async () => {
     global.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: { type: 'not_found_error', message: 'model retired' } }), {

@@ -5,7 +5,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Scandium-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-258%2F258%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-259%2F259%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (258/258 Passing)](#6-automated-verification--test-suites-258258-passing)
+6. [Automated Verification & Test Suites (259/259 Passing)](#6-automated-verification--test-suites-259259-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -87,9 +87,9 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 * **Expandable Docked Chat Card**: Anchored directly to the pill, rendering streaming Markdown, code blocks with syntax highlighting, and follow-up recommendation chips.
 * **Settings & Knowledge Dashboard**: Multi-tab settings panel for API key vault management, document upload, shortcut configuration, and session history export.
 
-### 🛡️ Screen Sharing Anti-Capture Stealth (`setContentProtection`)
+### 🛡️ Screen Sharing Display Protection (`setContentProtection`)
 * **OS-Level Display Affinity**: Integrates `win.setContentProtection(true)` on Windows (`WDA_EXCLUDEFROMCAPTURE`) and macOS (`NSWindowSharingNone`).
-* **Best-Effort Display Protection**: When enabled, Electron requests OS-level content protection for supported screen-capture paths. It is not a universal invisibility guarantee; compatibility must be tested for each OS build and capture application.
+* **Mitigation Scope & Limitations**: Electron's `setContentProtection` is a platform-provided display-capture mitigation. It cannot guarantee invisibility across every capture tool, conferencing client, OS version, remote desktop path, or external hardware capture device; compatibility must be verified per OS build and capture stack in [`docs/testing/DEVICE_VALIDATION_MATRIX.md`](docs/testing/DEVICE_VALIDATION_MATRIX.md).
 
 ### 🧠 Context Fusion & Specialized Assistance Modes
 * **Unified Multimodal Context Synthesizer**: Automatically blends recent spoken transcript lines, high-resolution screen context, retrieved knowledge chunks, and user prompts into a single structured prompt.
@@ -306,12 +306,12 @@ Scandium handles microphone input, desktop display captures, and API credentials
 * **One-Click Data Purge**: Removes archived session files and the encrypted `credentials.vault` file from the app's user-data profile, resets active session/knowledge state, and aborts active AI requests. This is application-level deletion, not a guarantee of forensic erasure from SSD or filesystem remnants.
 
 ### 🕵️ Screen Sharing Display Protection (`setContentProtection`)
-* **Operating Mechanism**: `win.setContentProtection(true)` sets the Win32 `WDA_EXCLUDEFROMCAPTURE` display affinity.
-* **Platform and capture-path limitations**: Behavior varies by OS release and capture stack. Treat display protection as best-effort, test each conferencing application/OS combination in the device-validation matrix, and do not claim universal invisibility.
+* **Operating Mechanism**: `win.setContentProtection(true)` requests OS-level display-capture exclusion (`WDA_EXCLUDEFROMCAPTURE` on Windows; `NSWindowSharingNone` on macOS).
+* **Platform and capture-path limitations**: Electron's `setContentProtection` is a mitigation and cannot guarantee invisibility across every capture tool, conferencing client, OS version, remote desktop path, or external hardware capture setup. Test each conferencing application/OS combination in [`docs/testing/DEVICE_VALIDATION_MATRIX.md`](docs/testing/DEVICE_VALIDATION_MATRIX.md).
 
 ---
 
-## 6. Automated Verification & Test Suites (258/258 Passing)
+## 6. Automated Verification & Test Suites (259/259 Passing)
 
 The main-branch baseline run #237 passed the source verification job (249 Vitest tests plus one Electron UI/preload/IPC smoke test) but failed all three native packaging jobs. Remediation PR #78 then passed CI run #243 on Windows, macOS, and Linux: each platform provisioned the bundled CPython runtime, completed a real RealtimeSTT transcription from the committed JFK audio fixture, built its native distributable, and passed the packaged Electron renderer/preload/IPC launch and shutdown smoke test.
 
@@ -334,7 +334,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `ipc-security.test.ts` | Sender validation, request identity and payload limits | 35 |
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
 | `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 11 |
-| `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 7 |
+| `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 8 |
 | `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 12 |
 | `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 46 |
 | `session-archive.test.ts` | Session archive persistence and path containment | 12 |
@@ -343,15 +343,15 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `subscription-url.test.ts` | First-party subscription page URLs | 1 |
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
-| `ai-context.test.ts` | AI context assembly and operating modes | 14 |
-| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
-| `dashboard-routing.test.ts` | Dashboard route parsing | 5 |
 | `screen-capture.test.ts` | Display thumbnail scaling | 6 |
+| `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
+| `dashboard-routing.test.ts` | Dashboard route parsing | 5 |
+| `ai-context.test.ts` | AI context assembly and operating modes | 14 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **24 Vitest suites + 1 Electron smoke check** | **258** |
+| **Total** | **24 Vitest suites + 1 Electron smoke check** | **259** |
 
-The 250/250 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
+The table above is a snapshot of automated checks regenerated from Vitest and the Electron smoke runner; authoritative release verification must always come from the GitHub Actions CI run and uploaded `test-results` artifact for the exact release candidate commit. Automated counts are not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
 ### Verification Environments
 
@@ -391,14 +391,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 257 Vitest unit & integration tests
+# Run the 258 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (258 total verified checks)
+# Generate the automated test results markdown report (259 total verified checks)
 npm run test:report
 ```
 
@@ -468,14 +468,14 @@ Scandium uses a **Bring Your Own Key (BYOK)** model. Credentials are encrypted l
 
 | Category | Supported Providers | Recommended Model | Latency |
 |---|---|---|:---:|
-| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5`, `claude-haiku-4-5-20251001`, `claude-opus-5`), Ollama (Local) | **Gemini 3.5 Flash-Lite** | **< 1.5s (Sub-3s SLA)** |
-| **Speech Recognition (STT)** | Groq Whisper and OpenAI Whisper | **Groq Whisper Large v3 Turbo** | Varies by provider/network |
+| **Multimodal Vision & Reasoning** | Google Gemini (`gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`), OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic Claude (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`, `claude-sonnet-5`, `claude-haiku-4-5-20251001`, `claude-opus-5`), Ollama (Local) | **Gemini 3.5 Flash-Lite** | **< 1.5s (Sub-3s SLA)** |
+| **Speech Recognition (STT)** | Local `whisper.cpp`, Local `RealtimeSTT + faster-whisper`, Groq Whisper, and OpenAI Whisper | **Local RealtimeSTT / Groq Whisper** | Varies by hardware/provider |
 | **Document RAG** | Built-in in-memory TF-IDF lexical retrieval with character-based overlapping chunks | Local | Local |
 
 > [!NOTE]
 > **Active 2026 AI Model Lineup & Low-Latency Architecture**:
-> * **Google Gemini**: Defaults to `gemini-3.5-flash-lite` for guaranteed sub-3-second responses (benchmarked at ~660ms–1400ms TTFT/completion). The Dashboard also offers `gemini-3.6-flash`, `gemini-3.8-flash`, and `gemini-3.1-pro-preview`. Automatic failover to `gemini-3.5-flash-lite` ensures uninterrupted sub-3s response times if high-tier models experience temporary cloud 503 capacity spikes.
-> * **Anthropic Claude**: Active models are `claude-sonnet-5`, `claude-haiku-4-5-20251001`, and `claude-opus-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are automatically caught with informative retirement diagnostics.
+> * **Google Gemini**: Defaults to `gemini-3.5-flash-lite` for sub-3-second responses. The Dashboard also offers `gemini-3.6-flash`, `gemini-3.8-flash`, and `gemini-3.1-pro-preview`.
+> * **Anthropic Claude**: Preserves exact selected API identifiers including `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`, `claude-sonnet-5`, `claude-haiku-4-5-20251001`, and `claude-opus-5` using API version `2026-10-21`. Retired model identifiers (`claude-3-7-sonnet`, `claude-3-5-haiku`) are caught with informative retirement diagnostics.
 > * **OpenAI**: Supports `gpt-4o` and `gpt-4o-mini` with full multi-turn conversational history.
 > * **Local Ollama**: Fully offline execution without external API keys or cloud telemetry.
 

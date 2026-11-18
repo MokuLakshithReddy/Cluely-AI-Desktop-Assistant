@@ -41,7 +41,7 @@ Scandium provides real-time audio and screen contextual understanding capabiliti
 
 Payment processing and subscription billing are managed by our Merchant of Record, **Lemon Squeezy**:
 - Billing details, credit card numbers, and invoices are processed directly by Lemon Squeezy under their security and privacy policies.
-- Scandium validates subscription status using Lemon Squeezy's public License API (`/validate`, `/activate`) transmitting only your license key and an anonymous, non-reversible hardware hash (`Scandium-<platform>-<hash>`). Your personal computer hostname is never transmitted or logged.
+- Scandium validates subscription status using Lemon Squeezy's public License API (`/validate`, `/activate`) transmitting only your license key and a non-reversible SHA-256 hardware hash (`Scandium-<platform>-<hash>`) derived strictly from coarse non-PII hardware traits (OS platform, CPU architecture, CPU model, CPU core count, and total memory). Your personal computer hostname is never read for, hashed into, transmitted with, or logged by licensing requests.
 
 ---
 

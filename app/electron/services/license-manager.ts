@@ -44,11 +44,14 @@ export class LicenseManager {
   }
 
   public getHardwareFingerprint(): string {
+    const cpus = os.cpus();
+    const cpuModel = cpus.length > 0 && cpus[0]?.model ? cpus[0].model.trim() : 'unknown-cpu';
+    // Strictly non-PII coarse hardware traits; personal computer hostname is never included.
     const parts = [
-      os.hostname(),
       os.platform(),
       os.arch(),
-      os.cpus().length.toString(),
+      cpuModel,
+      cpus.length.toString(),
       os.totalmem().toString(),
     ];
     return crypto.createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 16);

@@ -85,7 +85,7 @@ flowchart TD
 ### 3.3 Screen Sharing Protection (`setContentProtection`)
 - Windows Display Affinity: `WDA_EXCLUDEFROMCAPTURE` (via `win.setContentProtection(true)`).
 - macOS Sharing Mode: `NSWindowSharingNone`.
-- When enabled, meeting participants on Zoom, Teams, Google Meet, or Slack see only the desktop wallpaper or windows behind the assistant; the floating pill and chat window remain completely invisible to other participants.
+- **Mitigation Scope & Limitations**: Electron's `setContentProtection(true)` requests OS-level capture exclusion as a best-effort mitigation on supported compositor paths. It does **not** guarantee universal invisibility across every conferencing application, OS build, remote-desktop session, administrative capture tool, or external hardware capture device; actual behavior must be verified per OS and capture tool in `docs/testing/DEVICE_VALIDATION_MATRIX.md`.
 
 ---
 
