@@ -1,14 +1,15 @@
 # Production Readiness Assessment
 
 **Assessment date:** 2026-11-18 (Asia/Kolkata)  
-**Audited source revision:** [`aab481f`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/aab481f3cabcdbf7f6dbff41be296cc8f4583758)  
-**Latest verified main CI:** [CI Verification Suite (run #44170502005)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44170502005) — **PASSED** across source verification, 255/255 automated checks, production dependency audit, and native Windows, macOS, and Linux packaging + packaged launch smoke tests
+**Audited `main` baseline:** [`b96beab`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/b96beab45404563d262b42916d4e7068f6ffd4e3)  
+**Pending release-gate PR:** [#81](https://github.com/MokuLakshithReddy/Scandium-Assistant/pull/81) — latest validated head `5322911` (not yet merged)
+**Latest verified main CI:** [CI Verification Suite (run #259)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44256053853) — **PASSED** across source verification, 256/256 automated checks, production dependency audit, and native Windows, macOS, and Linux packaging + packaged launch smoke tests
 
 ## Status
 
 **NO-GO for general commercial production distribution.**
 
-Hosted CI on `main` (`2b8d50a`, run #44170502005) is completely green across Windows, macOS, and Linux — including checksum-pinned standalone Python runtime provisioning, real-audio CPU INT8 RealtimeSTT transcription (`test_realtime_inference.py`), 255/255 automated checks, production dependency audit (`npm audit --omit=dev` = 0 vulnerabilities), and packaged Electron launch/shutdown smoke tests. However, **four production release blockers remain open**:
+Hosted CI on `main` (`b96beab`, run #259) is completely green across Windows, macOS, and Linux — including checksum-pinned standalone Python runtime provisioning, real-audio CPU INT8 RealtimeSTT transcription (`test_realtime_inference.py`), 256/256 automated checks, production dependency audit (`npm audit --omit=dev` = 0 vulnerabilities), and packaged Electron launch/shutdown smoke tests. The pending PR #81 run #261 passed 258/258 checks on its own branch, including the new release-gate validator changes. However, **four production release blockers remain open**:
 
 1. **Physical-device campaign is incomplete:** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a 7-check Windows host snapshot, not the required 40-case signed campaign validated by `scripts/validate-device-evidence.cjs` across supported platforms, and live conferencing compatibility (Zoom, Teams, Google Meet, Discord, OBS) has not been executed.
 2. **No signed production release has been published for current `main`:** The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) release is an **unsigned prerelease** pointing to an older commit with no GPG-signed checksum manifest (`SHA256SUMS.txt.asc`). `.github/workflows/release.yml` is strictly fail-closed and blocks publication until GPG, Windows Authenticode, and Apple Developer ID/notarization secrets are configured and a signed tag matching current `main` is pushed.
@@ -19,18 +20,18 @@ Hosted CI on `main` (`2b8d50a`, run #44170502005) is completely green across Win
 
 | Area | Evidence | Scope and limitation |
 |---|---|---|
-| JavaScript dependency audit | `main` run #44170502005: `npm audit --omit=dev` reports **0 vulnerabilities**; full workspace report records 18 high `picomatch` dev/build findings | Production dependency audit enforced in both `ci.yml` and `release.yml`; full development/build tree remains under an explicit upstream-patch disclosure and is not audit-clean |
-| TypeScript and lint | `main` run #44170502005: `npm run lint` passed | Static checks only |
+| JavaScript dependency audit | `main` run #259: `npm audit --omit=dev` reports **0 vulnerabilities**; full workspace report records 18 high `picomatch` dev/build findings | Production dependency audit enforced in both `ci.yml` and `release.yml`; full development/build tree remains under an explicit upstream-patch disclosure and is not audit-clean |
+| TypeScript and lint | `main` run #259: `npm run lint` passed | Static checks only |
 | Unit and integration tests | 257 Vitest tests across 24 test files | Includes mocks, synthetic fixtures, and simulated inputs |
 | Electron development smoke | 1 Electron UI/preload/IPC smoke passed | Exercises real Electron windows, preload bridge, IPC, persistence, and clean exit |
 | Python sidecar & real RealtimeSTT inference | `test_sidecar.py` (12 tests) + `test_realtime_inference.py` passed on Windows, macOS, and Linux bundled runtimes | Verifies model loading and external-PCM CPU INT8 transcription of `jfk.wav`; does not replace physical loopback/microphone/meeting acceptance |
-| Windows packaged application | `main` run #44170502005 | Unsigned portable `.exe` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
-| macOS packaged application | `main` run #44170502005 | Unsigned `.dmg` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
-| Linux packaged application | `main` run #44170502005 | `.AppImage` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
+| Windows packaged application | `main` run #259 | Unsigned portable `.exe` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
+| macOS packaged application | `main` run #259 | Unsigned `.dmg` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
+| Linux packaged application | `main` run #259 | `.AppImage` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
 | Signed production release & paid billing | **BLOCKED** | Signing/GPG secrets not yet configured; `v1.0.2` is an older unsigned prerelease; `BILLING_PRODUCTS` IDs are empty and checkout is disabled |
 | Physical-device campaign | **INCOMPLETE** | See `docs/testing/DEVICE_VALIDATION_MATRIX.md` — all platforms remain `NOT APPROVED` until the 40-case signed campaign passes `validate-device-evidence.cjs` |
 
-## Source-level automated verification status (`main` CI run #44170502005)
+## Source-level automated verification status (PR #81 CI run #261; PR branch only)
 
 **258/258 automated checks passing (257/257 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
 
@@ -74,7 +75,7 @@ Grand Total:                        258 passing checks / 258 total (100% Pass Ra
 ======================================================================================
 ```
 
-On `main` (`2b8d50a`, run #44170502005), source verification, 255/255 automated checks, bundled RealtimeSTT real-audio transcription, and all three native platform package/smoke jobs completed successfully.
+On `main` (`b96beab`, run #259), source verification, 256/256 automated checks, bundled RealtimeSTT real-audio transcription, and all three native platform package/smoke jobs completed successfully. PR #81 run #261 adds two validator tests and passes 258/258 checks on the unmerged PR branch.
 
 ## Dependency security status
 
@@ -83,7 +84,7 @@ Both `.github/workflows/ci.yml` and `.github/workflows/release.yml` enforce `npm
 ## Release gates and operational status
 
 1. **Real-device validation — INCOMPLETE (ENFORCED & GPG-SIGNED IN RELEASE PIPELINE):** `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json` is scaffolded with all 40 test IDs initialized to `NOT_RUN` across Windows, macOS, and Linux (validated structurally in CI via `--allow-incomplete`), and `docs/testing/DEVICE_VALIDATION_MATRIX.md` marks all platforms `NOT APPROVED (INCOMPLETE)`. `.github/workflows/release.yml` requires both a detached GPG signature (`docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc`, verified via `gpg --verify`) and strict validation via `node scripts/validate-device-evidence.cjs docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json --release-commit "$GITHUB_SHA" --expected-version "$tag_version"` (verifying `candidate.commit` is an ancestor of `$GITHUB_SHA` with zero non-evidence code changes in between, while rejecting `NOT_RUN`, placeholder digests, or missing platforms). Issue #49 remains open until completed.
-2. **Signed production release — BLOCKED:** Published `v1.0.2` is an unsigned prerelease from an older commit without a GPG-signed `SHA256SUMS.txt.asc`. `.github/workflows/release.yml` fails closed until `RELEASE_GPG_PUBLIC_KEY`, `RELEASE_GPG_PRIVATE_KEY`, `RELEASE_GPG_PASSPHRASE`, Windows Authenticode (`WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD`, `WINDOWS_EXPECTED_CERT_THUMBPRINT`), and Apple Developer ID/notarization (`MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) secrets are configured and a new signed tag matching current `main` is pushed. Issue #50 remains open until completed.
+2. **Signed production release — BLOCKED:** Published `v1.0.2` is an unsigned prerelease from an older commit without a GPG-signed `SHA256SUMS.txt.asc`. `.github/workflows/release.yml` fails closed until `RELEASE_GPG_PUBLIC_KEY`, `RELEASE_GPG_PRIVATE_KEY`, `RELEASE_GPG_PASSPHRASE`, Windows Authenticode (`WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD`, `WINDOWS_EXPECTED_CERT_THUMBPRINT`), and Apple Developer ID/notarization (`MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) secrets are configured and a new signed tag matching current `main` is pushed. Issue #50 remains open as the publication tracker and is intentionally excluded from the pre-publication issue gate; close it only after the signed release is published and independently verified.
 3. **Paid subscriptions & checkout — NOT READY:** `app/electron/config/billing-products.ts` intentionally leaves `plus` and `pro` product/variant IDs empty, and checkout in `website/index.html` is intentionally disabled. Configure real Lemon Squeezy products/variants and verify live license activation end-to-end before commercial launch.
 4. **Native CI packaging & bundled RealtimeSTT inference — PASSED ON `main`:** Windows, macOS, and Linux unsigned validation packages, bundled CPython + PortAudio provisioning, real `jfk.wav` CPU INT8 RealtimeSTT transcription, and packaged Electron smoke tests all passed in `main` run #44170502005.
 5. **Development-tooling advisory — OPEN UPSTREAM:** Production runtime audit (`npm audit --omit=dev`) reports 0 vulnerabilities; the 18 high `picomatch` dev/build-tooling findings remain recorded pending an upstream patch.
