@@ -578,6 +578,27 @@ export class WhisperRuntime {
       }
     }
 
+    // Ensure any remaining active children (even if not associated with an active temp dir) are confirmed terminated
+    for (const child of Array.from(this.activeChildren)) {
+      if (child.exitCode === null && child.signalCode === null) {
+        const termRes = await this.terminateChildAndWait(child);
+        if (!termRes.exited) {
+          const childKey = `whisper-child-pid-${child.pid ?? 'unknown'}`;
+          if (!seenFailed.has(childKey)) {
+            seenFailed.add(childKey);
+            failedPaths.push({
+              path: childKey,
+              error: termRes.error || 'Whisper child process could not be confirmed terminated',
+            });
+          }
+        } else {
+          this.activeChildren.delete(child);
+        }
+      } else {
+        this.activeChildren.delete(child);
+      }
+    }
+
     // 6. Sweep orphaned own-process / dead-PID dirs and legacy scandium_stt_* files
     const orphanReport = await this.cleanupOrphanedTempFilesAsync(baseTmpDir);
     removedCount += orphanReport.removedCount;
@@ -606,6 +627,15 @@ export class WhisperRuntime {
 
   public getActiveTempDirs(): string[] {
     return Array.from(this.activeTempDirs);
+  }
+
+  public hasActiveProcesses(): boolean {
+    for (const child of this.activeChildren) {
+      if (child.exitCode === null && child.signalCode === null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public getModels(): WhisperModelInfo[] {

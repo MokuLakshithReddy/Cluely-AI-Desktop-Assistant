@@ -1217,9 +1217,16 @@ export class IpcRouter {
             `[IpcRouter] Data purge failed closed: RealtimeSTT sidecar could not be confirmed stopped (${realtimeStopError.message})`
           );
         }
-        if (!whisperCleanup.success) {
+        if (realtimeSTTManager.hasActiveProcess()) {
+          throw new Error(
+            `[IpcRouter] Data purge failed closed: RealtimeSTT sidecar child process remains active.`
+          );
+        }
+        if (!whisperCleanup.success || whisperRuntime.hasActiveProcesses()) {
           const details = whisperCleanup.failedPaths.map(f => `${f.path} (${f.error})`).join('; ');
-          throw new Error(`[IpcRouter] Data purge incomplete: failed to remove temporary Whisper files: ${details}`);
+          throw new Error(
+            `[IpcRouter] Data purge incomplete: failed to remove temporary Whisper files or child processes remain: ${details || 'active child process'}`
+          );
         }
 
         await credentialVault.deleteAllKeys();

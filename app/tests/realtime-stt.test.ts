@@ -400,4 +400,40 @@ describe('RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT)', () =>
       vi.restoreAllMocks();
     }
   });
+
+  it('fails closed in IPC purge-all-data when RealtimeSTT sidecar process remains active', async () => {
+    const handlers = new Map<string, (...args: any[]) => any>();
+    vi.spyOn(ipcMain, 'handle').mockImplementation(((channel: string, listener: any) => {
+      handlers.set(channel, listener);
+    }) as any);
+    vi.spyOn(ipcMain, 'on').mockImplementation((() => ipcMain) as any);
+    vi.spyOn(realtimeSTTManager, 'stop').mockResolvedValue(undefined);
+    vi.spyOn(realtimeSTTManager, 'hasActiveProcess').mockReturnValue(true);
+    vi.spyOn(whisperRuntime, 'abortAllAndCleanup').mockResolvedValue({
+      removedCount: 0,
+      failedPaths: [],
+      success: true,
+    });
+    const deleteKeysSpy = vi.spyOn(credentialVault, 'deleteAllKeys').mockResolvedValue(undefined);
+    const purgeSessionsSpy = vi.spyOn(sessionRepository, 'purgeAll').mockResolvedValue(undefined);
+    vi.spyOn(stateManager, 'flushSaveOrThrow').mockImplementation(() => {});
+
+    try {
+      const router = new IpcRouter();
+      (router as any).registerHandlers();
+      const purgeHandler = handlers.get('purge-all-data');
+      expect(purgeHandler).toBeDefined();
+
+      const trustedEvent = { senderFrame: { url: 'http://localhost:5173/#dashboard' } };
+      await expect(purgeHandler!(trustedEvent)).rejects.toThrow(
+        /Data purge failed closed: RealtimeSTT sidecar child process remains active/i
+      );
+
+      expect(deleteKeysSpy).not.toHaveBeenCalled();
+      expect(purgeSessionsSpy).not.toHaveBeenCalled();
+    } finally {
+      stateManager.patchState({ isPurging: false });
+      vi.restoreAllMocks();
+    }
+  });
 });

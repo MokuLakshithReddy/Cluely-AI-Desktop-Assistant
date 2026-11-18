@@ -3,9 +3,9 @@
 **Target Environment**: Windows_NT 10.0.26200 (x64)  
 **Node Version**: v24.19.0  
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
-**Test Status**: 287/287 Passing (100% Pass Rate)  
+**Test Status**: 297/297 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `4fb8e65626a25ccec2cee70a717e9ab816b48406`  
+**Source revision**: `6828a9296a79bf7215059fe8af68749efba0faed`  
 **Workflow run**: Local execution  
 **Verification Date**: 2026-11-18  
 
@@ -25,22 +25,23 @@
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 35 | 35 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
 | `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 15 | 15 | 0 | **PASSED** |
+| `lifecycle-shutdown.test.ts` | Lifecycle Shutdown Coordinator & Application Lifecycle Guarantees | 8 | 8 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization (Mocked HTTP) | 14 | 14 | 0 | **PASSED** |
-| `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 18 | 18 | 0 | **PASSED** |
+| `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 19 | 19 | 0 | **PASSED** |
 | `security-redaction.test.ts` | Security, Privacy & Sensitive-Content Hardening Subsystem | 46 | 46 | 0 | **PASSED** |
 | `session-archive.test.ts` | Multi-Session Archive & Persistence Subsystem | 12 | 12 | 0 | **PASSED** |
 | `state-broadcast.test.ts` | Shared-state renderer broadcast | 2 | 2 | 0 | **PASSED** |
 | `state-persistence.test.ts` | State persistence error reporting | 8 | 8 | 0 | **PASSED** |
 | `subscription-url.test.ts` | First-party subscription page URLs | 1 | 1 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 6 | 6 | 0 | **PASSED** |
-| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 18 | 18 | 0 | **PASSED** |
+| `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 19 | 19 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
-| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
+| `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 5 | 5 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 6 | 6 | 0 | **PASSED** |
 | `electron-smoke.cjs` | Electron Dashboard UI/IPC E2E Verification | 1 | 1 | 0 | **PASSED** |
-| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **287** | **287** | **0** | **100% PASS** |
+| **Total** | **All Core Domains & Electron UI/IPC E2E Verification** | **297** | **297** | **0** | **100% PASS** |
 
 ---
 
@@ -212,7 +213,19 @@
 ✓ verifies Lemon Squeezy HMAC-SHA256 webhook signatures, blocks replays, and maps subscription lifecycle transitions
 ```
 
-### 11. AI Provider Model Propagation and Multi-Turn Serialization (Mocked HTTP) (`tests/provider-models.test.ts`)
+### 11. Lifecycle Shutdown Coordinator & Application Lifecycle Guarantees (`tests/lifecycle-shutdown.test.ts`)
+```text
+✓ guarantees clean application shutdown when RealtimeSTT and Whisper terminate gracefully
+✓ confirms clean shutdown after forced termination followed by verified child exit
+✓ fails closed when RealtimeSTT sidecar termination rejects or times out
+✓ fails closed and records actionable error when Whisper temporary cleanup fails
+✓ fails closed when either RealtimeSTT or Whisper process remains active in process tree
+✓ prevents duplicate concurrent shutdown operations via single-flight mutex
+✓ provides a controlled retry mechanism that recovers from a prior transient failure
+✓ prevents before-quit infinite loops and deadlocks
+```
+
+### 12. AI Provider Model Propagation and Multi-Turn Serialization (Mocked HTTP) (`tests/provider-models.test.ts`)
 ```text
 ✓ maintains a centralized model registry with distinct API IDs and display names for every advertised model
 ✓ propagates every configured cloud and local model ID from MODEL_REGISTRY accurately to its provider adapter
@@ -230,7 +243,7 @@
 ✓ buildContextPrompt excludes transcribing and error items from transcript context
 ```
 
-### 12. RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) (`tests/realtime-stt.test.ts`)
+### 13. RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) (`tests/realtime-stt.test.ts`)
 ```text
 ✓ correctly converts Float32 audio samples into 16-bit signed PCM little-endian buffer
 ✓ correctly downsamples 48kHz audio to 16kHz for Whisper inference
@@ -250,9 +263,10 @@
 ✓ rejects and preserves child reference when sidecar never exits within the bounded deadline, enabling later recovery
 ✓ rejects explicitly and preserves child reference when SIGKILL throws or is rejected by OS
 ✓ fails closed in IPC purge-all-data when RealtimeSTT sidecar termination fails
+✓ fails closed in IPC purge-all-data when RealtimeSTT sidecar process remains active
 ```
 
-### 13. Security, Privacy & Sensitive-Content Hardening Subsystem (`tests/security-redaction.test.ts`)
+### 14. Security, Privacy & Sensitive-Content Hardening Subsystem (`tests/security-redaction.test.ts`)
 ```text
 ✓ redacts OpenAI API keys
 ✓ redacts AWS Access Key IDs
@@ -302,7 +316,7 @@
 ✓ permits local screenshot processing on-device when provider is local ollama
 ```
 
-### 14. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
+### 15. Multi-Session Archive & Persistence Subsystem (`tests/session-archive.test.ts`)
 ```text
 ✓ saves and reads a full session record with transcripts and messages
 ✓ restricts session directory and archive file access on POSIX
@@ -318,13 +332,13 @@
 ✓ locks repository and fails closed if getSession encounters a migration re-write error
 ```
 
-### 15. Shared-state renderer broadcast (`tests/state-broadcast.test.ts`)
+### 16. Shared-state renderer broadcast (`tests/state-broadcast.test.ts`)
 ```text
 ✓ updates control, chat, and Dashboard windows
 ✓ skips missing or destroyed windows without preventing other updates
 ```
 
-### 16. State persistence error reporting (`tests/state-persistence.test.ts`)
+### 17. State persistence error reporting (`tests/state-persistence.test.ts`)
 ```text
 ✓ does not restore stale transient persistence warnings from older state files
 ✓ ignores stale persisted app versions and does not persist runtime version metadata
@@ -336,12 +350,12 @@
 ✓ suppresses active session and knowledge documents from disk when enterpriseMode is active
 ```
 
-### 17. First-party subscription page URLs (`tests/subscription-url.test.ts`)
+### 18. First-party subscription page URLs (`tests/subscription-url.test.ts`)
 ```text
 ✓ opens the Scandium pricing page with the selected plan highlighted
 ```
 
-### 18. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
+### 19. WebBridge Security and Memory Architecture (`tests/web-bridge.test.ts`)
 ```text
 ✓ stores API keys ephemerally in-memory and NEVER persists them to localStorage
 ✓ purgeAllData wipes in-memory vault keys and stored session archives
@@ -351,7 +365,7 @@
 ✓ fails closed on activateLicense in Web Mode instead of trusting frontend input
 ```
 
-### 19. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
+### 20. Local Speech Recognition (whisper.cpp) Subsystem (`tests/whisper-runtime.test.ts`)
 ```text
 ✓ provides verified registry of open-weight GGML Whisper models with exact SHA-256 hashes
 ✓ tracks active model selection safely
@@ -371,9 +385,10 @@
 ✓ handles multiple simultaneous transcription jobs and repeated purge safely
 ✓ PROVES purge-all-data does NOT resolve while an active transcription temp file still exists on disk
 ✓ gracefully serializes concurrent overlapping audio streams without crashing or process starvation
+✓ fails closed in IPC purge-all-data when whisperRuntime reports active processes remain
 ```
 
-### 20. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
+### 21. WindowCoordinator macOS close-all recovery (`tests/window-coordinator.test.ts`)
 ```text
 ✓ clears closed control/chat references and recreates both windows on reinitialization
 ✓ keeps initialization idempotent and does not register duplicate state listeners
@@ -381,14 +396,6 @@
 ✓ moveControlWindow rounds fractional coordinates and syncs visible chat window
 ✓ moveControlWindow does not reposition chat window when chat is hidden
 ✓ moveControlWindow safely ignores invalid or NaN deltas
-```
-
-### 21. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
 ```
 
 ### 22. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
@@ -409,7 +416,15 @@
 ✓ hides incomplete context preamble while streaming so it does not flicker on screen
 ```
 
-### 23. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
+### 23. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+```text
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
+```
+
+### 24. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)
 ```text
 ✓ parses empty or missing hash as default "all" view
 ✓ parses direct routes without query parameters
@@ -418,7 +433,7 @@
 ✓ normalizes valid tabs, common aliases, and unknown tab names safely without blank panels
 ```
 
-### 24. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
+### 25. Screen Capture & Thumbnail Scaling Subsystem (`tests/screen-capture.test.ts`)
 ```text
 ✓ passes unscaled bounds when screen resolution <= 1920x1080
 ✓ scales 4K display (3840x2160) proportionally to 1920x1080 (0.5x ratio)
@@ -428,7 +443,7 @@
 ✓ prefers the exact display match when non-empty and falls back past empty virtual displays
 ```
 
-### 25. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
+### 26. Electron UI/IPC E2E Verification (`tests/electron-smoke.cjs`)
 ```text
 ✓ Spawns Electron with ELECTRON_RUN_AS_NODE removed
 ✓ Loads the control/chat windows and mounts the real Dashboard renderer

@@ -10,6 +10,7 @@ import { licenseManager } from './services/license-manager';
 import { initStorageEncryptionAsync } from './services/storage-encryption';
 import { realtimeSTTManager } from './services/realtime-stt-manager';
 import { whisperRuntime } from './services/whisper-runtime';
+import { LifecycleShutdownCoordinator } from './domains/lifecycle-shutdown';
 
 const smokeStatusFile = process.env.SMOKE_TEST_STATUS_FILE;
 const smokeLogFile = smokeStatusFile && path.isAbsolute(smokeStatusFile)
@@ -262,7 +263,6 @@ if (!gotSingleInstanceLock) {
         if (fs.existsSync(shutdownTrigger)) {
           clearInterval(checkInterval);
           try { fs.unlinkSync(shutdownTrigger); } catch { }
-          writePackagedSmokeStatus({ cleanShutdown: true });
           console.log('[APP_CLEAN_SHUTDOWN] Graceful shutdown command received via trigger.');
           isQuitting = true;
           windowCoordinator.destroyAllWindows();
@@ -293,35 +293,42 @@ if (!gotSingleInstanceLock) {
     });
   });
 
-  let isAppShuttingDown = false;
+  const lifecycleShutdownCoordinator = new LifecycleShutdownCoordinator({
+    realtimeSTT: realtimeSTTManager,
+    whisper: whisperRuntime,
+    stateManager,
+    writeSmokeStatus: writePackagedSmokeStatus,
+    exitApp: () => {
+      isQuitting = true;
+      app.quit();
+    },
+    onShutdownFailure: () => {
+      isQuitting = false;
+      const controlWin = windowCoordinator.getControlWindow();
+      if (!controlWin || controlWin.isDestroyed()) {
+        try {
+          windowCoordinator.openDashboardWindow('security');
+        } catch {}
+      }
+    },
+  });
 
   app.on('before-quit', (event) => {
     writePackagedSmokeStatus({ beforeQuit: true });
     console.log('[APP_BEFORE_QUIT] Application lifecycle before-quit triggered.');
-    if (!isAppShuttingDown) {
-      event.preventDefault();
-      isAppShuttingDown = true;
-      stateManager.flushSave();
-      Promise.allSettled([
-        realtimeSTTManager.shutdown().catch((err) => {
-          console.warn('[Main] Error shutting down RealtimeSTT:', err);
-        }),
-        whisperRuntime.shutdown().catch((err) => {
-          console.warn('[Main] Error shutting down WhisperRuntime:', err);
-        }),
-      ]).finally(() => {
-        app.quit();
-      });
-      return;
-    }
+    lifecycleShutdownCoordinator.handleBeforeQuit(event);
   });
 
   app.on('will-quit', () => {
     writePackagedSmokeStatus({ willQuit: true });
     console.log('[APP_WILL_QUIT] Application lifecycle will-quit completed.');
-    realtimeSTTManager.stop().catch(() => {});
+    lifecycleShutdownCoordinator.handleWillQuit();
     if (process.env.SMOKE_TEST === 'true') {
-      process.exit(0);
+      if (lifecycleShutdownCoordinator.isCleanShutdown()) {
+        process.exit(0);
+      } else {
+        process.exit(1);
+      }
     }
   });
 

@@ -13,6 +13,7 @@ import { IpcRouter } from '../electron/domains/ipc-router';
 import { stateManager } from '../electron/domains/state';
 import { credentialVault } from '../electron/services/vault';
 import { sessionRepository } from '../electron/services/session-repository';
+import { realtimeSTTManager } from '../electron/services/realtime-stt-manager';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -606,5 +607,42 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     expect(res2.toLowerCase()).toContain('ask not what your country can do for you');
     expect(totalDurationMs).toBeGreaterThan(0);
     expect(fs.readdirSync(isolatedTmp)).toEqual([]);
+  });
+
+  it('fails closed in IPC purge-all-data when whisperRuntime reports active processes remain', async () => {
+    const handlers = new Map<string, (...args: any[]) => any>();
+    vi.spyOn(ipcMain, 'handle').mockImplementation(((channel: string, listener: any) => {
+      handlers.set(channel, listener);
+    }) as any);
+    vi.spyOn(ipcMain, 'on').mockImplementation((() => ipcMain) as any);
+    vi.spyOn(realtimeSTTManager, 'stop').mockResolvedValue(undefined);
+    vi.spyOn(realtimeSTTManager, 'hasActiveProcess').mockReturnValue(false);
+    vi.spyOn(whisperRuntime, 'abortAllAndCleanup').mockResolvedValue({
+      removedCount: 1,
+      failedPaths: [],
+      success: true,
+    });
+    vi.spyOn(whisperRuntime, 'hasActiveProcesses').mockReturnValue(true);
+    const deleteKeysSpy = vi.spyOn(credentialVault, 'deleteAllKeys').mockResolvedValue(undefined);
+    const purgeSessionsSpy = vi.spyOn(sessionRepository, 'purgeAll').mockResolvedValue(undefined);
+    vi.spyOn(stateManager, 'flushSaveOrThrow').mockImplementation(() => {});
+
+    try {
+      const router = new IpcRouter();
+      (router as any).registerHandlers();
+      const purgeHandler = handlers.get('purge-all-data');
+      expect(purgeHandler).toBeDefined();
+
+      const trustedEvent = { senderFrame: { url: 'http://localhost:5173/#dashboard' } };
+      await expect(purgeHandler!(trustedEvent)).rejects.toThrow(
+        /Data purge incomplete: failed to remove temporary Whisper files or child processes remain/i
+      );
+
+      expect(deleteKeysSpy).not.toHaveBeenCalled();
+      expect(purgeSessionsSpy).not.toHaveBeenCalled();
+    } finally {
+      stateManager.patchState({ isPurging: false });
+      vi.restoreAllMocks();
+    }
   });
 });
