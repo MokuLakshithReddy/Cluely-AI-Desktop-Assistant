@@ -2,13 +2,13 @@
 
 ## Next release target
 
-The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) release is an **unsigned CI validation prerelease** pointing to an older commit, **not** a signed production release. The next signed production release must be tagged from the exact verified `main` commit (matching `package.json` and `app/package.json`, e.g., bumping to `v1.0.3` once all blockers are cleared).
+The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) release is an **unsigned CI validation prerelease** pointing to an older commit, **not** a signed production release. Because `v1.0.2` already exists as an unsigned prerelease tag, the next signed production release target is **`v1.0.3`** (root `package.json`, `app/package.json`, and `package-lock.json` remain at `1.0.2` during development and must be bumped together to `1.0.3` when cutting the `v1.0.3` release candidate).
 
 The release workflow is `.github/workflows/release.yml` (**Signed Production Release**). It runs only when a version tag is pushed and **strictly fails closed** unless:
 - the tag version matches both root and app package versions;
 - the tag points to the exact current `main` commit;
 - `RELEASE_GPG_PUBLIC_KEY` is configured and `git verify-tag` succeeds;
-- `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json` and its detached human sign-off GPG signature `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc` exist, pass `gpg --verify`, and pass strict 40-case validation via `node scripts/validate-device-evidence.cjs docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json --expected-commit <SHA> --expected-version <semver>` (incomplete campaigns, placeholder SHA-256 digests, missing platforms, or stale commits fail closed);
+- `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json` and its detached human sign-off GPG signature `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc` exist, pass `gpg --verify`, and pass strict 40-case validation via `node scripts/validate-device-evidence.cjs docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json --release-commit "$GITHUB_SHA" --expected-version "$tag_version"` (which verifies `candidate.commit` is an ancestor of `$GITHUB_SHA` with **zero non-evidence code, dependency, packaging, or workflow changes** between the tested commit and the tagged sign-off commit);
 - readiness issues #19, #47, #48, #49, #50, #51, #52, #60, and #73 are closed with the `completed` reason;
 - the production dependency audit (`npm audit --omit=dev --audit-level=high`) passes with 0 critical/high findings (while capturing and uploading both full and production audit reports);
 - source verification passes on Node.js 24.22.2 (Python STT protocol tests, lint, Vitest, build, Electron smoke, test report);
@@ -29,7 +29,7 @@ A CI package artifact is not a release until this workflow completes and attache
 
 ## Required repository Actions secrets
 
-Configure these secrets before creating the v1.0.2 tag:
+Configure these secrets before creating the `v1.0.3` tag:
 
 | Secret | Purpose |
 |---|---|
@@ -41,26 +41,33 @@ Configure these secrets before creating the v1.0.2 tag:
 | `APPLE_ID` | Apple developer account used for notarization |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for notarization |
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
-| `RELEASE_GPG_PUBLIC_KEY` | ASCII-armored public key used to verify the signed Git tag |
+| `RELEASE_GPG_PUBLIC_KEY` | ASCII-armored public key used to verify the signed Git tag and `DEVICE_EVIDENCE_CAMPAIGN.json.asc` |
 | `RELEASE_GPG_PRIVATE_KEY` | ASCII-armored private key used to sign the checksum manifest |
 | `RELEASE_GPG_PASSPHRASE` | Passphrase for the release GPG private key |
 
 Keep signing secrets in GitHub Actions secrets; never commit certificates, passwords, private keys, provider keys, or token material. For Windows PFX certificates, ensure the base64 value fits Windows environment-variable limits; electron-builder documents the `WIN_CSC_LINK` path and encoding requirements in its [code-signing guide](https://www.electron.build/docs/features/code-signing/). The release workflow also compares the Windows executable's Authenticode certificate thumbprint with `WINDOWS_EXPECTED_CERT_THUMBPRINT`; obtain that exact thumbprint from the approved publisher certificate and update it when the certificate is renewed. For macOS, the workflow verifies that the app is signed by a `Developer ID Application` certificate whose `TeamIdentifier` exactly matches `APPLE_TEAM_ID`, then validates the stapled notarization ticket.
 
-## Create and push the signed release tag
+## Create and push the signed release tag (`v1.0.3`)
 
-After all release PRs have merged and current `main` has a successful CI run, use the GPG key whose public key is stored as `RELEASE_GPG_PUBLIC_KEY`:
+1. Bump `package.json`, `app/package.json`, and `package-lock.json` to `1.0.3` via PR and merge into `main`. Let that tested candidate commit be `C` (and confirm its CI run passes).
+2. Execute the 40-case physical-device campaign on the installers built from commit `C`, recording `candidate.commit = C`, `candidate.version = "1.0.3"`, real artifact SHA-256 digests, and evidence URLs in `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json`.
+3. Cryptographically sign the finalized campaign JSON with the release GPG key:
+   ```bash
+   gpg --armor --detach-sign --output docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json
+   ```
+4. Commit **only** the allowlisted evidence and readiness files (`docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json`, `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc`, `docs/testing/DEVICE_VALIDATION_MATRIX.md`, `docs/production/PRODUCTION_READINESS.md`, `docs/production/RELEASE_AUTOMATION.md`, `docs/production/RELEASE_VERIFICATION.md`) via PR into `main` (let this sign-off commit be `S`). No code, dependency, packaging, or workflow file may change between `C` and `S`.
+5. Tag sign-off commit `S` on `main` using the GPG key whose public key is stored as `RELEASE_GPG_PUBLIC_KEY`:
 
 ```bash
 git fetch origin main
 git checkout main
 git pull --ff-only
-git tag -s v1.0.2 -m "Scandium Copilot v1.0.2"
-git verify-tag v1.0.2
-git push origin v1.0.2
+git tag -s v1.0.3 -m "Scandium v1.0.3"
+git verify-tag v1.0.3
+git push origin v1.0.3
 ```
 
-The workflow re-checks the tag against `main`; do not move `main` after tagging. If the workflow fails, correct the failure and create a new tag only after the candidate commit is again the verified main head.
+The workflow verifies that `v1.0.3` matches `package.json`/`app/package.json`, points to `origin/main`, passes `git verify-tag` and `gpg --verify` on `DEVICE_EVIDENCE_CAMPAIGN.json.asc`, and confirms `candidate.commit` (`C`) is an ancestor of `S` with zero non-evidence code changes in `C..S`.
 
 ## Release verification after publication
 
@@ -76,4 +83,4 @@ For Windows, confirm the executable's Authenticode signature is valid and the pu
 
 ## Current limitation
 
-The release automation and the matching root/app v1.0.2 package versions are already merged, but no v1.0.2 production release is claimed here. The workflow cannot create production certificates, Apple account credentials, or GPG signing keys for the repository owner. It also blocks publication while issue #49 remains open. Keep issue #50 open until the required device evidence is accepted, signing secrets are configured, and the v1.0.2 tag workflow publishes all verified signed assets and the manifest.
+No signed production release is claimed yet. Root and app `package.json` currently declare `1.0.2` (matching the existing unsigned `v1.0.2` prerelease) and must be bumped to `1.0.3` when cutting the signed release candidate. The workflow cannot create production certificates, Apple account credentials, or GPG signing keys for the repository owner. Keep issues #49 and #50 open until the 40-case device evidence campaign is completed and GPG-signed, signing secrets are configured, and the signed `v1.0.3` tag workflow publishes all verified signed assets and the manifest.

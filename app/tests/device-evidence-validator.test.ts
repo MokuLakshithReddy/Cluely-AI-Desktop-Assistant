@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 const {
   REQUIRED_TEST_IDS,
   validateCampaign,
+  verifyEvidenceCommitBinding,
 } = require('../../scripts/validate-device-evidence.cjs') as {
   REQUIRED_TEST_IDS: string[];
   validateCampaign: (
@@ -14,6 +15,12 @@ const {
     pendingRecordCount: number;
     coveredPlatforms: string[];
   };
+  verifyEvidenceCommitBinding: (params: {
+    testedCommit: string;
+    releaseCommit: string;
+    isAncestor: boolean;
+    changedFiles: string[];
+  }) => Array<{ path: string; message: string }>;
 };
 
 const TESTED_AT = '2026-11-09T09:00:00.000Z';
@@ -233,5 +240,46 @@ describe('device evidence campaign validator', () => {
 
     const collectionResult = validateCampaign(campaign, { allowIncomplete: true });
     expect(collectionResult.errors).toEqual([]);
+  });
+
+  it('binds tested commit to release commit without self-referencing hash paradox and rejects any post-test code drift', () => {
+    const testedCommit = 'a'.repeat(40);
+    const signOffCommit = 'b'.repeat(40);
+
+    // 1. Evidence-only sign-off commit descending from testedCommit passes
+    expect(
+      verifyEvidenceCommitBinding({
+        testedCommit,
+        releaseCommit: signOffCommit,
+        isAncestor: true,
+        changedFiles: [
+          'docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json',
+          'docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc',
+          'docs/testing/DEVICE_VALIDATION_MATRIX.md',
+          'docs/production/PRODUCTION_READINESS.md',
+        ],
+      })
+    ).toEqual([]);
+
+    // 2. Any runtime, package, script, or workflow change after testing fails closed
+    const codeDrift = verifyEvidenceCommitBinding({
+      testedCommit,
+      releaseCommit: signOffCommit,
+      isAncestor: true,
+      changedFiles: [
+        'docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json',
+        'app/electron/main.ts',
+      ],
+    });
+    expect(codeDrift.some((e) => e.message.includes('app/electron/main.ts'))).toBe(true);
+
+    // 3. Non-ancestor commit fails closed
+    const nonAncestor = verifyEvidenceCommitBinding({
+      testedCommit,
+      releaseCommit: signOffCommit,
+      isAncestor: false,
+      changedFiles: [],
+    });
+    expect(nonAncestor.some((e) => e.message.includes('not an ancestor'))).toBe(true);
   });
 });

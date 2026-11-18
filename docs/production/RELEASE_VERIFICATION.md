@@ -63,9 +63,9 @@ A CI job that disables code signing is not evidence of a signed production artif
 
 ### 5. Tag and publication
 
-- Confirm root and app package versions are both `1.0.2`.
-- Create a signed `v1.0.2` tag on the exact main commit that passes the release workflow.
-- Make the release workflow reject tags that point to a different commit than the verified candidate.
+- Because `v1.0.2` already exists as an unsigned prerelease pointing to an older commit, bump root `package.json`, `app/package.json`, and `package-lock.json` to **`1.0.3`** when cutting the next signed production release candidate.
+- Complete the 40-case device campaign on that tested candidate commit, GPG-sign `docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc`, commit only allowlisted evidence/readiness files to `main`, and create a signed `v1.0.3` tag on that `main` sign-off commit.
+- The release workflow verifies both GPG signatures (`git verify-tag` and `gpg --verify`) and enforces `--release-commit "$GITHUB_SHA"` (proving zero non-evidence code changes between the tested commit and the tagged commit).
 - Attach only artifacts that passed their relevant build, packaged-launch, device-validation, and signing gates.
 - Include the commit SHA, runtime versions, artifact checksums, supported OS matrix, verification scope, and known limitations in the release notes.
 
@@ -76,12 +76,12 @@ See [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md) for the required repository s
 After downloading the executable and checksum manifest:
 
 ```powershell
-Get-FileHash .\Scandium-Setup-1.0.2.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\Scandium-Setup-1.0.2.exe | Format-List Status, SignatureType, SignerCertificate, TimeStamperCertificate
+Get-FileHash .\Scandium-1.0.3-Windows-x64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\Scandium-1.0.3-Windows-x64.exe | Format-List Status, SignatureType, SignerCertificate, TimeStamperCertificate
 ```
 
 Compare the SHA-256 output with the checksum published for that exact asset. Require a valid signature from the expected publisher before instructing users to run the executable.
 
 ## Release decision
 
-The current production-readiness assessment is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md). The project remains **NO-GO** for general production distribution until physical-device validation, production signing/notarization, and the signed v1.0.2 publication gates are complete.
+The current production-readiness assessment is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md). The project remains **NO-GO** for general commercial production distribution until physical-device validation, production signing/notarization, signed `v1.0.3` publication, and (for paid plans) Lemon Squeezy billing setup are complete.

@@ -2,6 +2,16 @@
 'use strict';
 
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+
+const ALLOWED_POST_TEST_EVIDENCE_FILES = new Set([
+  'docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json',
+  'docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json.asc',
+  'docs/testing/DEVICE_VALIDATION_MATRIX.md',
+  'docs/production/PRODUCTION_READINESS.md',
+  'docs/production/RELEASE_AUTOMATION.md',
+  'docs/production/RELEASE_VERIFICATION.md',
+]);
 
 const REQUIRED_TEST_IDS = [
   'A-01', 'A-02', 'A-03', 'A-04', 'A-05', 'A-06',
@@ -293,13 +303,92 @@ function validateCampaign(campaign, options = {}) {
   };
 }
 
+/**
+ * Verifies that the tagged release commit is either the exact tested commit
+ * or a descendant that modified ONLY allowlisted evidence/readiness files
+ * (no source code, dependency, packaging, or workflow drift after testing).
+ * This avoids the mathematically impossible self-referencing Git commit hash
+ * requirement when the signed campaign file is stored in the repository.
+ */
+function verifyEvidenceCommitBinding({ testedCommit, releaseCommit, isAncestor, changedFiles }) {
+  const errors = [];
+  if (!/^[a-f0-9]{40}$/i.test(testedCommit || '')) {
+    errors.push({ path: 'candidate.commit', message: 'must be a valid 40-character Git commit SHA' });
+    return errors;
+  }
+  if (!/^[a-f0-9]{40}$/i.test(releaseCommit || '')) {
+    errors.push({ path: 'releaseCommit', message: 'must be a valid 40-character Git commit SHA' });
+    return errors;
+  }
+  if (testedCommit.toLowerCase() === releaseCommit.toLowerCase()) {
+    return errors;
+  }
+  if (!isAncestor) {
+    errors.push({
+      path: 'candidate.commit',
+      message: 'tested commit ' + testedCommit + ' is not an ancestor of release commit ' + releaseCommit,
+    });
+    return errors;
+  }
+  const normalizedChanged = (changedFiles || [])
+    .map((f) => String(f).trim().replace(/\\/g, '/'))
+    .filter(Boolean);
+  const disallowed = normalizedChanged.filter((f) => !ALLOWED_POST_TEST_EVIDENCE_FILES.has(f));
+  if (disallowed.length > 0) {
+    errors.push({
+      path: 'candidate.commit',
+      message:
+        'non-evidence files changed between tested commit ' +
+        testedCommit.slice(0, 7) +
+        ' and release commit ' +
+        releaseCommit.slice(0, 7) +
+        ': ' +
+        disallowed.join(', '),
+    });
+  }
+  return errors;
+}
+
+function verifyGitEvidenceCommitBinding(testedCommit, releaseCommit) {
+  if (!/^[a-f0-9]{40}$/i.test(testedCommit || '') || !/^[a-f0-9]{40}$/i.test(releaseCommit || '')) {
+    return verifyEvidenceCommitBinding({ testedCommit, releaseCommit, isAncestor: false, changedFiles: [] });
+  }
+  if (testedCommit.toLowerCase() === releaseCommit.toLowerCase()) {
+    return [];
+  }
+
+  let isAncestor = false;
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', testedCommit, releaseCommit], { stdio: 'ignore' });
+    isAncestor = true;
+  } catch {
+    isAncestor = false;
+  }
+
+  let changedFiles = [];
+  if (isAncestor) {
+    try {
+      const diffOut = execFileSync('git', ['diff', '--name-only', `${testedCommit}..${releaseCommit}`], {
+        encoding: 'utf8',
+      });
+      changedFiles = diffOut.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    } catch (error) {
+      return [{ path: 'candidate.commit', message: 'could not diff tested commit against release commit: ' + error.message }];
+    }
+  }
+
+  return verifyEvidenceCommitBinding({ testedCommit, releaseCommit, isAncestor, changedFiles });
+}
+
 function printUsage() {
   process.stdout.write(
-    'Usage: node scripts/validate-device-evidence.cjs <campaign.json> [--allow-incomplete] [--expected-commit <sha>] [--expected-version <semver>]\n' +
+    'Usage: node scripts/validate-device-evidence.cjs <campaign.json> [--allow-incomplete] [--expected-commit <sha>] [--release-commit <sha>] [--expected-version <semver>]\n' +
     'Default mode requires all 40 test records per run, all three release platforms,\n' +
     'PASS or justified NOT_APPLICABLE results, evidence links for PASS, and owner sign-off.\n' +
     '--allow-incomplete validates the campaign structure while evidence is being collected.\n' +
-    '--expected-commit / --expected-version fail closed if the campaign targets a different commit or version.\n'
+    '--expected-commit requires exact SHA equality (for external/detached attestations).\n' +
+    '--release-commit verifies candidate.commit is an ancestor of <sha> with zero non-evidence code changes in between.\n' +
+    '--expected-version fails closed if the campaign targets a different release version.\n'
   );
 }
 
@@ -312,6 +401,7 @@ function runCli(argv) {
 
   let allowIncomplete = false;
   let expectedCommit = null;
+  let releaseCommit = null;
   let expectedVersion = null;
   const paths = [];
 
@@ -325,6 +415,12 @@ function runCli(argv) {
         return 2;
       }
       expectedCommit = args[++i];
+    } else if (arg === '--release-commit') {
+      if (i + 1 >= args.length || !nonEmptyString(args[i + 1])) {
+        process.stderr.write('--release-commit requires a 40-character Git commit SHA\n');
+        return 2;
+      }
+      releaseCommit = args[++i];
     } else if (arg === '--expected-version') {
       if (i + 1 >= args.length || !nonEmptyString(args[i + 1])) {
         process.stderr.write('--expected-version requires a semantic version string\n');
@@ -354,6 +450,10 @@ function runCli(argv) {
   }
 
   const result = validateCampaign(campaign, { allowIncomplete, expectedCommit, expectedVersion });
+  if (releaseCommit && !allowIncomplete) {
+    const bindingErrors = verifyGitEvidenceCommitBinding(campaign?.candidate?.commit, releaseCommit);
+    result.errors.push(...bindingErrors);
+  }
   if (result.errors.length > 0) {
     process.stderr.write('Device evidence validation failed:\n');
     for (const error of result.errors) {
@@ -386,6 +486,9 @@ if (require.main === module) {
 module.exports = {
   REQUIRED_TEST_IDS,
   REQUIRED_PLATFORMS,
+  ALLOWED_POST_TEST_EVIDENCE_FILES,
   validateCampaign,
+  verifyEvidenceCommitBinding,
+  verifyGitEvidenceCommitBinding,
   runCli,
 };

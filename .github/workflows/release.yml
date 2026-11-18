@@ -93,7 +93,9 @@ jobs:
           fi
           printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
           gpg --verify "$campaign_sig" "$campaign_file"
-          node scripts/validate-device-evidence.cjs "$campaign_file" --expected-commit "$GITHUB_SHA" --expected-version "$tag_version"
+          # Verify campaign completeness, version match, and that candidate.commit is an ancestor of
+          # GITHUB_SHA with ZERO non-evidence code/build/workflow changes between tested commit and tag.
+          node scripts/validate-device-evidence.cjs "$campaign_file" --release-commit "$GITHUB_SHA" --expected-version "$tag_version"
 
   verify:
     name: Verify release source
