@@ -31,7 +31,9 @@ jobs:
           # Do not publish while a runtime, credential, packaged-launch,
           # hardware-validation, documentation, licensing, dependency, or
           # storage-encryption migration security blocker remains open.
-          for issue in 19 47 48 49 50 51 52 60 73; do
+          # Issue #50 tracks this release itself; gating on its closure would deadlock
+          # publication. It is closed only after the signed release is verified.
+          for issue in 19 47 48 49 51 52 60 73; do
             response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}")"
             state="$(jq -r '.state' <<<"$response")"
             reason="$(jq -r '.state_reason // empty' <<<"$response")"
