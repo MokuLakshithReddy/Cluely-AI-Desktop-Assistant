@@ -1,0 +1,581 @@
+{
+  "schemaVersion": 1,
+  "candidate": {
+    "version": "1.0.2",
+    "commit": "b96beab45404563d262b42916d4e7068f6ffd4e3",
+    "ciRunUrl": "https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44256053853",
+    "electronVersion": "45.2.3",
+    "nodeVersion": "24.22.2",
+    "supportedConfigurations": [
+      {
+        "id": "windows-11-x64-01",
+        "platform": "windows",
+        "description": "Windows 11 x64 primary desktop configuration (Intel Core Ultra 7 256V / Intel Arc 140V).",
+        "osRelease": "Windows 11 24H2",
+        "osBuild": "10.0.26200",
+        "architecture": "x64",
+        "hardware": "Intel Core Ultra 7 256V, 16 GB RAM, Intel Arc 140V GPU",
+        "microphoneDevice": "Physical microphone array (pending 40-case signed-package run)",
+        "audioRoute": "WASAPI system-audio loopback (pending 40-case signed-package run)",
+        "displayConfiguration": "1920x1200 primary display @ 1.25x scaling"
+      },
+      {
+        "id": "macos-arm64-01",
+        "platform": "macos",
+        "description": "macOS Apple Silicon desktop configuration (pending physical hardware campaign).",
+        "osRelease": "macOS 14+",
+        "osBuild": "pending-physical-device-build",
+        "architecture": "arm64",
+        "hardware": "Apple Silicon Mac (pending physical device assignment)",
+        "microphoneDevice": "Physical macOS microphone (pending run)",
+        "audioRoute": "CoreAudio / ScreenCaptureKit system-audio loopback (pending run)",
+        "displayConfiguration": "Primary Retina display (pending run)"
+      },
+      {
+        "id": "linux-ubuntu-x64-01",
+        "platform": "linux",
+        "description": "Ubuntu 22.04/24.04 x64 desktop configuration (pending physical hardware campaign).",
+        "osRelease": "Ubuntu 24.04 LTS",
+        "osBuild": "pending-physical-device-build",
+        "architecture": "x64",
+        "hardware": "x86_64 Linux workstation (pending physical device assignment)",
+        "microphoneDevice": "Physical Linux microphone (pending run)",
+        "audioRoute": "PipeWire / PulseAudio loopback monitor (pending run)",
+        "displayConfiguration": "Primary X11/Wayland display (pending run)"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "id": "windows-11-x64-01-run-01",
+      "configurationId": "windows-11-x64-01",
+      "platform": "windows",
+      "osRelease": "Windows 11 24H2",
+      "osBuild": "10.0.26200",
+      "architecture": "x64",
+      "hardware": "Intel Core Ultra 7 256V, 16 GB RAM, Intel Arc 140V GPU",
+      "microphoneDevice": "Physical microphone array (pending 40-case signed-package run)",
+      "audioRoute": "WASAPI system-audio loopback (pending 40-case signed-package run)",
+      "displayConfiguration": "1920x1200 primary display @ 1.25x scaling",
+      "artifactName": "Scandium-1.0.2-Windows-x64.exe",
+      "artifactUrl": "https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44256053853",
+      "artifactSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "records": [
+        {
+          "testId": "A-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-07",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-08",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-04",
+          "status": "NOT_RUN"
+        }
+      ]
+    },
+    {
+      "id": "macos-arm64-01-run-01",
+      "configurationId": "macos-arm64-01",
+      "platform": "macos",
+      "osRelease": "macOS 14+",
+      "osBuild": "pending-physical-device-build",
+      "architecture": "arm64",
+      "hardware": "Apple Silicon Mac (pending physical device assignment)",
+      "microphoneDevice": "Physical macOS microphone (pending run)",
+      "audioRoute": "CoreAudio / ScreenCaptureKit system-audio loopback (pending run)",
+      "displayConfiguration": "Primary Retina display (pending run)",
+      "artifactName": "Scandium-1.0.2-macOS-arm64.dmg",
+      "artifactUrl": "https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44256053853",
+      "artifactSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "records": [
+        {
+          "testId": "A-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-07",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-08",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-04",
+          "status": "NOT_RUN"
+        }
+      ]
+    },
+    {
+      "id": "linux-ubuntu-x64-01-run-01",
+      "configurationId": "linux-ubuntu-x64-01",
+      "platform": "linux",
+      "osRelease": "Ubuntu 24.04 LTS",
+      "osBuild": "pending-physical-device-build",
+      "architecture": "x64",
+      "hardware": "x86_64 Linux workstation (pending physical device assignment)",
+      "microphoneDevice": "Physical Linux microphone (pending run)",
+      "audioRoute": "PipeWire / PulseAudio loopback monitor (pending run)",
+      "displayConfiguration": "Primary X11/Wayland display (pending run)",
+      "artifactName": "Scandium-1.0.2-Linux-x64.AppImage",
+      "artifactUrl": "https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44256053853",
+      "artifactSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "records": [
+        {
+          "testId": "A-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "A-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "B-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "C-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "D-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "E-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-04",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-05",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-06",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-07",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "F-08",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-01",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-02",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-03",
+          "status": "NOT_RUN"
+        },
+        {
+          "testId": "G-04",
+          "status": "NOT_RUN"
+        }
+      ]
+    }
+  ]
+}

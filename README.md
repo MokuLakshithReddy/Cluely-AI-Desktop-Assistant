@@ -5,7 +5,7 @@
 
 [![CI Verification Suite](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/MokuLakshithReddy/Scandium-Assistant?color=brightgreen&label=Latest%20release)](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases)
-[![Tests Passing](https://img.shields.io/badge/CI%20checks-256%2F256%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
+[![Tests Passing](https://img.shields.io/badge/CI%20checks-258%2F258%20passing-success)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%2F%2010%20x64-blue)](#prerequisites)
 [![Node Runtime](https://img.shields.io/badge/Node.js-v24.22.2-brightgreen)](#prerequisites)
 [![License: Commercial Proprietary](https://img.shields.io/badge/License-Proprietary%20%7C%20All%20Rights%20Reserved-red.svg)](LICENSE)
@@ -58,7 +58,7 @@ The crosstalk result is an ablation on the report's test setup, not a universal 
 3. [System Architecture & Data Flows](#3-system-architecture--data-flows)
 4. [Complete Repository Structure](#4-complete-repository-structure)
 5. [Security, Privacy & Consent-First Governance](#5-security-privacy--consent-first-governance)
-6. [Automated Verification & Test Suites (256/256 Passing)](#6-automated-verification--test-suites-256256-passing)
+6. [Automated Verification & Test Suites (258/258 Passing)](#6-automated-verification--test-suites-258258-passing)
 7. [Real-World Operational Verification Matrix](#7-real-world-operational-verification-matrix)
 8. [Getting Started & Developer Guide](#8-getting-started--developer-guide)
 9. [Global Hotkeys & User Interface Controls](#9-global-hotkeys--user-interface-controls)
@@ -311,7 +311,7 @@ Scandium handles microphone input, desktop display captures, and API credentials
 
 ---
 
-## 6. Automated Verification & Test Suites (256/256 Passing)
+## 6. Automated Verification & Test Suites (258/258 Passing)
 
 The main-branch baseline run #237 passed the source verification job (249 Vitest tests plus one Electron UI/preload/IPC smoke test) but failed all three native packaging jobs. Remediation PR #78 then passed CI run #243 on Windows, macOS, and Linux: each platform provisioned the bundled CPython runtime, completed a real RealtimeSTT transcription from the committed JFK audio fixture, built its native distributable, and passed the packaged Electron renderer/preload/IPC launch and shutdown smoke test.
 
@@ -327,7 +327,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `audio-ownership.test.ts` | Dual-source audio ownership and cleanup | 3 |
 | `audio-vad.test.ts` | Resampling, independent VAD, speech buffering and WAV encoding | 10 |
 | `credential-vault.test.ts` | Async safeStorage, legacy ciphertext, key rotation and concurrency | 14 |
-| `device-evidence-validator.test.ts` | device evidence campaign validator | 14 |
+| `device-evidence-validator.test.ts` | device evidence campaign validator | 16 |
 | `e2e-desktop-session.test.ts` | Synthetic pipeline integration with mocked hardware/provider inputs | 6 |
 | `entitlements.test.ts` | Commercial Subscription & Entitlements Matrix | 8 |
 | `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 7 |
@@ -346,10 +346,10 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `ai-context.test.ts` | AI context assembly and operating modes | 14 |
 | `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 5 |
-| `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
 | `screen-capture.test.ts` | Display thumbnail scaling | 6 |
+| `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
 | `electron-smoke.cjs` | Electron Dashboard, preload/IPC persistence and shutdown | 1 |
-| **Total** | **24 Vitest suites + 1 Electron smoke check** | **256** |
+| **Total** | **24 Vitest suites + 1 Electron smoke check** | **258** |
 
 The 250/250 result is a count of the automated checks in the cited run. It is not a statement of universal correctness, security certification, physical device support, or third-party provider availability.
 
@@ -391,14 +391,14 @@ npm ci
 
 ### Running Automated Test Suites
 ```powershell
-# Run the 255 Vitest unit & integration tests
+# Run the 257 Vitest unit & integration tests
 cd app
 npm test
 
 # Run the verified Native Electron runtime smoke test
 node tests/electron-smoke.cjs
 
-# Generate the automated test results markdown report (256 total verified checks)
+# Generate the automated test results markdown report (258 total verified checks)
 npm run test:report
 ```
 
