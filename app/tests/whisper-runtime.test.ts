@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { WhisperRuntime, WHISPER_MODELS } from '../electron/services/whisper-runtime';
+import {
+  WhisperRuntime,
+  WHISPER_MODELS,
+  WHISPER_TEMP_DIR_PREFIX,
+  LEGACY_WHISPER_TEMP_PREFIX,
+  buildWhisperCliArgs,
+} from '../electron/services/whisper-runtime';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 
@@ -78,12 +85,27 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     expect(result).toContain('Whisper runtime binary not found');
   });
 
-  it('launches native whisper-cli and transcribes known audio sample with high fidelity', async () => {
+  it('omits -otxt from whisper-cli args so plaintext transcript files are never requested', () => {
+    const args = buildWhisperCliArgs('/models/tiny.en.bin', '/tmp/scandium-stt-x/input.wav', 'en');
+    expect(args).not.toContain('-otxt');
+    expect(args).not.toContain('--output-txt');
+    expect(args).toContain('-nt');
+    expect(args).toContain('-np');
+    expect(args).toContain('/tmp/scandium-stt-x/input.wav');
+  });
+
+  it('launches native whisper-cli, transcribes known audio sample, and leaves zero WAV or TXT files in temp storage', async () => {
     const binary = runtime.findWhisperExecutable();
     const fixturePath = path.join(__dirname, 'fixtures', 'jfk.wav');
     if (!binary || !fs.existsSync(fixturePath)) {
       return;
     }
+
+    const listScandiumTemp = () =>
+      fs.readdirSync(os.tmpdir()).filter(
+        name => name.startsWith(WHISPER_TEMP_DIR_PREFIX) || name.startsWith(LEGACY_WHISPER_TEMP_PREFIX)
+      );
+    const beforeSet = new Set(listScandiumTemp());
 
     const wavBuffer = fs.readFileSync(fixturePath).buffer;
     const start = Date.now();
@@ -93,6 +115,66 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     expect(result.toLowerCase()).toContain('ask not what your country can do for you');
     expect(latencyMs).toBeGreaterThan(0);
     expect(latencyMs).toBeLessThan(30000);
+
+    const leaked = listScandiumTemp().filter(name => !beforeSet.has(name));
+    expect(leaked).toEqual([]);
+  });
+
+  it('cleans up temporary WAV/directory on non-zero exit and on aborted transcription', async () => {
+    const listTempDirs = () =>
+      fs.readdirSync(os.tmpdir()).filter(name => name.startsWith(WHISPER_TEMP_DIR_PREFIX));
+    const beforeSet = new Set(listTempDirs());
+
+    // 1. Force a non-zero exit using node with an invalid model/audio or missing binary path
+    const binary = runtime.findWhisperExecutable();
+    if (binary) {
+      const invalidWav = Buffer.from('NOT_A_VALID_WAV_PAYLOAD').buffer;
+      const failedRes = await runtime.transcribeAudio(invalidWav, 'en');
+      expect(failedRes).toBe('');
+      expect(listTempDirs().filter(name => !beforeSet.has(name))).toEqual([]);
+
+      // 2. Abort mid-flight
+      const fixturePath = path.join(__dirname, 'fixtures', 'jfk.wav');
+      if (fs.existsSync(fixturePath)) {
+        const controller = new AbortController();
+        const wavBuffer = fs.readFileSync(fixturePath).buffer;
+        const promise = runtime.transcribeAudio(wavBuffer, 'en', controller.signal);
+        setTimeout(() => controller.abort(), 30);
+        await expect(promise).rejects.toThrow(/Transcription cancelled/i);
+        // Wait for OS process handle release + cleanup retry under loaded CI runners
+        let leaked: string[] = [];
+        for (let attempt = 0; attempt < 25; attempt++) {
+          leaked = listTempDirs().filter(name => !beforeSet.has(name));
+          if (leaked.length === 0) break;
+          await new Promise(r => setTimeout(r, 80));
+        }
+        expect(leaked).toEqual([]);
+      }
+    }
+  });
+
+  it('sweeps orphaned scandium-stt temp directories and legacy scandium_stt_* transcript files', () => {
+    const isolatedTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scandium-sweep-test-'));
+    try {
+      const orphanDir = path.join(isolatedTmp, `${WHISPER_TEMP_DIR_PREFIX}orphan123`);
+      fs.mkdirSync(orphanDir, { recursive: true });
+      fs.writeFileSync(path.join(orphanDir, 'chunk.wav'), 'sensitive-audio-bytes');
+      fs.writeFileSync(path.join(orphanDir, 'chunk.wav.txt'), 'sensitive transcript text');
+
+      const legacyTxt = path.join(isolatedTmp, `${LEGACY_WHISPER_TEMP_PREFIX}999.wav.txt`);
+      fs.writeFileSync(legacyTxt, 'legacy leaked transcript');
+
+      const unrelated = path.join(isolatedTmp, 'keep-me.txt');
+      fs.writeFileSync(unrelated, 'do not touch');
+
+      const removed = runtime.cleanupOrphanedTempFiles(isolatedTmp);
+      expect(removed).toBe(2);
+      expect(fs.existsSync(orphanDir)).toBe(false);
+      expect(fs.existsSync(legacyTxt)).toBe(false);
+      expect(fs.existsSync(unrelated)).toBe(true);
+    } finally {
+      fs.rmSync(isolatedTmp, { recursive: true, force: true });
+    }
   });
 
   it('gracefully serializes concurrent overlapping audio streams without crashing or process starvation', async () => {

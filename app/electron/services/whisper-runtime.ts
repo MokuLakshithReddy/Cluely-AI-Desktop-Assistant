@@ -37,11 +37,30 @@ export const WHISPER_MODELS: Record<string, WhisperModelInfo> = {
   },
 };
 
+export const WHISPER_TEMP_DIR_PREFIX = 'scandium-stt-';
+export const LEGACY_WHISPER_TEMP_PREFIX = 'scandium_stt_';
+
+/**
+ * Builds whisper-cli arguments for stdout-only transcription.
+ * Explicitly omits -otxt / --output-txt so plaintext transcripts are never written to disk.
+ */
+export function buildWhisperCliArgs(modelPath: string, tempAudioPath: string, language: string): string[] {
+  return [
+    '--model', modelPath,
+    '-f', tempAudioPath,
+    '--language', language,
+    '-nt', // no timestamps
+    '-np', // suppress timing/progress logs; print clean transcript to stdout only
+  ];
+}
+
 export class WhisperRuntime {
   private modelsDir: string;
   private activeModelId = 'ggml-tiny.en';
   private downloadingModelId: string | null = null;
   private downloadProgress = 0;
+  private activeTempDirs = new Set<string>();
+  private exitHookRegistered = false;
   private transcriptionQueue: Array<{
     wavBuffer: ArrayBuffer;
     language: string;
@@ -61,6 +80,104 @@ export class WhisperRuntime {
     } catch (e) {
       console.warn('[WhisperRuntime] Failed to create models directory:', e);
     }
+    if (process.env.VITEST !== 'true') {
+      this.cleanupOrphanedTempFiles();
+    }
+  }
+
+  private registerExitCleanupHook(): void {
+    if (this.exitHookRegistered) return;
+    this.exitHookRegistered = true;
+    process.once('exit', () => {
+      for (const dir of Array.from(this.activeTempDirs)) {
+        this.secureRemoveTempDir(dir);
+      }
+    });
+  }
+
+  private secureUnlinkFile(filePath: string): void {
+    try {
+      if (!fs.existsSync(filePath)) return;
+      const stat = fs.lstatSync(filePath);
+      if (stat.isFile() && stat.size > 0 && stat.size <= 32 * 1024 * 1024) {
+        try {
+          fs.writeFileSync(filePath, Buffer.alloc(stat.size), { mode: 0o600 });
+        } catch {}
+      }
+      fs.unlinkSync(filePath);
+    } catch {}
+  }
+
+  private secureRemoveTempDir(tempDir: string, retriesLeft = 3): void {
+    try {
+      if (!fs.existsSync(tempDir)) {
+        this.activeTempDirs.delete(tempDir);
+        return;
+      }
+      const entries = fs.readdirSync(tempDir);
+      for (const entry of entries) {
+        const fullPath = path.join(tempDir, entry);
+        try {
+          const stat = fs.lstatSync(fullPath);
+          if (stat.isDirectory()) {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+          } else {
+            this.secureUnlinkFile(fullPath);
+          }
+        } catch {}
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch {}
+
+    if (!fs.existsSync(tempDir)) {
+      this.activeTempDirs.delete(tempDir);
+    } else if (retriesLeft > 0) {
+      // On Windows, a forcibly killed child process may briefly hold a file handle (EBUSY).
+      const timer = setTimeout(() => this.secureRemoveTempDir(tempDir, retriesLeft - 1), 100);
+      if (typeof timer.unref === 'function') timer.unref();
+    }
+  }
+
+  private isProcessAlive(pid: number): boolean {
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (err: any) {
+      // EPERM means the process exists but belongs to another user/privilege level.
+      return err?.code === 'EPERM';
+    }
+  }
+
+  /**
+   * Sweeps any orphaned Scandium Whisper temp directories or legacy scandium_stt_* files
+   * left behind by a crash, forced kill, or older application version.
+   * Respects PID-tagged directories owned by other currently running processes.
+   */
+  public cleanupOrphanedTempFiles(baseTmpDir: string = os.tmpdir()): number {
+    let removed = 0;
+    try {
+      if (!fs.existsSync(baseTmpDir)) return 0;
+      const entries = fs.readdirSync(baseTmpDir);
+      for (const entry of entries) {
+        const fullPath = path.join(baseTmpDir, entry);
+        if (entry.startsWith(WHISPER_TEMP_DIR_PREFIX) && !this.activeTempDirs.has(fullPath)) {
+          const pidMatch = /^scandium-stt-p(\d+)-/.exec(entry);
+          if (pidMatch) {
+            const ownerPid = Number(pidMatch[1]);
+            if (ownerPid !== process.pid && this.isProcessAlive(ownerPid)) {
+              continue; // Belongs to another active process; do not disrupt live transcription
+            }
+          }
+          this.secureRemoveTempDir(fullPath);
+          removed++;
+        } else if (entry.startsWith(LEGACY_WHISPER_TEMP_PREFIX)) {
+          this.secureUnlinkFile(fullPath);
+          removed++;
+        }
+      }
+    } catch {}
+    return removed;
   }
 
   public getModels(): WhisperModelInfo[] {
@@ -287,37 +404,66 @@ export class WhisperRuntime {
       return '[Local Whisper STT: Whisper runtime binary not found on system. Place whisper-cli in resources/whisper]';
     }
 
-    // Write temp WAV audio file
-    const tempAudioPath = path.join(os.tmpdir(), `scandium_stt_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.wav`);
-    fs.writeFileSync(tempAudioPath, Buffer.from(wavBuffer));
+    // Create an isolated, owner-only temporary directory tagged with this process PID.
+    // Transcript output is streamed strictly via stdout (no -otxt file is ever requested),
+    // and every file in tempDir is zero-wiped and unlinked on success, error, abort, or exit.
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `${WHISPER_TEMP_DIR_PREFIX}p${process.pid}-`));
+    if (process.platform !== 'win32') {
+      try { fs.chmodSync(tempDir, 0o700); } catch {}
+    }
+    this.activeTempDirs.add(tempDir);
+    this.registerExitCleanupHook();
+
+    const tempAudioPath = path.join(tempDir, `${crypto.randomBytes(8).toString('hex')}.wav`);
+    const wavBytes = Buffer.from(new Uint8Array(wavBuffer));
+    try {
+      fs.writeFileSync(tempAudioPath, wavBytes, { mode: 0o600 });
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(tempAudioPath, 0o600); } catch {}
+      }
+    } catch (writeErr) {
+      this.secureRemoveTempDir(tempDir);
+      throw writeErr;
+    } finally {
+      wavBytes.fill(0);
+    }
 
     return new Promise<string>((resolve, reject) => {
       let isAborted = false;
+      let settled = false;
+      const cleanupTemp = () => {
+        this.secureRemoveTempDir(tempDir);
+      };
+
       const binaryDir = path.dirname(whisperBinary);
-      const child = spawn(
-        whisperBinary,
-        [
-          '--model', modelPath,
-          '-f', tempAudioPath,
-          '--language', language,
-          '-nt', // no timestamps
-          '-otxt', // output text
-        ],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: {
-            ...process.env,
-            LD_LIBRARY_PATH: binaryDir + (process.env.LD_LIBRARY_PATH ? ':' + process.env.LD_LIBRARY_PATH : ''),
-            DYLD_LIBRARY_PATH: binaryDir + (process.env.DYLD_LIBRARY_PATH ? ':' + process.env.DYLD_LIBRARY_PATH : ''),
-          },
-        }
-      );
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(
+          whisperBinary,
+          buildWhisperCliArgs(modelPath, tempAudioPath, language),
+          {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: {
+              ...process.env,
+              LD_LIBRARY_PATH: binaryDir + (process.env.LD_LIBRARY_PATH ? ':' + process.env.LD_LIBRARY_PATH : ''),
+              DYLD_LIBRARY_PATH: binaryDir + (process.env.DYLD_LIBRARY_PATH ? ':' + process.env.DYLD_LIBRARY_PATH : ''),
+            },
+          }
+        );
+      } catch (spawnErr) {
+        cleanupTemp();
+        console.warn('[WhisperRuntime] Failed to spawn whisper-cli:', spawnErr);
+        return resolve('');
+      }
 
       const abortHandler = () => {
         isAborted = true;
         try { child.kill('SIGKILL'); } catch {}
-        try { if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath); } catch {}
-        reject(new Error('Transcription cancelled'));
+        cleanupTemp();
+        if (!settled) {
+          settled = true;
+          reject(new Error('Transcription cancelled'));
+        }
       };
 
       signal?.addEventListener('abort', abortHandler);
@@ -335,22 +481,17 @@ export class WhisperRuntime {
 
       child.on('close', code => {
         signal?.removeEventListener('abort', abortHandler);
-        try { if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath); } catch {}
+        cleanupTemp();
 
-        if (isAborted) return;
+        if (isAborted || settled) return;
+        settled = true;
 
         if (code !== 0) {
           console.warn('[WhisperRuntime] Exit code:', code, stderr);
-          const txtPath = tempAudioPath + '.txt';
-          if (fs.existsSync(txtPath)) {
-            const text = fs.readFileSync(txtPath, 'utf8').trim();
-            try { fs.unlinkSync(txtPath); } catch {}
-            return resolve(text);
-          }
           return resolve('');
         }
 
-        // Clean out metadata from stdout
+        // Clean any residual timestamps or timing metadata from stdout
         const cleaned = stdout
           .replace(/\[\d\d:\d\d:\d\d\.\d\d\d --> \d\d:\d\d:\d\d\.\d\d\d\]/g, '')
           .replace(/whisper_print_timings:[\s\S]*$/, '')
@@ -361,7 +502,9 @@ export class WhisperRuntime {
 
       child.on('error', err => {
         signal?.removeEventListener('abort', abortHandler);
-        try { if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath); } catch {}
+        cleanupTemp();
+        if (isAborted || settled) return;
+        settled = true;
         console.warn('[WhisperRuntime] Failed to spawn whisper-cli:', err);
         resolve('');
       });

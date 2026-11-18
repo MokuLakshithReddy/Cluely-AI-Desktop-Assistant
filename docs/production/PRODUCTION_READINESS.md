@@ -22,7 +22,7 @@ Hosted CI on `main` (`b96beab`, run #259) is completely green across Windows, ma
 |---|---|---|
 | JavaScript dependency audit | `main` run #259: `npm audit --omit=dev` reports **0 vulnerabilities**; full workspace report records 18 high `picomatch` dev/build findings | Production dependency audit enforced in both `ci.yml` and `release.yml`; full development/build tree remains under an explicit upstream-patch disclosure and is not audit-clean |
 | TypeScript and lint | `main` run #259: `npm run lint` passed | Static checks only |
-| Unit and integration tests | 258 Vitest tests across 24 test files | Includes mocks, synthetic fixtures, and simulated inputs |
+| Unit and integration tests | 261 Vitest tests across 24 test files | Includes mocks, synthetic fixtures, and simulated inputs |
 | Electron development smoke | 1 Electron UI/preload/IPC smoke passed | Exercises real Electron windows, preload bridge, IPC, persistence, and clean exit |
 | Python sidecar & real RealtimeSTT inference | `test_sidecar.py` (12 tests) + `test_realtime_inference.py` passed on Windows, macOS, and Linux bundled runtimes | Verifies model loading and external-PCM CPU INT8 transcription of `jfk.wav`; does not replace physical loopback/microphone/meeting acceptance |
 | Windows packaged application | `main` run #259 | Unsigned portable `.exe` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
@@ -33,12 +33,12 @@ Hosted CI on `main` (`b96beab`, run #259) is completely green across Windows, ma
 
 ## Source-level automated verification status (PR #81 CI run #261; PR branch only)
 
-**259/259 automated checks passing (258/258 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
+**262/262 automated checks passing (261/261 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
 
-The test suite consists of **259 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
+The test suite consists of **262 automated checks** across 25 test files (24 Vitest suites + 1 Electron UI/preload/IPC E2E smoke runner).
 
-- `npm test — 258 automated tests across 24 suites
-- `npm run test:report — 259 total checks: 258 Vitest + 1 Electron E2E smoke
+- `npm test — 261 automated tests across 24 suites
+- `npm run test:report — 262 total checks: 261 Vitest + 1 Electron E2E smoke
 
 The following breakdown is regenerated from Vitest and Electron smoke evidence. Its counts are not a permanent product-quality or production-readiness claim.
 
@@ -61,17 +61,17 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 15.  tests/state-broadcast.test.ts        2 passed (Shared-state renderer broadcast)
 16.  tests/state-persistence.test.ts      8 passed (State persistence error reporting)
 17.  tests/subscription-url.test.ts       1 passed (First-party subscription page URLs)
-18.  tests/whisper-runtime.test.ts        7 passed (Local Speech Recognition (whisper.cpp) Subsystem)
+18.  tests/whisper-runtime.test.ts        10 passed (Local Speech Recognition (whisper.cpp) Subsystem)
 19.  tests/window-coordinator.test.ts     6 passed (Window close recovery, macOS reinitialization & listener idempotency)
-20.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
+20.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
 21.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
-22.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
-23.  tests/dashboard-routing.test.ts      5 passed (Dashboard Route and Hash Parsing)
-24.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
+22.  tests/dashboard-routing.test.ts      5 passed (Dashboard Route and Hash Parsing)
+23.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
+24.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
 25.  tests/electron-smoke.cjs         1/1 passed (Electron Dashboard UI/IPC E2E, native purge, persistence & normal process exit)
 --------------------------------------------------------------------------------------
-Subtotal (Vitest Test Suites):      258 passing unit & integration tests
-Grand Total:                        259 passing checks / 259 total (100% Pass Rate)
+Subtotal (Vitest Test Suites):      261 passing unit & integration tests
+Grand Total:                        262 passing checks / 262 total (100% Pass Rate)
 ======================================================================================
 ```
 

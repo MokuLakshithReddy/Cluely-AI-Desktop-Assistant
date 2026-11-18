@@ -16,7 +16,7 @@ Scandium operates with **$0 owner backend infrastructure**:
 ## 2. Execution Modes & Data Flow
 
 ### A. Local AI Mode (Default)
-- **Speech Recognition**: Transcribed locally via `whisper.cpp` executing entirely on your CPU / local hardware.
+- **Speech Recognition**: Transcribed locally on your hardware via `RealtimeSTT` (streaming PCM over in-memory stdin pipes with no audio files written to disk) or `whisper.cpp` (`whisper-cli`, which uses an owner-restricted `0o700`/`0o600` ephemeral temporary WAV inside a private OS temp directory during inference, outputs transcripts strictly via stdout without writing `.txt` files, and zero-overwrites and deletes the temp directory immediately upon completion, failure, cancellation, data purge, or startup sweep).
 - **Language & Vision Models**: Processed through local runtimes (such as Ollama) over `localhost:11434`.
 - **Perimeter Guarantee**: In Local AI Mode, **zero audio packets, zero screen pixels, and zero prompt text** are transmitted across the internet.
 

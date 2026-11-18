@@ -1217,6 +1217,7 @@ export class IpcRouter {
         this.activeTranscriptionTasks.clear();
         this.activeTranscriptionControllers.clear();
         try { await realtimeSTTManager.stop(); } catch {}
+        try { whisperRuntime.cleanupOrphanedTempFiles(); } catch {}
         await credentialVault.deleteAllKeys();
         await sessionRepository.purgeAll();
 
