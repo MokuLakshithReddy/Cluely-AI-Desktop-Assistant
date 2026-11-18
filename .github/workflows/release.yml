@@ -40,7 +40,7 @@ jobs:
               exit 1
             fi
           done
-      - name: Verify tag version, main commit, and signed tag
+      - name: Verify tag version, main commit, and GPG-signed tag (fail-closed)
         shell: bash
         env:
           RELEASE_GPG_PUBLIC_KEY: ${{ secrets.RELEASE_GPG_PUBLIC_KEY }}
@@ -61,13 +61,13 @@ jobs:
             echo "Main: $main_sha"
             exit 1
           fi
-          if [[ -n "$RELEASE_GPG_PUBLIC_KEY" ]]; then
-            echo "Verifying GPG-signed release tag..."
-            printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
-            git verify-tag "$GITHUB_REF_NAME"
-          else
-            echo "RELEASE_GPG_PUBLIC_KEY not configured; proceeding with SHA-256 manifest integrity verification."
+          if [[ -z "${RELEASE_GPG_PUBLIC_KEY:-}" ]]; then
+            echo "Release blocked: RELEASE_GPG_PUBLIC_KEY secret is required for Signed Production Release."
+            exit 1
           fi
+          echo "Verifying GPG-signed release tag..."
+          printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
+          git verify-tag "$GITHUB_REF_NAME"
 
   verify:
     name: Verify release source
@@ -84,12 +84,53 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install locked dependencies
         run: npm ci
-      - name: Capture dependency audit report
+      - name: Restore Electron binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/electron-cache
+          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install Electron binary for desktop smoke test
+        working-directory: app
+        shell: bash
+        env:
+          electron_config_cache: ${{ runner.temp }}/electron-cache
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            npx install-electron --no
+            status=$?
+            if [ "$status" -eq 0 ]; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            delay=$((attempt * 15))
+            echo "Electron binary download failed (exit $status); retrying in $delay seconds."
+            sleep "$delay"
+          done
+      - name: Enforce production dependency audit (reconciled with CI)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Capture full and production dependency audit reports
+        if: always()
         shell: bash
         run: |
-          npm audit --json > npm-audit.json || true
-      - name: Reject critical and high dependency vulnerabilities
-        run: npm audit --audit-level=high
+          npm audit --json > npm-audit-full.json || true
+          npm audit --omit=dev --json > npm-audit-production.json || true
+          node -e "const fs=require('node:fs');for(const f of ['npm-audit-full.json','npm-audit-production.json']){const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=j.metadata?.vulnerabilities||{};console.log(f,JSON.stringify(v));}"
+      - name: Cache or download whisper model for automated test
+        shell: bash
+        run: |
+          mkdir -p app/resources/whisper
+          if [ ! -f "app/resources/whisper/ggml-tiny.en.bin" ]; then
+            echo "Fetching ggml-tiny.en.bin model for automated transcription verification..."
+            curl -L -s -o app/resources/whisper/ggml-tiny.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin
+          fi
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Python STT protocol tests
+        shell: bash
+        run: python app/python-stt/test_sidecar.py
       - name: Type check and lint
         run: npm run lint
       - name: Run unit and integration tests
@@ -105,7 +146,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-dependency-audit
-          path: npm-audit.json
+          path: |
+            npm-audit-full.json
+            npm-audit-production.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -129,12 +172,32 @@ jobs:
     env:
       WIN_CSC_LINK: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_LINK || '' }}
       WIN_CSC_KEY_PASSWORD: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_CSC_KEY_PASSWORD || '' }}
+      WINDOWS_EXPECTED_CERT_THUMBPRINT: ${{ matrix.platform == 'windows-portable' && secrets.WINDOWS_EXPECTED_CERT_THUMBPRINT || '' }}
       CSC_LINK: ${{ matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_LINK || '' }}
       CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos-dmg' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
+      - name: Require platform signing credentials (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.platform }}" == "windows-portable" ]]; then
+            if [[ -z "${WIN_CSC_LINK:-}" || -z "${WIN_CSC_KEY_PASSWORD:-}" || -z "${WINDOWS_EXPECTED_CERT_THUMBPRINT:-}" ]]; then
+              echo "Release blocked: WINDOWS_CSC_LINK, WINDOWS_CSC_KEY_PASSWORD, and WINDOWS_EXPECTED_CERT_THUMBPRINT are required for signed Windows releases."
+              exit 1
+            fi
+            echo "Verified presence of Windows Authenticode signing secrets."
+          elif [[ "${{ matrix.platform }}" == "macos-dmg" ]]; then
+            if [[ -z "${CSC_LINK:-}" || -z "${CSC_KEY_PASSWORD:-}" || -z "${APPLE_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
+              echo "Release blocked: MACOS_CSC_LINK, MACOS_CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID are required for signed/notarized macOS releases."
+              exit 1
+            fi
+            echo "Verified presence of macOS Developer ID & notarization secrets."
+          else
+            echo "Linux AppImage integrity is verified via GPG-signed SHA256SUMS.txt.asc in the publish job."
+          fi
       - name: Check out source
         uses: actions/checkout@v4
       - name: Set up Node.js 24.22.2
@@ -145,28 +208,33 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install locked dependencies
         run: npm ci
-      - name: Inspect code signing credentials
+      - name: Restore Electron and electron-builder caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/electron-cache
+            ${{ runner.temp }}/electron-builder-cache
+          key: electron-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-build-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install Electron runtime for packaging
+        working-directory: app
         shell: bash
+        env:
+          electron_config_cache: ${{ runner.temp }}/electron-cache
         run: |
-          if [[ "${{ matrix.platform }}" == "windows-portable" ]]; then
-            if [[ -n "${WIN_CSC_LINK:-}" && -n "${WIN_CSC_KEY_PASSWORD:-}" ]]; then
-              echo "HAS_SIGNING=true" >> "$GITHUB_ENV"
-              echo "Windows Authenticode signing credentials detected."
-            else
-              echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
-              echo "Windows Authenticode credentials not configured; building zero-cost release."
-            fi
-          elif [[ "${{ matrix.platform }}" == "macos-dmg" ]]; then
-            if [[ -n "${CSC_LINK:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
-              echo "HAS_SIGNING=true" >> "$GITHUB_ENV"
-              echo "macOS Developer ID & notarization credentials detected."
-            else
-              echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
-              echo "macOS signing credentials not configured; building zero-cost release."
-            fi
-          else
-            echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
-          fi
+          set +e
+          for attempt in 1 2 3; do
+            npx install-electron --no
+            status=$?
+            if [ "$status" -eq 0 ]; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            delay=$((attempt * 15))
+            echo "Electron binary download failed (exit $status); retrying in $delay seconds."
+            sleep "$delay"
+          done
+      - name: Build application
+        run: npm run build
       - name: Install macOS DMG tooling
         if: matrix.platform == 'macos-dmg'
         working-directory: app
@@ -174,6 +242,26 @@ jobs:
       - name: Remove unused optional PDF.js Node canvas stub
         working-directory: app
         run: node -e "const fs=require('node:fs');const p='node_modules/pdfjs-dist/node_modules/@napi-rs/canvas';fs.rmSync(p,{recursive:true,force:true});"
+      - name: Install PortAudio build dependencies (Linux)
+        if: matrix.platform == 'linux-appimage'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends portaudio19-dev libportaudio2 patchelf
+      - name: Install PortAudio build dependencies (macOS)
+        if: matrix.platform == 'macos-dmg'
+        run: brew install portaudio
+      - name: Provision checksum-verified standalone Python runtime
+        run: node scripts/provision-python-runtime.cjs
+      - name: Verify real RealtimeSTT transcription with bundled runtime
+        shell: bash
+        run: |
+          if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+            PYTHON_EXE="app/resources/python/python.exe"
+          else
+            PYTHON_EXE="app/resources/python/bin/python3"
+          fi
+          export HF_HOME="$RUNNER_TEMP/huggingface-cache"
+          "$PYTHON_EXE" app/python-stt/test_realtime_inference.py
       - name: Provision native macOS Whisper.cpp binary
         if: matrix.platform == 'macos-dmg'
         run: |
@@ -184,7 +272,6 @@ jobs:
           cmake --build /tmp/whisper-src/build --config Release --target whisper-cli -j4
           cp /tmp/whisper-src/build/bin/whisper-cli app/resources/whisper/whisper-cli
           chmod +x app/resources/whisper/whisper-cli
-
       - name: Provision native Linux Whisper.cpp binary
         if: matrix.platform == 'linux-appimage'
         run: |
@@ -194,27 +281,21 @@ jobs:
           cp /tmp/whisper-bin-ubuntu-x64/whisper-cli app/resources/whisper/
           cp -a /tmp/whisper-bin-ubuntu-x64/*.so* app/resources/whisper/
           chmod +x app/resources/whisper/whisper-cli
-
-      - name: Set up Python 3.12 for STT sidecar runtime
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Provision Python runtime and dependencies
-        run: node scripts/provision-python-runtime.cjs
-      - name: Create platform-specific release packaging configuration
+      - name: Create strict signed release packaging configuration
         working-directory: app
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
         run: |
-          node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');const shouldSign=process.env.HAS_SIGNING==='true';const config={...pkg.build,forceCodeSigning:shouldSign};if(process.env.RELEASE_PLATFORM==='macos-dmg'&&shouldSign){config.mac={...pkg.build.mac,notarize:true};}else if(process.env.RELEASE_PLATFORM==='macos-dmg'){config.mac={...pkg.build.mac,notarize:false,identity:null};}fs.writeFileSync('.release-builder.json',JSON.stringify(config,null,2));"
-      - name: Build production distributable
+          node -e "const fs=require('node:fs');const pkg=require('./package.json');if(!pkg.build)throw new Error('Missing electron-builder configuration');const config={...pkg.build,forceCodeSigning:process.env.RELEASE_PLATFORM!=='linux-appimage'};if(process.env.RELEASE_PLATFORM==='macos-dmg'){config.mac={...pkg.build.mac,notarize:true};}fs.writeFileSync('.release-builder.json',JSON.stringify(config,null,2));"
+      - name: Build signed production distributable
         working-directory: app
+        env:
+          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
+          electron_config_cache: ${{ runner.temp }}/electron-cache
         run: npx electron-builder --publish never --config .release-builder.json
       - name: Verify Windows Authenticode signature and expected certificate
-        if: matrix.platform == 'windows-portable' && env.HAS_SIGNING == 'true'
+        if: matrix.platform == 'windows-portable'
         shell: pwsh
-        env:
-          WINDOWS_EXPECTED_CERT_THUMBPRINT: ${{ secrets.WINDOWS_EXPECTED_CERT_THUMBPRINT }}
         run: |
           $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
           if (-not $exe) { throw "Windows release executable was not produced." }
@@ -229,7 +310,7 @@ jobs:
           if ($actual -ne $expected) { throw "Unexpected Authenticode certificate thumbprint. Actual: $actual; expected: $expected" }
           Write-Host "Verified expected signed publisher:" $signature.SignerCertificate.Subject
       - name: Verify macOS code signature, expected Team ID, and notarization
-        if: matrix.platform == 'macos-dmg' && env.HAS_SIGNING == 'true'
+        if: matrix.platform == 'macos-dmg'
         shell: bash
         run: |
           set -euo pipefail
@@ -277,8 +358,14 @@ jobs:
         if: matrix.platform == 'windows-portable'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
-          node app/tests/packaged-smoke.cjs $exe.FullName
+          $unpacked = Get-ChildItem app/release/win-unpacked -Filter *.exe | Select-Object -First 1
+          if ($unpacked) {
+            node app/tests/packaged-smoke.cjs $unpacked.FullName
+          } else {
+            $exe = Get-ChildItem app/release -Filter *.exe | Select-Object -First 1
+            if (-not $exe) { throw "No portable Windows executable found in app/release." }
+            node app/tests/packaged-smoke.cjs $exe.FullName
+          }
       - name: Launch-test packaged macOS application
         if: matrix.platform == 'macos-dmg'
         shell: bash
@@ -318,7 +405,7 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Publish GitHub release and signed checksums
+    name: Publish GitHub release and GPG-signed checksums
     needs: [validate, verify, package]
     runs-on: ubuntu-latest
     permissions:
@@ -341,30 +428,27 @@ jobs:
               exit 1
             fi
           done
-      - name: Generate SHA-256 manifest and optional GPG signature
+      - name: Generate and GPG-sign SHA-256 manifest (fail-closed)
         shell: bash
         env:
+          RELEASE_GPG_PUBLIC_KEY: ${{ secrets.RELEASE_GPG_PUBLIC_KEY }}
           RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
           RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
+          if [[ -z "${RELEASE_GPG_PUBLIC_KEY:-}" || -z "${RELEASE_GPG_PRIVATE_KEY:-}" || -z "${RELEASE_GPG_PASSPHRASE:-}" ]]; then
+            echo "Release blocked: RELEASE_GPG_PUBLIC_KEY, RELEASE_GPG_PRIVATE_KEY, and RELEASE_GPG_PASSPHRASE are required to sign SHA256SUMS.txt.asc."
+            exit 1
+          fi
           cd release-assets
           find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
-          if [[ -n "${RELEASE_GPG_PRIVATE_KEY:-}" && -n "${RELEASE_GPG_PASSPHRASE:-}" ]]; then
-            echo "Signing SHA-256 manifest with GPG..."
-            printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
-            gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" --armor --detach-sign --output SHA256SUMS.txt.asc SHA256SUMS.txt
-          else
-            echo "RELEASE_GPG_PRIVATE_KEY not configured. Publishing verified SHA256SUMS.txt manifest."
-          fi
-      - name: Publish versioned GitHub release
+          printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" --armor --detach-sign --output SHA256SUMS.txt.asc SHA256SUMS.txt
+          gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+      - name: Publish signed versioned GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ -n "${{ secrets.RELEASE_GPG_PUBLIC_KEY }}" ]]; then
-            gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Scandium $GITHUB_REF_NAME" --generate-notes --verify-tag
-          else
-            gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Scandium $GITHUB_REF_NAME" --generate-notes
-          fi
-
+          gh release create "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --title "Scandium $GITHUB_REF_NAME" --generate-notes --verify-tag

@@ -2,11 +2,11 @@
 
 ## Current release record
 
-The repository is preparing **v1.0.2**. An unsigned pre-release validation build ([`v1.0.2-pre`](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/releases/tag/v1.0.2)) is available on GitHub Releases with CI-generated validation assets. However, the Signed Production Release workflow failed ([Run #43703841311](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/runs/43703841311)) due to missing `RELEASE_GPG_PUBLIC_KEY` secret and unsigned tag verification. The latest verified signed production release remains **v1.0.1**.
+The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) GitHub release is an **unsigned CI validation prerelease** pointing to an older commit (not current `main`), with a SHA-256 file but **no GPG-signed checksum manifest** (`SHA256SUMS.txt.asc`). No signed production release has been published for the current `main` codebase yet.
 
-The latest recorded main revision is [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696). Its [CI Verification Suite run 43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041) completed successfully: source verification passed, 238 automated checks passed (237 Vitest tests plus one Electron UI/IPC smoke check), and Windows, macOS, and Linux packaged-app launch jobs all passed.
+The latest verified `main` revision is [`2b8d50a`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/2b8d50a7d4424f2a506bc3e72af86982e727bb03). Its [CI Verification Suite run 44170502005](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44170502005) completed successfully: source verification passed, 255 automated checks passed (254 Vitest tests plus one Electron UI/IPC smoke check), bundled RealtimeSTT real-audio transcription passed, and Windows, macOS, and Linux unsigned packaged-app launch jobs all passed.
 
-Do not use the `v1.0.2-pre` CI validation assets as evidence that production code-signing, Apple notarization, or GPG manifest signing have completed.
+Do not use the `v1.0.2` prerelease or CI validation assets as evidence that production code-signing, Apple notarization, GPG manifest signing, physical-device sign-off, or live paid subscription checkout have completed.
 
 ## CI validation artifacts are not production releases
 
@@ -32,7 +32,7 @@ A production release must not be published until all applicable checks below are
 - Confirm root and app package versions agree with the intended release version.
 - Use the committed lockfile and a clean `npm ci`.
 - Run lint/typecheck, all unit/integration tests, and the Electron UI/IPC smoke test.
-- Retain the machine-readable dependency audit report. The audit gate confirms zero vulnerabilities (0 critical, 0 high, 0 moderate, 0 low) with `minimatch@11.0.8` resolved; no temporary exceptions remain active.
+- Retain the machine-readable dependency audit reports (`npm-audit-production.json` and `npm-audit-full.json`). Both `ci.yml` and `release.yml` enforce `npm audit --omit=dev` (0 production runtime vulnerabilities) while transparently disclosing the 18 upstream `picomatch` dev/build-tooling findings (`GHSA-fc5q-39xc-vjpf`) tracked in [`DEPENDENCY_ADVISORY_REVIEW.md`](../security/DEPENDENCY_ADVISORY_REVIEW.md).
 - Record the exact commit SHA and workflow run URL.
 
 ### 2. Packaged artifact verification

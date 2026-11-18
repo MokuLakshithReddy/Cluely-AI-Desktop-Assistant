@@ -2,29 +2,29 @@
 
 ## Next release target
 
-The next release candidate is **v1.0.2**. The previous published v1.0.1 release is historical and must not be reused as evidence for the current source revision.
+The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) release is an **unsigned CI validation prerelease** pointing to an older commit, **not** a signed production release. The next signed production release must be tagged from the exact verified `main` commit (matching `package.json` and `app/package.json`, e.g., bumping to `v1.0.3` once all blockers are cleared).
 
-The release workflow is `.github/workflows/release.yml`. It runs only when a version tag is pushed and refuses publication unless:
+The release workflow is `.github/workflows/release.yml` (**Signed Production Release**). It runs only when a version tag is pushed and **strictly fails closed** unless:
 - the tag version matches both root and app package versions;
 - the tag points to the exact current `main` commit;
-- the tag has a valid GPG signature;
-- readiness issues #19, #47, #48, #49, #51, #52, #60, and #73 are closed with the completed reason;
-- the dependency audit has no critical or high vulnerabilities;
-- source verification passes on Node.js 24.22.2;
-- Windows, macOS, and Linux distributables are generated;
-- Windows Authenticode and macOS code-signing/notarization checks pass;
-- each actual packaged app passes the packaged renderer/preload/IPC launch smoke;
-- SHA-256 checksums are generated, checked, and GPG-signed.
+- `RELEASE_GPG_PUBLIC_KEY` is configured and `git verify-tag` succeeds;
+- readiness issues #19, #47, #48, #49, #50, #51, #52, #60, and #73 are closed with the `completed` reason;
+- the production dependency audit (`npm audit --omit=dev --audit-level=high`) passes with 0 critical/high findings (while capturing and uploading both full and production audit reports);
+- source verification passes on Node.js 24.22.2 (Python STT protocol tests, lint, Vitest, build, Electron smoke, test report);
+- Windows Authenticode secrets and macOS Developer ID / notarization secrets are configured (`forceCodeSigning: true`, `mac.notarize: true` — unsigned production builds are rejected);
+- Windows, macOS, and Linux distributables are generated with the bundled standalone Python runtime and pass real RealtimeSTT fixture inference plus packaged renderer/preload/IPC launch smoke;
+- Windows Authenticode signature + exact certificate thumbprint and macOS `codesign` + Team ID + stapled notarization checks pass;
+- `SHA256SUMS.txt` is generated, checked, GPG-signed (`SHA256SUMS.txt.asc`), and verified with `gpg --verify`.
 
-A CI package artifact is not a release until this workflow completes and attaches all platform assets and the signed checksum manifest.
+A CI package artifact is not a release until this workflow completes and attaches all signed platform assets and the GPG-signed checksum manifest.
 
 ## Current readiness state
 
-- Issue [#60](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/60) is fully resolved: the dependency audit reports zero vulnerabilities (0 critical, 0 high, 0 moderate, 0 low) following the upgrade to `minimatch@11.0.8` via npm overrides and proper lockfile synchronization. No temporary exceptions remain active.
-- Issue [#73](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/73) enforces authenticated AES-256-GCM encryption for all local persisted state and session archives with fail-closed repository locking on migration error, and blocks cloud screenshot transmission until reliable pixel-level OCR coordinate detection is active.
-- Issue [#49](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/49) is resolved for Windows 10/11 x64 primary hardware platform with attached evidence in `DEVICE_EVIDENCE_RUN.json` and release automation updated for community preview builds.
-- Issue [#50](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/50) is resolved with zero-cost signed release automation supporting seamless optional Authenticode/Apple certificates.
-- The latest recorded main revision is [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696). CI run [43873876041](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041) passed source verification, 238 automated checks, and Windows/macOS/Linux package and launch checks.
+- **Production runtime audit:** `npm audit --omit=dev` reports **0 vulnerabilities** (enforced in both `ci.yml` and `release.yml`). Full workspace audit still reports 18 high-severity `picomatch` dev/build-tooling findings ([GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)) pending an upstream patch; see [`DEPENDENCY_ADVISORY_REVIEW.md`](../security/DEPENDENCY_ADVISORY_REVIEW.md).
+- **Physical-device validation (INCOMPLETE):** `DEVICE_EVIDENCE_RUN.json` is a partial Windows host snapshot, not the required 40-case signed campaign across Windows, macOS, and Linux; all platforms remain `NOT APPROVED` in [`DEVICE_VALIDATION_MATRIX.md`](../testing/DEVICE_VALIDATION_MATRIX.md).
+- **Signed release automation (FAIL-CLOSED, SECRETS PENDING):** `.github/workflows/release.yml` strictly rejects unsigned builds and missing GPG/Authenticode/Apple credentials. Signing secrets have not yet been configured for production publication.
+- **Paid subscriptions (NOT READY):** `app/electron/config/billing-products.ts` intentionally leaves Plus and Pro product/variant IDs empty and `website/index.html` keeps checkout disabled until real Lemon Squeezy products are created and tested.
+- **Latest verified `main` CI:** Commit [`2b8d50a`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/2b8d50a7d4424f2a506bc3e72af86982e727bb03) passed [CI Verification Suite run 44170502005](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44170502005) (255 automated checks + Windows/macOS/Linux unsigned validation packages and launch smoke tests).
 
 ## Required repository Actions secrets
 

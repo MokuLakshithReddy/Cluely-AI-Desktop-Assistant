@@ -5,9 +5,9 @@
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
 **Test Status**: 255/255 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `3b3fba370914ab2b0aaf973f591594a0fcc85645`  
+**Source revision**: `82c12452c441e731cfb62b2f4f40f51bf2517916`  
 **Workflow run**: Local execution  
-**Verification Date**: 2026-11-17  
+**Verification Date**: 2026-11-18  
 
 ---
 
@@ -34,8 +34,8 @@
 | `subscription-url.test.ts` | First-party subscription page URLs | 1 | 1 | 0 | **PASSED** |
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 | 7 | 0 | **PASSED** |
 | `window-coordinator.test.ts` | WindowCoordinator macOS close-all recovery | 6 | 6 | 0 | **PASSED** |
-| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
 | `ai-streaming.test.ts` | AI Streaming State Resilience Subsystem | 4 | 4 | 0 | **PASSED** |
+| `ai-context.test.ts` | AI Context Synthesis & Multimodal Provider Subsystem | 14 | 14 | 0 | **PASSED** |
 | `dashboard-routing.test.ts` | Dashboard Route and Hash Parsing | 5 | 5 | 0 | **PASSED** |
 | `screen-capture.test.ts` | Screen Capture & Thumbnail Scaling Subsystem | 6 | 6 | 0 | **PASSED** |
 | `web-bridge.test.ts` | WebBridge Security and Memory Architecture | 5 | 5 | 0 | **PASSED** |
@@ -342,7 +342,15 @@
 ✓ moveControlWindow safely ignores invalid or NaN deltas
 ```
 
-### 20. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
+### 20. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
+```text
+✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
+✓ preserves multi-turn conversation history across multiple consecutive queries
+✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
+✓ guarantees state immutability when updating session records
+```
+
+### 21. AI Context Synthesis & Multimodal Provider Subsystem (`tests/ai-context.test.ts`)
 ```text
 ✓ builds context prompt including speaker-attributed transcripts
 ✓ filters out error and incomplete transcript segments from prompt context
@@ -358,14 +366,6 @@
 ✓ strips bulleted Context and Draft Response preambles cleanly
 ✓ strips dashed Context and Answer preambles cleanly
 ✓ hides incomplete context preamble while streaming so it does not flicker on screen
-```
-
-### 21. AI Streaming State Resilience Subsystem (`tests/ai-streaming.test.ts`)
-```text
-✓ accumulates 50 consecutive streamed tokens without dropping prior user message or earlier tokens
-✓ preserves multi-turn conversation history across multiple consecutive queries
-✓ gracefully handles user cancellation by marking generation stopped while retaining accumulated content
-✓ guarantees state immutability when updating session records
 ```
 
 ### 22. Dashboard Route and Hash Parsing (`tests/dashboard-routing.test.ts`)

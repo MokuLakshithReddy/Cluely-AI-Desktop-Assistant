@@ -1,41 +1,36 @@
 # Production Readiness Assessment
 
-**Assessment date:** 2026-11-17 (Asia/Kolkata)  
-**Audited main revision:** [`94acb0a`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/94acb0a5286af7c4c065df27bcc877d9917b9c6f)  
-**Baseline CI evidence:** [main run #237](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44124029254)  
-**Remediation CI evidence:** [PR #78 run #243](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44134523573)  
-**Current branch CI:** [PR #78 run #250](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44140663069) — source verification and production npm audit passed; three platform packaging jobs are still running  
-**Remediation branch:** [fix/portable-python-runtime-and-packaging](https://github.com/MokuLakshithReddy/Scandium-Assistant/tree/fix/portable-python-runtime-and-packaging)
+**Assessment date:** 2026-11-18 (Asia/Kolkata)  
+**Audited source revision:** [`82c1245`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/82c12452c441e731cfb62b2f4f40f51bf2517916)  
+**Latest verified main CI:** [CI Verification Suite (run #44170502005)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44170502005) — **PASSED** across source verification, 255/255 automated checks, production dependency audit, and native Windows, macOS, and Linux packaging + packaged launch smoke tests
 
 ## Status
 
-**NO-GO for production distribution.** Main-branch run #237 failed all three native packaging jobs. The remediation branch's earlier CI run #243 successfully built and launch-tested the Windows portable executable, macOS DMG, and Linux AppImage, including real RealtimeSTT inference. The latest corrected head, PR run #250, has passed source verification, the generated test report, and the production dependency audit; its three native packaging jobs are still in progress. Keep release blocked until run #250 completes its packaged launch tests and the physical-device campaign is signed off.
+**NO-GO for general commercial production distribution.**
 
-The known baseline failures were:
+Hosted CI on `main` (`2b8d50a`, run #44170502005) is completely green across Windows, macOS, and Linux — including checksum-pinned standalone Python runtime provisioning, real-audio CPU INT8 RealtimeSTT transcription (`test_realtime_inference.py`), 255/255 automated checks, production dependency audit (`npm audit --omit=dev` = 0 vulnerabilities), and packaged Electron launch/shutdown smoke tests. However, **four production release blockers remain open**:
 
-| Platform | Baseline failure | Result |
-|---|---|---|
-| Windows | Bundled runtime did not contain the RealtimeSTT site-packages; isolated import raised `ModuleNotFoundError` | Packaging stopped before installer creation |
-| Linux | PyAudio could not compile because `portaudio.h` was missing | Packaging stopped before installer creation |
-| macOS | PyAudio could not compile because `portaudio.h` was missing | Packaging stopped before installer creation |
-
-The remediation branch replaces runner-derived Python copies with a checksum-pinned CPython standalone distribution, installs dependencies into that distribution, bundles the PortAudio runtime where needed, and runs real external-audio RealtimeSTT inference. PR #78 CI run #243 completed successfully on Windows, macOS, and Linux: all three platform runtime-provisioning checks, real-audio transcription checks, distributable builds, and packaged Electron launch/shutdown smoke tests passed. This validates the hosted build matrix; it does not replace physical device acceptance.
+1. **Physical-device campaign is incomplete:** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a 7-check Windows host snapshot, not the required 40-case signed campaign validated by `scripts/validate-device-evidence.cjs` across supported platforms, and live conferencing compatibility (Zoom, Teams, Google Meet, Discord, OBS) has not been executed.
+2. **No signed production release has been published for current `main`:** The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) release is an **unsigned prerelease** pointing to an older commit with no GPG-signed checksum manifest (`SHA256SUMS.txt.asc`). `.github/workflows/release.yml` is strictly fail-closed and blocks publication until GPG, Windows Authenticode, and Apple Developer ID/notarization secrets are configured and a signed tag matching current `main` is pushed.
+3. **Paid subscriptions are not yet configured:** `app/electron/config/billing-products.ts` intentionally has empty Plus and Pro Lemon Squeezy product/variant IDs, and checkout in `website/index.html` is intentionally disabled. Paid subscription checkout and live activation cannot be treated as operational until real Lemon Squeezy products are created, configured, and tested end-to-end. (Local `SCANDIUM_DEVELOPER_MODE=true` is an unpackaged developer testing override only and is ignored by packaged builds.)
+4. **Development-tooling dependency advisory remains open upstream:** `npm audit --omit=dev` reports **0 production vulnerabilities** (enforced in both `ci.yml` and `release.yml`), while the full workspace audit retains 18 high-severity `picomatch` dev/build-tooling findings ([GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)) pending an upstream release.
 
 ## What CI has actually verified
 
 | Area | Evidence | Scope and limitation |
 |---|---|---|
-| JavaScript dependency audit | PR #78 run #250: `npm audit --omit=dev` reports 0 vulnerabilities; full workspace report records 18 high `picomatch` development-tooling findings | Production dependency audit passed; full development/build tree remains under an explicit upstream-patch exception and is not audit-clean |
-| TypeScript and lint | Run #237: `npm run lint` passed | Static checks only |
-| Unit and integration tests | PR #78 run #250: 249 Vitest tests passed; Electron UI/IPC smoke passed | Includes mocks, synthetic fixtures, and simulated inputs |
-| Electron development smoke | PR #78 run #250: 1 Electron UI/preload/IPC smoke passed | Not the packaged runtime |
-| Python sidecar protocol tests | PR #78 run #250 protocol step passed (12 tests, 1 legacy test skipped); separate bundled-runtime inference passed in run #243 on all three platforms | The skipped protocol test is not the real packaged inference test; the package jobs run a separate actual STT transcription check |
-| Windows packaged application | PR #78 run #243 | Portable executable built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
-| macOS packaged application | PR #78 run #243 | DMG built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
-| Linux packaged application | PR #78 run #243 | AppImage built; real RealtimeSTT fixture transcription and packaged renderer/preload/IPC smoke passed |
-| Physical-device campaign | Incomplete | The checked-in Windows snapshot is not the required 40-case campaign across claimed OS targets |
+| JavaScript dependency audit | `main` run #44170502005: `npm audit --omit=dev` reports **0 vulnerabilities**; full workspace report records 18 high `picomatch` dev/build findings | Production dependency audit enforced in both `ci.yml` and `release.yml`; full development/build tree remains under an explicit upstream-patch disclosure and is not audit-clean |
+| TypeScript and lint | `main` run #44170502005: `npm run lint` passed | Static checks only |
+| Unit and integration tests | 254 Vitest tests across 24 test files | Includes mocks, synthetic fixtures, and simulated inputs |
+| Electron development smoke | 1 Electron UI/preload/IPC smoke passed | Exercises real Electron windows, preload bridge, IPC, persistence, and clean exit |
+| Python sidecar & real RealtimeSTT inference | `test_sidecar.py` (12 tests) + `test_realtime_inference.py` passed on Windows, macOS, and Linux bundled runtimes | Verifies model loading and external-PCM CPU INT8 transcription of `jfk.wav`; does not replace physical loopback/microphone/meeting acceptance |
+| Windows packaged application | `main` run #44170502005 | Unsigned portable `.exe` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
+| macOS packaged application | `main` run #44170502005 | Unsigned `.dmg` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
+| Linux packaged application | `main` run #44170502005 | `.AppImage` built; bundled RealtimeSTT transcription and packaged renderer/preload/IPC smoke passed |
+| Signed production release & paid billing | **BLOCKED** | Signing/GPG secrets not yet configured; `v1.0.2` is an older unsigned prerelease; `BILLING_PRODUCTS` IDs are empty and checkout is disabled |
+| Physical-device campaign | **INCOMPLETE** | See `docs/testing/DEVICE_VALIDATION_MATRIX.md` — all platforms remain `NOT APPROVED` until the 40-case signed campaign passes `validate-device-evidence.cjs` |
 
-## Source-level automated verification status (PR #78 Windows CI run #250)
+## Source-level automated verification status (`main` CI run #44170502005)
 
 **255/255 automated checks passing (254/254 Vitest tests + 1/1 Electron UI/preload/IPC E2E smoke test) with 100% pass rate**
 
@@ -67,8 +62,8 @@ The following breakdown is regenerated from Vitest and Electron smoke evidence. 
 17.  tests/subscription-url.test.ts       1 passed (First-party subscription page URLs)
 18.  tests/whisper-runtime.test.ts        7 passed (Local Speech Recognition (whisper.cpp) Subsystem)
 19.  tests/window-coordinator.test.ts     6 passed (Window close recovery, macOS reinitialization & listener idempotency)
-20.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
-21.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
+20.  tests/ai-streaming.test.ts           4 passed (AI Streaming State Resilience Subsystem)
+21.  tests/ai-context.test.ts             14 passed (AI Context Synthesis & Multimodal Provider Subsystem)
 22.  tests/dashboard-routing.test.ts      5 passed (Dashboard Route and Hash Parsing)
 23.  tests/screen-capture.test.ts         6 passed (Screen Capture & Thumbnail Scaling Subsystem)
 24.  tests/web-bridge.test.ts             5 passed (WebBridge Security and Memory Architecture)
@@ -79,21 +74,20 @@ Grand Total:                        255 passing checks / 255 total (100% Pass Ra
 ======================================================================================
 ```
 
-Main-branch run #237 never reached native packaging. PR #78 run #243 later passed all three platform packaged-app launch checks. The updated head's rerun #250 has passed source verification and is currently repeating the Windows, macOS, and Linux package/smoke matrix.
+On `main` (`2b8d50a`, run #44170502005), source verification, 255/255 automated checks, bundled RealtimeSTT real-audio transcription, and all three native platform package/smoke jobs completed successfully.
 
 ## Dependency security status
 
-The main baseline run #237 previously reported a clean npm audit, but the advisory database has since added high-severity [GHSA-fc5q-39xc-vjpf / CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) affecting `picomatch` through 4.0.7. The full-workspace audit reports 18 high-severity findings through development/build-tooling dependency paths. PR #78 run #250 now enforces `npm audit --omit=dev` and reports 0 vulnerabilities in the production dependency graph, while retaining the full audit report with 18 high findings. The upstream remediation proposal [picomatch PR #237](https://github.com/micromatch/picomatch/pull/237) remains open; there is no validated patched release in the current lockfile.
-
-`picomatch` is not a direct app production dependency; it is reached through tooling paths including `tailwindcss`, `chokidar`, and glob/build utilities. The branch CI now retains the full audit report and enforces `npm audit --omit=dev` as a blocking check on the production dependency graph. That production-only audit must pass before merge. Until a patched upstream picomatch release is available, do not claim the entire dependency tree is audit-clean or suppress the full-tree finding.
+Both `.github/workflows/ci.yml` and `.github/workflows/release.yml` enforce `npm audit --omit=dev` (0 critical, 0 high, 0 moderate, 0 low vulnerabilities in the production dependency graph) while capturing and uploading the full workspace audit report. The full-workspace audit records 18 high-severity findings through development/build-tooling paths for [GHSA-fc5q-39xc-vjpf / CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) affecting `picomatch` through 4.0.7 (`tailwindcss`, `chokidar`, `vitest`, `electron-builder` tooling). `picomatch` is not a direct app runtime dependency. Until a patched upstream `picomatch` release is available, do not claim the entire development dependency tree is audit-clean or suppress the full-tree finding.
 
 ## Release gates and operational status
 
-1. **Real-device validation — INCOMPLETE:** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a Windows host snapshot. It is not a signed campaign with all required test IDs, per-test evidence, packaged artifact hashes, and coverage for each claimed platform. Do not describe it as production hardware acceptance.
-2. **Native release packaging — CI VALIDATED IN PR #78:** All Windows/macOS/Linux package jobs and their packaged smoke tests passed in run #243. Merge the reviewed remediation to main and require the same checks on the resulting main commit before publishing.
-3. **Real RealtimeSTT inference — PASSED IN PR #78 RUN #243:** Each platform's bundled runtime transcribed the checked-in JFK audio fixture with CPU INT8 RealtimeSTT. This verifies model loading and external-PCM inference; it is not a physical loopback-device, microphone-permission, or live-meeting acceptance test.
-4. **Development-tooling advisory — OPEN:** The full npm tree currently reports the picomatch ReDoS advisory in development/build dependencies. The branch enforces a separate production dependency audit, but the full build-toolchain advisory remains recorded pending an upstream patch and re-audit.
-5. **Branch protection — DISABLED:** The main branch currently has no required status checks. Enable required CI checks before merging a release candidate.
+1. **Real-device validation — INCOMPLETE:** `docs/testing/DEVICE_EVIDENCE_RUN.json` is a 7-check Windows host snapshot, and `docs/testing/DEVICE_VALIDATION_MATRIX.md` marks all platforms `NOT APPROVED (INCOMPLETE)`. A complete 40-case signed campaign validated by `scripts/validate-device-evidence.cjs` plus live conferencing tests (Zoom, Teams, Google Meet, Discord, OBS) are required before production approval.
+2. **Signed production release — BLOCKED:** Published `v1.0.2` is an unsigned prerelease from an older commit without a GPG-signed `SHA256SUMS.txt.asc`. `.github/workflows/release.yml` fails closed until `RELEASE_GPG_PUBLIC_KEY`, `RELEASE_GPG_PRIVATE_KEY`, `RELEASE_GPG_PASSPHRASE`, Windows Authenticode (`WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD`, `WINDOWS_EXPECTED_CERT_THUMBPRINT`), and Apple Developer ID/notarization (`MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) secrets are configured and a new signed tag matching current `main` is pushed.
+3. **Paid subscriptions & checkout — NOT READY:** `app/electron/config/billing-products.ts` intentionally leaves `plus` and `pro` product/variant IDs empty, and checkout in `website/index.html` is intentionally disabled. Configure real Lemon Squeezy products/variants and verify live license activation end-to-end before commercial launch.
+4. **Native CI packaging & bundled RealtimeSTT inference — PASSED ON `main`:** Windows, macOS, and Linux unsigned validation packages, bundled CPython + PortAudio provisioning, real `jfk.wav` CPU INT8 RealtimeSTT transcription, and packaged Electron smoke tests all passed in `main` run #44170502005.
+5. **Development-tooling advisory — OPEN UPSTREAM:** Production runtime audit (`npm audit --omit=dev`) reports 0 vulnerabilities; the 18 high `picomatch` dev/build-tooling findings remain recorded pending an upstream patch.
+6. **Branch protection — RECOMMENDED:** Require CI status checks on `main` before merging release candidates.
 
 ## Important implementation facts
 

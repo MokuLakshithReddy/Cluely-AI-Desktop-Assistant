@@ -2,7 +2,7 @@
 
 **Purpose:** evidence-led validation of microphone, system-audio, screen-capture, permission, provider, privacy-stop, and display-protection behavior on real supported devices.
 
-**Status at creation:** no physical-device test evidence is recorded in this document. Synthetic media and mocked Electron tests are not substitutes for the device runs below.
+**Current campaign status:** **INCOMPLETE / NOT APPROVED.** A partial Windows 11 host snapshot (`DEVICE_EVIDENCE_RUN.json`) and local Developer Mode verification exist, but the required 40-case device-evidence campaign validated by `scripts/validate-device-evidence.cjs` has **not** yet been completed for Windows, macOS, or Linux. Synthetic media and mocked Electron tests are not substitutes for the device runs below.
 
 Use [`DEVICE_EVIDENCE_FORMAT.md`](./DEVICE_EVIDENCE_FORMAT.md) for stable per-case IDs, the evidence JSON structure, and the release-owner validation command.
 
@@ -12,26 +12,24 @@ Complete this section for each validation campaign. Do not reuse a result after 
 
 | Field | Value |
 |---|---|
-| Release candidate version | `1.0.2` |
-| Git commit SHA | [`4577696`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/4577696) |
-| CI workflow run URL | [CI Verification Suite (run 43873876041)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/43873876041) |
-| Artifact name | `Scandium-1.0.2-Windows-x64.exe` / `Scandium-1.0.2-macOS-arm64.dmg` / `Scandium-1.0.2-Linux-x64.AppImage` |
-| Artifact SHA-256 | Windows: `79427f908256dfbdeb8c1175303d80404213d2afaf19ae561405568c4447da6c`<br>macOS: `9656724abca26d61c45050463dfe8b97b8ae14f1d5e88208d89080f8b72d8e82`<br>Linux: `8851bc81d049705a746de89b3bc1ed02331a992a36dffe2a323efed8056db2e8` |
+| Release candidate version | `1.0.2` (unsigned prerelease only — no signed production release yet) |
+| Latest verified `main` commit SHA | [`2b8d50a`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/2b8d50a7d4424f2a506bc3e72af86982e727bb03) |
+| CI workflow run URL | [CI Verification Suite (run 44170502005)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44170502005) |
+| Signed production artifact | **NOT YET PRODUCED** (CI artifacts are unsigned validation builds; `v1.0.2` tag points to an older commit and is an unsigned prerelease) |
 | Electron version | `45.2.3` |
 | Node.js CI version | `24.22.2` |
-| Test operator | Physical Hardware Operator (Windows 11 workstation) |
-| Test date and timezone | 2026-11-16T17:50:00+05:30 (IST) |
-| Evidence folder / artifact URL | [`DEVICE_EVIDENCE_RUN.json`](./DEVICE_EVIDENCE_RUN.json) |
+| Partial Windows host snapshot | [`DEVICE_EVIDENCE_RUN.json`](./DEVICE_EVIDENCE_RUN.json) (7 workstation checks — **not** the 40-case campaign schema) |
+| Complete 40-case campaign JSON | **PENDING** (`npm run validate:device-evidence <campaign.json>` not yet passed) |
 
 ## 2. Platform and device coverage
 
-Run on a clean user profile with the packaged candidate, not the development server.
+Run on a clean user profile with the **signed packaged candidate**, not the development server or unpacked directory.
 
 | Platform | OS release and build | CPU / architecture | App artifact | Microphone device | Audio output / loopback route | Display configuration | Result |
 |---|---|---|---|---|---|---|---|
-| Windows 10/11 x64 | Windows 11 Build 26200 x64 | Intel Core Ultra 7 256V (8c) / x64 | Unpacked Desktop App (`launch-scandium.bat`) | Intel Smart Sound Digital Microphones (Physical Array) | Realtek High Definition Audio / WASAPI Loopback | 1536x960 @ 1.25x scaling (1920x1200 Intel Arc 140V) | **HARDWARE VERIFIED & APPROVED (Tier 1)** |
-| macOS supported release | macOS 14+ (Apple Silicon) | arm64 | DMG-installed app | Physical mic | CoreAudio System Loopback | Physical display | **PROVISIONAL (Beta / Community Preview)** |
-| Linux supported distribution | Ubuntu 22.04 / 24.04 | x64 | AppImage | Physical mic | PipeWire/PulseAudio Loopback | Physical display | **PROVISIONAL (Beta / Community Preview)** |
+| Windows 10/11 x64 | Windows 11 Build 26200 x64 | Intel Core Ultra 7 256V / x64 | Unpacked local build only (signed packaged exe pending) | Physical array enumerated (partial snapshot only) | WASAPI devices enumerated (full meeting loopback campaign pending) | 1920x1200 @ 1.25x Intel Arc 140V | **INCOMPLETE — NOT APPROVED** |
+| macOS supported release | Pending physical device | arm64 | Signed & notarized DMG (pending) | NOT RUN | NOT RUN | NOT RUN | **NOT RUN — NOT APPROVED** |
+| Linux supported distribution | Pending physical device | x64 | AppImage (pending) | NOT RUN | NOT RUN | NOT RUN | **NOT RUN — NOT APPROVED** |
 
 Record only OS versions and architectures that are actually tested. Do not infer Apple Silicon, Intel Mac, Wayland, X11, or Linux distribution support from a successful package build on a different runner.
 
@@ -96,12 +94,12 @@ For each exact OS build and application version, test the current product's disp
 
 | Capture application / path | Version | OS | Protected window excluded? | Notes / limitations |
 |---|---|---|---|---|
-| Zoom window share | Current Desktop Client | Windows 11 | YES (Black/Transparent Box) | Supported via Windows `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` |
-| Microsoft Teams share | Modern Teams Client | Windows 11 | YES (Excluded from stream) | Window excluded by OS DWM compositor |
-| Google Meet tab/window/display share | Chrome / Edge | Windows 11 | YES (Excluded from capture) | Excluded during desktop and window sharing |
-| Discord screen share | Current Desktop Client | Windows 11 | YES (Excluded) | Window is blacked out in captured stream |
-| OBS display capture | OBS Studio 30+ | Windows 11 | YES (Excluded in DXGI/WGC mode) | Excluded under Windows Graphics Capture; hardware capture cards bypass DWM |
-| OS-native screenshot/recording | Snipping Tool / Game Bar | Windows 11 | YES (Blacked out) | DWM hardware exclusion active |
+| Zoom window share | Pending | Windows 11 / macOS / Linux | **NOT RUN** | Requires live conferencing capture test on signed packaged build |
+| Microsoft Teams share | Pending | Windows 11 / macOS / Linux | **NOT RUN** | Requires live conferencing capture test on signed packaged build |
+| Google Meet tab/window/display share | Pending | Windows 11 / macOS / Linux | **NOT RUN** | Requires live conferencing capture test on signed packaged build |
+| Discord screen share | Pending | Windows 11 / macOS / Linux | **NOT RUN** | Requires live conferencing capture test on signed packaged build |
+| OBS display capture | Pending | Windows 11 / macOS / Linux | **NOT RUN** | Requires live conferencing capture test; hardware capture cards bypass OS DWM protection |
+| OS-native screenshot/recording | Pending | Windows 11 / macOS / Linux | **NOT RUN** | `setContentProtection(true)` API call succeeded without OS error in host snapshot, but live visual exclusion capture has not been recorded in the 40-case campaign |
 
 Also test the control window, chat window, and dashboard independently. Document the known limits of OS-level content protection, remote-desktop capture, admin capture, and external hardware capture.
 
@@ -114,21 +112,24 @@ Also test the control window, chat window, and dashboard independently. Document
 
 ## 4. Per-test execution record
 
-Windows 11 physical hardware verification executed on Windows 11 workstation (`DEVICE_EVIDENCE_RUN.json`):
-- All 7 core hardware tests (DPAPI encryption, display geometry, stealth protection, window architecture, encrypted state persistence, credential vault lifecycle, and physical audio devices) passed with 100% verified status.
-- Local Whisper speech recognition verified via native `whisper-cli.exe` with `jfk.wav` fixture in 1,164ms.
-- 238/238 automated unit/integration/E2E smoke checks passing with 0 errors.
+Partial Windows 11 local verification recorded to date (not yet a complete 40-case campaign):
+- `DEVICE_EVIDENCE_RUN.json` records 7 baseline workstation checks on Windows 11 (DPAPI encryption, display geometry, `setContentProtection(true)` API call, window mount, AES-256-GCM state persistence, credential vault lifecycle, and Windows audio adapter enumeration). It does **not** conform to the 40-case `DEVICE_EVIDENCE_FORMAT.md` campaign schema validated by `scripts/validate-device-evidence.cjs`.
+- Local unpackaged Developer Mode verification on Windows 11 confirmed live Gemini BYOK streaming (`gemini-2.5-flash` and `gemini-3.5-flash-lite`), local privacy mode & outbound secret guards, local `whisper.cpp` and `RealtimeSTT + faster-whisper` CPU INT8 transcription of `jfk.wav`, encrypted session archive roundtrip, and Free-tier entitlement enforcement.
+- Full 40-case physical-device testing (including real microphone/loopback permission revocation, live conferencing compatibility, 30-minute stability, and signed packaged installer runs on Windows, macOS, and Linux) remains **INCOMPLETE**.
 
 ## 5. Release sign-off table
 
 | Platform | Microphone | System audio | Screen capture | Permission denial/revocation | Emergency stop | Purge | Live providers | Packaged app stability | Sign-off |
 |---|---|---|---|---|---|---|---|---|---|
-| Windows 10/11 x64 | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | **APPROVED (Tier 1 Supported)** |
-| macOS supported release | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | **PROVISIONAL (Tier 2 Preview)** |
-| Linux claimed distribution(s) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | PASS (CI) | **PROVISIONAL (Tier 2 Preview)** |
+| Windows 10/11 x64 | INCOMPLETE | INCOMPLETE | INCOMPLETE | NOT RUN | NOT RUN | PARTIAL (unpacked) | PARTIAL (Gemini unpacked) | NOT RUN (signed pkg pending) | **NOT APPROVED (INCOMPLETE)** |
+| macOS supported release | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | **NOT APPROVED (NOT RUN)** |
+| Linux claimed distribution(s) | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | **NOT APPROVED (NOT RUN)** |
 
-Windows 10/11 x64 is verified and approved as the primary production distribution platform. macOS and Linux distributables are built and verified via automated CI packaging and headless smoke testing, and provided as Community / Beta Previews pending community physical hardware sign-off.
+Hosted CI packaging and headless launch smoke tests pass on Windows, macOS, and Linux, but CI runs are **not** substitutes for physical-device sign-off.
 
 ## 6. Release gate
 
-The release gate is **PASSED for Windows 10/11 x64 primary commercial distribution**. Issue [#49](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/49) is resolved for primary platform scope. Packaged Windows executable distribution is supported directly or via `launch-scandium.bat`. Users on Windows 11 with Smart App Control enabled can run via developer mode / unpacked launcher or allow the unsigned binary.
+The release gate is **BLOCKED — INCOMPLETE** across all platforms, consistent with [`docs/production/PRODUCTION_READINESS.md`](../production/PRODUCTION_READINESS.md). Before approving production distribution:
+1. Complete the 40-case campaign JSON for every supported platform on signed packaged builds and verify with `npm run validate:device-evidence <campaign.json>`.
+2. Record actual conferencing compatibility outcomes (Zoom, Teams, Google Meet, Discord, OBS).
+3. Record live paid subscription activation once Lemon Squeezy Plus/Pro product and variant IDs are configured in `app/electron/config/billing-products.ts`.

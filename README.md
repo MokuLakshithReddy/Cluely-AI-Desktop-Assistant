@@ -343,8 +343,8 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `subscription-url.test.ts` | First-party subscription page URLs | 1 |
 | `whisper-runtime.test.ts` | Local Speech Recognition (whisper.cpp) Subsystem | 7 |
 | `window-coordinator.test.ts` | Window lifecycle and macOS close-all recovery | 6 |
-| `ai-context.test.ts` | AI context assembly and operating modes | 14 |
 | `ai-streaming.test.ts` | Token accumulation, history preservation and abort | 4 |
+| `ai-context.test.ts` | AI context assembly and operating modes | 14 |
 | `dashboard-routing.test.ts` | Dashboard route parsing | 5 |
 | `screen-capture.test.ts` | Display thumbnail scaling | 6 |
 | `web-bridge.test.ts` | In-memory web credentials and scoped cancellation | 5 |
