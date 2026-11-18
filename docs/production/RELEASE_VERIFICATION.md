@@ -4,7 +4,7 @@
 
 The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) GitHub release is an **unsigned CI validation prerelease** pointing to an older commit (not current `main`), with a SHA-256 file but **no GPG-signed checksum manifest** (`SHA256SUMS.txt.asc`). No signed production release has been published for the current `main` codebase yet.
 
-The latest verified `main` revision is [`2b8d50a`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/2b8d50a7d4424f2a506bc3e72af86982e727bb03). Its [CI Verification Suite run 44170502005](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44170502005) completed successfully: source verification passed, 255 automated checks passed (254 Vitest tests plus one Electron UI/IPC smoke check), bundled RealtimeSTT real-audio transcription passed, and Windows, macOS, and Linux unsigned packaged-app launch jobs all passed.
+The latest verified `main` revision is [`b96beab`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/b96beab45404563d262b42916d4e7068f6ffd4e3). Its [CI Verification Suite run #259](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44256053853) completed successfully: source verification passed, 256 automated checks passed (255 Vitest tests plus one Electron UI/IPC smoke check), bundled RealtimeSTT real-audio transcription passed, and Windows, macOS, and Linux unsigned packaged-app launch jobs all passed. The newer PR #81 validation run [#261](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44261742210) passed 258 checks on the PR branch; it is not yet part of `main`.
 
 Do not use the `v1.0.2` prerelease or CI validation assets as evidence that production code-signing, Apple notarization, GPG manifest signing, physical-device sign-off, or live paid subscription checkout have completed.
 
@@ -49,7 +49,7 @@ The merged-main CI run above passed the packaged launch jobs on Windows, macOS, 
 
 Complete and sign off [DEVICE_VALIDATION_MATRIX.md](../testing/DEVICE_VALIDATION_MATRIX.md) on physical devices. Do not infer real microphone, loopback, screen permission, live provider, emergency-stop, or purge compatibility from mocked media tests or packaged launch checks.
 
-Issue [#49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) remains open until the actual device runs and evidence are attached and reviewed.
+Issue [#49](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/49) remains open until the actual device runs and evidence are attached and reviewed. Issue [#50](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/50) tracks publication of the signed `v1.0.3` release and is intentionally excluded from the pre-publication issue gate; close it only after publication and independent verification.
 
 ### 4. Signing and integrity
 
