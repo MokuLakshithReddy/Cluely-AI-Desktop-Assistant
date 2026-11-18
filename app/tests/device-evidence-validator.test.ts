@@ -223,4 +223,15 @@ describe('device evidence campaign validator', () => {
     });
     expect(wrongVersion.errors.some((error) => error.path === 'candidate.version' && error.message.includes('expected release version'))).toBe(true);
   });
+
+  it('rejects all-zero placeholder artifact SHA-256 digests in final release mode but permits them in collection mode', () => {
+    const campaign = buildCampaign();
+    campaign.runs[0].artifactSha256 = '0'.repeat(64);
+
+    const strictResult = validateCampaign(campaign);
+    expect(strictResult.errors.some((error) => error.path === 'runs[0].artifactSha256' && error.message.includes('placeholder'))).toBe(true);
+
+    const collectionResult = validateCampaign(campaign, { allowIncomplete: true });
+    expect(collectionResult.errors).toEqual([]);
+  });
 });

@@ -185,6 +185,8 @@ function validateCampaign(campaign, options = {}) {
       checkUrl(run.artifactUrl, base + '.artifactUrl');
       if (!/^[a-f0-9]{64}$/i.test(run.artifactSha256 || '')) {
         add(base + '.artifactSha256', 'must be a 64-character SHA-256 digest');
+      } else if (!allowIncomplete && /^0{64}$/.test(run.artifactSha256)) {
+        add(base + '.artifactSha256', 'must be the real SHA-256 digest of the tested artifact (all-zero placeholder is rejected for release sign-off)');
       }
 
       if (!Array.isArray(run.records)) {

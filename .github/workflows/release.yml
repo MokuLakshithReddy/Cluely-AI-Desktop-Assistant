@@ -68,18 +68,31 @@ jobs:
           echo "Verifying GPG-signed release tag..."
           printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
           git verify-tag "$GITHUB_REF_NAME"
-      - name: Validate complete 40-case physical-device evidence campaign (fail-closed)
+      - name: Validate complete 40-case physical-device evidence campaign and GPG sign-off (fail-closed)
         shell: bash
+        env:
+          RELEASE_GPG_PUBLIC_KEY: ${{ secrets.RELEASE_GPG_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           tag_version="${GITHUB_REF_NAME#v}"
           campaign_file="docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json"
+          campaign_sig="${campaign_file}.asc"
           if [[ ! -f "$campaign_file" ]]; then
             echo "Release blocked: required 40-case physical-device evidence campaign '$campaign_file' does not exist."
-            echo "Complete all 40 physical-device test cases per supported platform per docs/testing/DEVICE_EVIDENCE_FORMAT.md and verify with:"
-            echo "  node scripts/validate-device-evidence.cjs $campaign_file --expected-commit $GITHUB_SHA --expected-version $tag_version"
             exit 1
           fi
+          if [[ ! -f "$campaign_sig" ]]; then
+            echo "Release blocked: detached GPG signature '$campaign_sig' is required to cryptographically verify human release-owner sign-off on '$campaign_file'."
+            echo "Sign the finalized campaign with the release GPG key:"
+            echo "  gpg --armor --detach-sign --output $campaign_sig $campaign_file"
+            exit 1
+          fi
+          if [[ -z "${RELEASE_GPG_PUBLIC_KEY:-}" ]]; then
+            echo "Release blocked: RELEASE_GPG_PUBLIC_KEY secret is required to verify '$campaign_sig'."
+            exit 1
+          fi
+          printf '%s' "$RELEASE_GPG_PUBLIC_KEY" | gpg --batch --import
+          gpg --verify "$campaign_sig" "$campaign_file"
           node scripts/validate-device-evidence.cjs "$campaign_file" --expected-commit "$GITHUB_SHA" --expected-version "$tag_version"
 
   verify:

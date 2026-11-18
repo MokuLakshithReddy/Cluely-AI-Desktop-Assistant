@@ -92,6 +92,8 @@ jobs:
           python app/python-stt/test_sidecar.py
       - name: Run Type Check & Lint
         run: npm run lint
+      - name: Validate device-evidence campaign schema (collection mode)
+        run: node scripts/validate-device-evidence.cjs docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json --allow-incomplete
       - name: Run Vitest Suite
         run: npm test
       - name: Build Renderer and Electron Bundle
