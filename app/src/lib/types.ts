@@ -1,3 +1,5 @@
+import { ActiveModelId } from './model-registry';
+
 export type Role = 'me' | 'them';
 
 export type CaptureStatus = 'idle' | 'starting' | 'active' | 'unavailable' | 'error';
@@ -90,20 +92,7 @@ export interface SharedState {
   sttEngineMode?: 'realtime_local' | 'whisper_cpp' | 'byok_cloud';
   realtimeSttModel?: 'tiny.en' | 'base.en' | 'small.en';
   realtimeSttStatus?: 'not_configured' | 'downloading' | 'initializing' | 'ready' | 'capturing' | 'transcribing' | 'paused' | 'stopped' | 'error';
-  activeModel:
-    | 'gemini-3.8-flash'
-    | 'gemini-3.6-flash'
-    | 'gemini-3.5-flash-lite'
-    | 'gemini-3.1-pro-preview'
-    | 'gpt-4o'
-    | 'gpt-4o-mini'
-    | 'claude-sonnet-5'
-    | 'claude-haiku-4-5-20251001'
-    | 'claude-opus-5'
-    | 'claude-sonnet-5-5'
-    | 'claude-haiku-5-5'
-    | 'claude-opus-5-5'
-    | 'ollama';
+  activeModel: ActiveModelId;
   isGenerating?: boolean;
   micActive?: boolean;
   systemAudioActive?: boolean;

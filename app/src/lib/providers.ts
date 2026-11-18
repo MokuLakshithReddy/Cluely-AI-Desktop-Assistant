@@ -1,4 +1,6 @@
-import { AssistantMode, ChatMessage, TranscriptItem } from './types';
+import { AssistantMode, TranscriptItem } from './types';
+import { assertModelCompatibleWithProvider } from './model-registry';
+import { redactSensitiveText } from './redaction';
 
 export interface GenerationOptions {
   model: string;
@@ -10,8 +12,13 @@ export interface GenerationOptions {
   knowledgePassages?: string[];
   conversationHistory?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
   signal?: AbortSignal;
+  timeoutMs?: number;
   onToken?: (token: string) => void;
 }
+
+export const DEFAULT_LLM_TIMEOUT_MS = 60_000;
+export const DEFAULT_STT_TIMEOUT_MS = 30_000;
+export const ANTHROPIC_API_VERSION = '2026-10-21';
 
 export const MODE_SYSTEM_PROMPTS: Record<AssistantMode, string> = {
   copilot: `You are an expert personal desktop copilot running alongside the user's active applications.
@@ -96,6 +103,85 @@ export function validateNetworkEndpoint(urlStr: string, allowLocalHttp: boolean 
 }
 
 /**
+ * Scrubs any echoed API keys or sensitive tokens from upstream error payloads
+ * and caps error detail length so error messages remain diagnostic without leaking secrets.
+ */
+export function sanitizeProviderErrorBody(rawText: string, apiKey?: string): string {
+  let safe = typeof rawText === 'string' ? rawText : '';
+  const trimmedKey = apiKey?.trim();
+  if (trimmedKey && trimmedKey.length >= 6) {
+    safe = safe.split(trimmedKey).join('[REDACTED_API_KEY]');
+  }
+  safe = redactSensitiveText(safe).sanitized;
+  safe = safe.replace(/\s+/g, ' ').trim();
+  if (safe.length > 400) {
+    safe = `${safe.slice(0, 400)}…`;
+  }
+  return safe || 'No additional error details returned by provider.';
+}
+
+/**
+ * Composes an optional caller AbortSignal with a bounded request timeout.
+ */
+function createBoundedFetchController(
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number
+): { signal: AbortSignal; didTimeout: () => boolean; cleanup: () => void } {
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const onCallerAbort = () => {
+    controller.abort(callerSignal?.reason);
+  };
+
+  if (callerSignal?.aborted) {
+    controller.abort(callerSignal.reason);
+  } else if (callerSignal) {
+    callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+  }
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error(`Request timed out after ${timeoutMs}ms`));
+  }, Math.max(1, timeoutMs));
+  if (typeof timer.unref === 'function') timer.unref();
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    cleanup: () => {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener('abort', onCallerAbort);
+    },
+  };
+}
+
+function classifyHttpError(
+  providerLabel: string,
+  status: number,
+  sanitizedDetail: string,
+  modelName?: string
+): Error {
+  if (status === 401) {
+    return new Error(
+      `${providerLabel} authentication error (401): Invalid or revoked API key. Update your key in Settings. Details: ${sanitizedDetail}`
+    );
+  }
+  if (status === 429) {
+    return new Error(
+      `${providerLabel} rate limit exceeded (429): Too many requests or quota exhausted. Retry shortly. Details: ${sanitizedDetail}`
+    );
+  }
+  if (status >= 500 && status <= 599) {
+    return new Error(
+      `${providerLabel} service outage (${status}): Upstream provider is temporarily unavailable. Details: ${sanitizedDetail}`
+    );
+  }
+  const modelNote = modelName ? ` for model "${modelName}"` : '';
+  return new Error(`${providerLabel} API error (${status})${modelNote}: ${sanitizedDetail}`);
+}
+
+/**
  * Strips verbose screen context descriptions and meta headers from model responses.
  * Ensures the user receives only direct answers and solutions without preambles like:
  * "Context: The visible screen shows..." or "Draft Response:".
@@ -103,16 +189,11 @@ export function validateNetworkEndpoint(urlStr: string, allowLocalHttp: boolean 
 export function cleanAssistantSolution(text: string): string {
   if (!text) return text;
 
-  // 1. Check if the response begins with a Context block (plain, markdown bold/header, bulleted, or list)
-  // e.g. "Context: The visible screen shows...\nDraft Response:\n..."
-  // e.g. "• Context: ... \n• Draft Response:\n..."
-  // e.g. "**Context:** ... \n\n[Solution]"
   const contextBlockMatch = text.match(
     /^[\s*•\-#]*(\*{0,2}(?:Context|Screen Context|Screen Analysis|Visible Screen)\*{0,2}:?[\s\S]*?)(?:\n\s*[\s*•\-#]*\*{0,2}(?:Draft Response|Response|Suggested Response|Solution|Answer|Suggested Answer)\*{0,2}:?|\n{2,}|$)/i
   );
 
   if (contextBlockMatch) {
-    // If the entire text so far is just the incomplete context line without a delimiter, hide it during streaming
     if (contextBlockMatch[0].length === text.length && !text.includes('\n\n') && !/\b(?:response|answer|solution):/i.test(text)) {
       return '';
     }
@@ -123,7 +204,6 @@ export function cleanAssistantSolution(text: string): string {
     return remainder.trimStart();
   }
 
-  // 2. Strip standalone leading "Draft Response:", "Suggested Response:", bulleted or plain
   return text
     .replace(/^[\s*•\-#]*(\*{0,2}(?:Draft Response|Suggested Response|Direct Answer|Solution|Answer)\*{0,2}:?\s*\n*)/i, '')
     .trimStart();
@@ -140,11 +220,9 @@ export function buildContextPrompt(
 ): string {
   let prompt = '';
 
-  // 1. Conversation transcript context
   if (recentTranscript && recentTranscript.length > 0) {
     prompt += '### RECENT CONVERSATION TRANSCRIPT\n';
     for (const item of recentTranscript.slice(-15)) {
-      // Only include completed, verified transcript items (skip transcribing placeholders and errors)
       if (item.status !== 'ready' || !item.text || !item.text.trim()) continue;
       const speaker = item.role === 'me' ? 'You' : 'Remote Speaker';
       prompt += `[${speaker}]: ${item.text.trim()}\n`;
@@ -152,7 +230,6 @@ export function buildContextPrompt(
     prompt += '\n';
   }
 
-  // 2. Personal knowledge context
   if (knowledgePassages && knowledgePassages.length > 0) {
     prompt += '### RETRIEVED REFERENCE DOCUMENTS & NOTES\n';
     knowledgePassages.forEach((p, idx) => {
@@ -160,7 +237,6 @@ export function buildContextPrompt(
     });
   }
 
-  // 3. User request
   const defaultQuery =
     'Based on the screen and recent conversation, provide the next helpful answer or solution. Solve the questions displayed on screen directly. If fill-in-the-blank or missing-letter boxes (C-test) are visible, identify every box sequentially in reading order and output the exact missing letters to type along with the full word. Do NOT describe the screen context or write "Context:". Output only the direct solutions.';
 
@@ -174,13 +250,14 @@ export function buildContextPrompt(
 }
 
 /**
- * Google Gemini 2.5 streaming adapter.
+ * Google Gemini streaming & non-streaming adapter.
  * Uses `x-goog-api-key` header to prevent credentials appearing in URL query strings or proxy logs.
  */
 export async function streamGemini(options: GenerationOptions): Promise<string> {
   const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
-  if (!apiKey) throw new Error('Gemini API key is required. Please configure it in Settings.');
+  if (!apiKey || !apiKey.trim()) throw new Error('Gemini API key is required. Please configure it in Settings.');
 
+  const modelName = assertModelCompatibleWithProvider(options.model, 'gemini');
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
   const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
 
@@ -195,13 +272,7 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
     });
   }
 
-  // Prefer active 2026 models: Default to ultra-fast sub-second gemini-3.5-flash-lite
-  let modelName = options.model?.startsWith('gemini') ? options.model : 'gemini-3.5-flash-lite';
-  if (modelName === 'gemini-2.5-flash') {
-    modelName = 'gemini-3.5-flash-lite';
-  }
-
-  let endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse`;
   validateNetworkEndpoint(endpoint);
 
   const contents: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
@@ -216,63 +287,100 @@ export async function streamGemini(options: GenerationOptions): Promise<string> 
   }
   contents.push({ role: 'user', parts });
 
-  let response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey.trim(), // Header-based auth avoids credential exposure in URL
-    },
-    body: JSON.stringify({
-      contents,
-      systemInstruction: { parts: [{ text: systemInstruction }] },
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 1024,
-      },
-    }),
-    signal,
-  });
+  const timeoutMs = options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const bounded = createBoundedFetchController(signal, timeoutMs);
 
-  // Never substitute a different model after an authorization or model-not-found error.
-  // The selected model is part of the user's configuration and must remain observable.
-
-  if (!response.ok) {
-    // Graceful automatic recovery: if a model encounters a temporary 503 high-demand spike, failover to sub-second flash-lite
-    if (response.status === 503 && modelName !== 'gemini-3.5-flash-lite') {
-      console.warn(`[streamGemini] ${modelName} returned 503 high-demand spike. Falling back to sub-second gemini-3.5-flash-lite.`);
-      return streamGemini({ ...options, model: 'gemini-3.5-flash-lite' });
-    }
-
-    const errorText = await response.text();
-    if (response.status === 403 || response.status === 404) {
-      if (options.model?.includes('2.5') || modelName.includes('2.5') || errorText.includes('legacy') || errorText.includes('restricted')) {
-        throw new Error(
-          `Gemini API access error (${response.status}): Access to ${options.model || modelName} is restricted to legacy projects. Please switch to "Gemini 3.5 Flash-Lite" (or "Gemini 3.8 Flash") in Settings. Details: ${errorText}`
-        );
-      }
-    }
-    throw new Error(`Gemini API error (${response.status}): ${errorText}`);
-  }
-
-  const rawText = await processSseStream(response, chunk => {
+  try {
+    let response: Response;
     try {
-      const parsed = JSON.parse(chunk);
-      return parsed.candidates?.[0]?.content?.parts?.[0]?.text || null;
-    } catch {
-      return null;
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey.trim(),
+        },
+        body: JSON.stringify({
+          contents,
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 1024,
+          },
+        }),
+        signal: bounded.signal,
+      });
+    } catch (err: any) {
+      if (bounded.didTimeout()) {
+        throw new Error(`Gemini API request timed out after ${timeoutMs}ms`);
+      }
+      throw err;
     }
-  }, onToken);
 
-  return cleanAssistantSolution(rawText);
+    if (!response.ok) {
+      const errorText = sanitizeProviderErrorBody(await response.text(), apiKey);
+      if (response.status === 403 || response.status === 404) {
+        if (options.model?.includes('2.5') || options.model?.includes('2.0') || errorText.includes('legacy') || errorText.includes('restricted')) {
+          throw new Error(
+            `Gemini API access error (${response.status}): Access to ${modelName} is restricted or deprecated. Please switch to "Gemini 3.5 Flash-Lite" or "Gemini 3.6 Flash" in Settings. Details: ${errorText}`
+          );
+        }
+      }
+      throw classifyHttpError('Gemini', response.status, errorText, modelName);
+    }
+
+    const contentType = response.headers?.get?.('content-type') || '';
+    if (contentType.includes('application/json') && !contentType.includes('text/event-stream')) {
+      const rawJson = await response.text();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        throw new Error('Gemini API returned a malformed JSON response.');
+      }
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      let combined = '';
+      for (const item of items) {
+        if (item?.error) {
+          throw new Error(`Gemini API error: ${sanitizeProviderErrorBody(item.error.message || JSON.stringify(item.error), apiKey)}`);
+        }
+        const chunkText = item?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('') || '';
+        if (chunkText) {
+          combined += chunkText;
+          onToken?.(chunkText);
+        }
+      }
+      return cleanAssistantSolution(combined);
+    }
+
+    const rawText = await processSseStream(
+      response,
+      chunk => {
+        const parsed = parseJsonOrThrowStreamError(chunk, 'Gemini', apiKey);
+        if (parsed?.error) {
+          throw new Error(`Gemini stream error: ${sanitizeProviderErrorBody(parsed.error.message || JSON.stringify(parsed.error), apiKey)}`);
+        }
+        return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+      },
+      onToken,
+      bounded.didTimeout,
+      timeoutMs,
+      'Gemini'
+    );
+
+    return cleanAssistantSolution(rawText);
+  } finally {
+    bounded.cleanup();
+  }
 }
 
 /**
- * OpenAI GPT-4o / GPT-4o-mini streaming adapter.
+ * OpenAI GPT streaming & non-streaming adapter.
  */
 export async function streamOpenAI(options: GenerationOptions): Promise<string> {
   const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
-  if (!apiKey) throw new Error('OpenAI API key is required. Please configure it in Settings.');
+  if (!apiKey || !apiKey.trim()) throw new Error('OpenAI API key is required. Please configure it in Settings.');
 
+  const modelName = assertModelCompatibleWithProvider(options.model, 'openai');
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
   const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
 
@@ -287,7 +395,6 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
     });
   }
 
-  const modelName = options.model?.startsWith('gpt-') ? options.model : 'gpt-4o';
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [
     { role: 'system', content: systemInstruction },
   ];
@@ -304,46 +411,91 @@ export async function streamOpenAI(options: GenerationOptions): Promise<string> 
 
   const endpoint = 'https://api.openai.com/v1/chat/completions';
   validateNetworkEndpoint(endpoint);
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey.trim()}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages,
-      stream: true,
-      temperature: 0.2,
-      max_tokens: 2048,
-    }),
-    signal,
-  });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
-  }
+  const timeoutMs = options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const bounded = createBoundedFetchController(signal, timeoutMs);
 
-  const rawText = await processSseStream(response, chunk => {
+  try {
+    let response: Response;
     try {
-      const parsed = JSON.parse(chunk);
-      return parsed.choices?.[0]?.delta?.content || null;
-    } catch {
-      return null;
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages,
+          stream: true,
+          temperature: 0.2,
+          max_tokens: 2048,
+        }),
+        signal: bounded.signal,
+      });
+    } catch (err: any) {
+      if (bounded.didTimeout()) {
+        throw new Error(`OpenAI API request timed out after ${timeoutMs}ms`);
+      }
+      throw err;
     }
-  }, onToken);
 
-  return cleanAssistantSolution(rawText);
+    if (!response.ok) {
+      const errorText = sanitizeProviderErrorBody(await response.text(), apiKey);
+      if (response.status === 404 || (response.status === 400 && /model/i.test(errorText))) {
+        throw new Error(
+          `OpenAI API model error (${response.status}): Model "${modelName}" is unavailable or unsupported on your account. Details: ${errorText}`
+        );
+      }
+      throw classifyHttpError('OpenAI', response.status, errorText, modelName);
+    }
+
+    const contentType = response.headers?.get?.('content-type') || '';
+    if (contentType.includes('application/json') && !contentType.includes('text/event-stream')) {
+      const rawJson = await response.text();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        throw new Error('OpenAI API returned a malformed JSON response.');
+      }
+      if (parsed?.error) {
+        throw new Error(`OpenAI API error: ${sanitizeProviderErrorBody(parsed.error.message || JSON.stringify(parsed.error), apiKey)}`);
+      }
+      const text = parsed?.choices?.[0]?.message?.content || '';
+      if (text) onToken?.(text);
+      return cleanAssistantSolution(text);
+    }
+
+    const rawText = await processSseStream(
+      response,
+      chunk => {
+        const parsed = parseJsonOrThrowStreamError(chunk, 'OpenAI', apiKey);
+        if (parsed?.error) {
+          throw new Error(`OpenAI stream error: ${sanitizeProviderErrorBody(parsed.error.message || JSON.stringify(parsed.error), apiKey)}`);
+        }
+        return parsed?.choices?.[0]?.delta?.content || null;
+      },
+      onToken,
+      bounded.didTimeout,
+      timeoutMs,
+      'OpenAI'
+    );
+
+    return cleanAssistantSolution(rawText);
+  } finally {
+    bounded.cleanup();
+  }
 }
 
 /**
- * Anthropic Claude streaming adapter.
+ * Anthropic Claude streaming & non-streaming adapter.
  */
 export async function streamClaude(options: GenerationOptions): Promise<string> {
   const { apiKey, mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
-  if (!apiKey) throw new Error('Anthropic API key is required. Please configure it in Settings.');
+  if (!apiKey || !apiKey.trim()) throw new Error('Anthropic API key is required. Please configure it in Settings.');
 
+  const modelName = assertModelCompatibleWithProvider(options.model, 'anthropic');
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
   const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
 
@@ -361,11 +513,6 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
   }
   content.push({ type: 'text', text: textPrompt });
 
-  const modelName =
-    typeof options.model === 'string' && options.model.trim().startsWith('claude-')
-      ? options.model.trim()
-      : 'claude-sonnet-5-5';
-
   const messages: Array<{ role: 'user' | 'assistant'; content: any }> = [];
   if (conversationHistory && conversationHistory.length > 0) {
     for (const msg of conversationHistory) {
@@ -380,55 +527,100 @@ export async function streamClaude(options: GenerationOptions): Promise<string> 
 
   const endpoint = 'https://api.anthropic.com/v1/messages';
   validateNetworkEndpoint(endpoint);
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': '2026-10-21',
-    },
-    body: JSON.stringify({
-      model: modelName,
-      max_tokens: 2048,
-      system: systemInstruction,
-      messages,
-      stream: true,
-    }),
-    signal,
-  });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    if (response.status === 400 || response.status === 404) {
-      if (errorText.includes('model') || errorText.includes('not_found')) {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const bounded = createBoundedFetchController(signal, timeoutMs);
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey.trim(),
+          'anthropic-version': ANTHROPIC_API_VERSION,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: 2048,
+          system: systemInstruction,
+          messages,
+          stream: true,
+        }),
+        signal: bounded.signal,
+      });
+    } catch (err: any) {
+      if (bounded.didTimeout()) {
+        throw new Error(`Anthropic Claude API request timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    }
+
+    if (!response.ok) {
+      const errorText = sanitizeProviderErrorBody(await response.text(), apiKey);
+      if (response.status === 400 || response.status === 404) {
+        if (errorText.includes('model') || errorText.includes('not_found')) {
+          throw new Error(
+            `Anthropic API model error (${response.status}): Model "${modelName}" may be retired or unavailable on your account tier. Please check active Claude models in Settings. Details: ${errorText}`
+          );
+        }
+      }
+      throw classifyHttpError('Anthropic Claude', response.status, errorText, modelName);
+    }
+
+    const contentType = response.headers?.get?.('content-type') || '';
+    if (contentType.includes('application/json') && !contentType.includes('text/event-stream')) {
+      const rawJson = await response.text();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        throw new Error('Anthropic Claude API returned a malformed JSON response.');
+      }
+      if (parsed?.type === 'error' || parsed?.error) {
         throw new Error(
-          `Anthropic API model error (${response.status}): Model "${modelName}" may be retired or unavailable on your account tier. Please check active Claude models in Settings. Details: ${errorText}`
+          `Anthropic Claude API error: ${sanitizeProviderErrorBody(parsed.error?.message || JSON.stringify(parsed.error || parsed), apiKey)}`
         );
       }
+      const text = Array.isArray(parsed?.content)
+        ? parsed.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text || '').join('')
+        : '';
+      if (text) onToken?.(text);
+      return cleanAssistantSolution(text);
     }
-    throw new Error(`Anthropic Claude API error (${response.status}): ${errorText}`);
+
+    const rawText = await processSseStream(
+      response,
+      chunk => {
+        const parsed = parseJsonOrThrowStreamError(chunk, 'Anthropic Claude', apiKey);
+        if (parsed?.type === 'error' || parsed?.error) {
+          throw new Error(
+            `Anthropic Claude stream error: ${sanitizeProviderErrorBody(parsed.error?.message || JSON.stringify(parsed.error || parsed), apiKey)}`
+          );
+        }
+        if (parsed?.type === 'content_block_delta') {
+          return parsed.delta?.text || null;
+        }
+        return null;
+      },
+      onToken,
+      bounded.didTimeout,
+      timeoutMs,
+      'Anthropic Claude'
+    );
+
+    return cleanAssistantSolution(rawText);
+  } finally {
+    bounded.cleanup();
   }
-
-  const rawText = await processSseStream(response, chunk => {
-    try {
-      const parsed = JSON.parse(chunk);
-      if (parsed.type === 'content_block_delta') {
-        return parsed.delta?.text || null;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }, onToken);
-
-  return cleanAssistantSolution(rawText);
 }
 
 /**
  * Local Ollama streaming adapter (Offline).
  */
 export async function streamOllama(options: GenerationOptions): Promise<string> {
-  const { mode, query, screenshotBase64, recentTranscript, knowledgePassages, conversationHistory, signal, onToken } = options;
+  const { mode, query, screenshotBase64, recentTranscript, knowledgePassages, signal, onToken } = options;
   const systemInstruction = MODE_SYSTEM_PROMPTS[mode] || MODE_SYSTEM_PROMPTS.copilot;
   const textPrompt = buildContextPrompt(query, mode, recentTranscript, knowledgePassages);
 
@@ -437,123 +629,177 @@ export async function streamOllama(options: GenerationOptions): Promise<string> 
     images.push(screenshotBase64.replace(/^data:image\/\w+;base64,/, ''));
   }
 
-  const modelName = options.model && options.model !== 'ollama' ? options.model : (images.length > 0 ? 'llava' : 'llama3.2');
+  const validated = assertModelCompatibleWithProvider(options.model, 'ollama');
+  const modelName = validated !== 'ollama' ? validated : (images.length > 0 ? 'llava' : 'llama3.2');
   const endpoint = 'http://localhost:11434/api/generate';
   validateNetworkEndpoint(endpoint, true);
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: modelName,
-      system: systemInstruction,
-      prompt: textPrompt,
-      images: images.length > 0 ? images : undefined,
-      stream: true,
-    }),
-    signal,
-  });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    if (response.status === 404 && errText.includes('not found')) {
-      throw new Error(
-        `Ollama model "${modelName}" is not installed yet. Open Dashboard -> Local AI & Hardware to download it with one click.`
-      );
+  const timeoutMs = options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const bounded = createBoundedFetchController(signal, timeoutMs);
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelName,
+          system: systemInstruction,
+          prompt: textPrompt,
+          images: images.length > 0 ? images : undefined,
+          stream: true,
+        }),
+        signal: bounded.signal,
+      });
+    } catch (err: any) {
+      if (bounded.didTimeout()) {
+        throw new Error(`Ollama request timed out after ${timeoutMs}ms`);
+      }
+      throw err;
     }
-    throw new Error(`Ollama connection error (${response.status}): Is Ollama running on localhost:11434? ${errText}`);
-  }
 
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Failed to read Ollama stream');
+    if (!response.ok) {
+      const errText = sanitizeProviderErrorBody(await response.text());
+      if (response.status === 404 && errText.includes('not found')) {
+        throw new Error(
+          `Ollama model "${modelName}" is not installed yet. Open Dashboard -> Local AI & Hardware to download it with one click.`
+        );
+      }
+      throw new Error(`Ollama connection error (${response.status}): Is Ollama running on localhost:11434? ${errText}`);
+    }
 
-  const decoder = new TextDecoder();
-  let fullText = '';
-  let buffer = '';
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Failed to read Ollama stream');
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let buffer = '';
+    let validLineCount = 0;
+    let invalidLineCount = 0;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let parsed: any;
+          try {
+            parsed = JSON.parse(line);
+            validLineCount++;
+          } catch {
+            invalidLineCount++;
+            continue;
+          }
+          if (parsed?.error) {
+            throw new Error(`Ollama stream error: ${sanitizeProviderErrorBody(String(parsed.error))}`);
+          }
+          if (parsed?.response) {
+            fullText += parsed.response;
+            onToken?.(parsed.response);
+          }
+        }
+      }
+    } catch (err: any) {
+      if (bounded.didTimeout()) {
+        throw new Error(`Ollama stream timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    }
+
+    if (buffer.trim()) {
       try {
-        const parsed = JSON.parse(line);
-        if (parsed.response) {
+        const parsed = JSON.parse(buffer.trim());
+        validLineCount++;
+        if (parsed?.error) {
+          throw new Error(`Ollama stream error: ${sanitizeProviderErrorBody(String(parsed.error))}`);
+        }
+        if (parsed?.response) {
           fullText += parsed.response;
           onToken?.(parsed.response);
         }
-      } catch { }
-    }
-  }
-
-  // Flush any trailing JSON in buffer
-  if (buffer.trim()) {
-    try {
-      const parsed = JSON.parse(buffer.trim());
-      if (parsed.response) {
-        fullText += parsed.response;
-        onToken?.(parsed.response);
+      } catch (err: any) {
+        if (err instanceof Error && err.message.startsWith('Ollama stream error:')) throw err;
+        invalidLineCount++;
       }
-    } catch { }
-  }
+    }
 
-  return cleanAssistantSolution(fullText);
+    if (validLineCount === 0 && invalidLineCount > 0) {
+      throw new Error('Ollama returned a malformed response stream.');
+    }
+
+    return cleanAssistantSolution(fullText);
+  } finally {
+    bounded.cleanup();
+  }
+}
+
+function parseJsonOrThrowStreamError(chunk: string, providerLabel: string, apiKey?: string): any {
+  try {
+    return JSON.parse(chunk);
+  } catch {
+    throw new Error(`${providerLabel} stream returned malformed JSON payload: ${sanitizeProviderErrorBody(chunk, apiKey)}`);
+  }
 }
 
 /**
- * Helper to process SSE streams from Gemini, OpenAI, Claude
+ * Helper to process SSE streams from Gemini, OpenAI, Claude.
  */
 async function processSseStream(
   response: Response,
   extractDelta: (data: string) => string | null,
-  onToken?: (token: string) => void
+  onToken?: (token: string) => void,
+  didTimeout?: () => boolean,
+  timeoutMs?: number,
+  providerLabel: string = 'Provider'
 ): Promise<string> {
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('Failed to obtain streaming reader');
+  if (!reader) throw new Error(`${providerLabel} returned an unreadable response body.`);
 
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  const handleLine = (line: string) => {
+    if (!line.startsWith('data:')) return;
+    const dataStr = line.slice(5).trim();
+    if (!dataStr || dataStr === '[DONE]') return;
+    const delta = extractDelta(dataStr);
+    if (delta) {
+      fullText += delta;
+      onToken?.(delta);
+    }
+  };
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const dataStr = line.slice(6).trim();
-        if (dataStr === '[DONE]') continue;
-        const delta = extractDelta(dataStr);
-        if (delta) {
-          fullText += delta;
-          onToken?.(delta);
-        }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        handleLine(line.trimEnd());
       }
     }
+  } catch (err: any) {
+    if (didTimeout?.()) {
+      throw new Error(`${providerLabel} stream timed out after ${timeoutMs}ms`);
+    }
+    throw err;
   }
 
-  // Flush any trailing SSE chunk in buffer
   if (buffer.trim()) {
-    const lines = buffer.split('\n');
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const dataStr = line.slice(6).trim();
-        if (dataStr && dataStr !== '[DONE]') {
-          const delta = extractDelta(dataStr);
-          if (delta) {
-            fullText += delta;
-            onToken?.(delta);
-          }
-        }
-      }
+    for (const line of buffer.split('\n')) {
+      handleLine(line.trimEnd());
     }
   }
 
@@ -561,15 +807,20 @@ async function processSseStream(
 }
 
 /**
- * Transcribes audio WAV using Groq Whisper (<300ms latency) or OpenAI Whisper
+ * Transcribes audio WAV using Groq Whisper (<300ms latency) or OpenAI Whisper.
  */
 export async function transcribeAudio(
   wavBuffer: ArrayBuffer,
   apiKey: string,
   provider: 'groq' | 'openai' = 'groq',
   language: string = 'en',
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  timeoutMs: number = DEFAULT_STT_TIMEOUT_MS
 ): Promise<string> {
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error(`${provider.toUpperCase()} API key is required for cloud speech transcription.`);
+  }
+
   const endpoint =
     provider === 'groq'
       ? 'https://api.groq.com/openai/v1/audio/transcriptions'
@@ -585,20 +836,45 @@ export async function transcribeAudio(
   formData.append('language', language);
   formData.append('response_format', 'json');
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
-    },
-    body: formData,
-    signal,
-  });
+  const bounded = createBoundedFetchController(signal, timeoutMs);
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`STT API error (${response.status}): ${errText}`);
+  try {
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        body: formData,
+        signal: bounded.signal,
+      });
+    } catch (err: any) {
+      if (bounded.didTimeout()) {
+        throw new Error(`STT API request timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    }
+
+    if (!response.ok) {
+      const errText = sanitizeProviderErrorBody(await response.text(), apiKey);
+      throw classifyHttpError(`STT (${provider.toUpperCase()})`, response.status, errText, model);
+    }
+
+    const rawBody = await response.text();
+    let result: any;
+    try {
+      result = JSON.parse(rawBody);
+    } catch {
+      throw new Error(`STT API (${provider.toUpperCase()}) returned a malformed JSON response.`);
+    }
+
+    if (typeof result?.text !== 'string') {
+      throw new Error(`STT API (${provider.toUpperCase()}) returned an unexpected payload without transcript text.`);
+    }
+
+    return result.text.trim();
+  } finally {
+    bounded.cleanup();
   }
-
-  const result = await response.json();
-  return result.text?.trim() || '';
 }

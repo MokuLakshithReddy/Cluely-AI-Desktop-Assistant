@@ -68,6 +68,12 @@ export class LicenseManager {
     }
     if (!this.currentLicense) return 'free';
 
+    // Machine-binding guard: reject a cached license record copied from another machine.
+    if (this.currentLicense.instanceName && this.currentLicense.instanceName !== this.getInstanceName()) {
+      console.warn('[LicenseManager] Cached license instance does not match this machine. Failing closed to Free tier.');
+      return 'free';
+    }
+
     // Verify expiration timestamp independently against wall clock
     if (this.currentLicense.expiresAt) {
       const expTime = new Date(this.currentLicense.expiresAt).getTime();
@@ -298,12 +304,28 @@ export class LicenseManager {
     return 'free';
   }
 
+  public isPaidBillingConfigured(): { plus: boolean; pro: boolean } {
+    const plusProductId = String(process.env.LEMON_PLUS_PRODUCT_ID || BILLING_PRODUCTS.plus.productId || '').trim();
+    const plusVariantId = String(process.env.LEMON_PLUS_VARIANT_ID || BILLING_PRODUCTS.plus.variantId || '').trim();
+    const proProductId = String(process.env.LEMON_PRO_PRODUCT_ID || BILLING_PRODUCTS.pro.productId || '').trim();
+    const proVariantId = String(process.env.LEMON_PRO_VARIANT_ID || BILLING_PRODUCTS.pro.variantId || '').trim();
+    return {
+      plus: Boolean(plusProductId && plusVariantId),
+      pro: Boolean(proProductId && proVariantId),
+    };
+  }
+
   private saveCachedLicense() {
     if (!this.currentLicense) return;
     try {
+      const dir = path.dirname(this.licenseFile);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       const json = JSON.stringify(this.currentLicense);
       const encrypted = encryptStoragePayload(json);
-      fs.writeFileSync(this.licenseFile, encrypted, 'utf8');
+      fs.writeFileSync(this.licenseFile, encrypted, { encoding: 'utf8', mode: 0o600 });
+      if (process.platform !== 'win32') {
+        fs.chmodSync(this.licenseFile, 0o600);
+      }
     } catch (e) {
       console.warn('[LicenseManager] Failed to save encrypted license cache:', e);
     }
@@ -329,6 +351,11 @@ export class LicenseManager {
     return new Promise((resolve, reject) => {
       const postData = params.toString();
       const parsed = new URL(`${this.LEMON_API_BASE}${endpoint}`);
+      let version = '1.0.2';
+      try {
+        const v = app?.getVersion?.();
+        if (typeof v === 'string' && v.trim()) version = v.trim();
+      } catch {}
 
       const req = https.request(
         {
@@ -339,7 +366,7 @@ export class LicenseManager {
             'Accept': 'application/json',
             'Content-Type': 'application/x-www-form-urlencoded',
             'Content-Length': Buffer.byteLength(postData),
-            'User-Agent': 'Scandium-Desktop-Assistant/1.0.2',
+            'User-Agent': `Scandium-Desktop-Assistant/${version}`,
           },
           timeout: 10000,
         },
@@ -347,11 +374,17 @@ export class LicenseManager {
           let data = '';
           res.on('data', chunk => (data += chunk));
           res.on('end', () => {
+            const statusCode = res.statusCode || 0;
+            // Treat transient rate-limit / upstream outage statuses as retryable network failures
+            // so validateLicense() engages the 7-day offline grace period rather than revoking an active license.
+            if (statusCode === 429 || (statusCode >= 500 && statusCode <= 599)) {
+              return reject(new Error(`Lemon Squeezy transient HTTP ${statusCode}`));
+            }
             try {
               const parsedJson = JSON.parse(data);
               resolve(parsedJson);
             } catch (e) {
-              reject(new Error(`Lemon Squeezy response parse error: ${data.slice(0, 100)}`));
+              reject(new Error(`Lemon Squeezy response parse error (HTTP ${statusCode}): ${data.slice(0, 100)}`));
             }
           });
         }

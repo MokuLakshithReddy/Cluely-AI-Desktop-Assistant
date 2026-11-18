@@ -164,4 +164,14 @@ describe('WebBridge Security and Memory Architecture', () => {
     // Safe execution without crashing
     expect(() => bridge.minimizeApp?.()).not.toThrow();
   });
+
+  it('fails closed on activateLicense in Web Mode instead of trusting frontend input', async () => {
+    const bridge = initWebBridge();
+    await expect(bridge.activateLicense?.('ANY-FAKE-KEY-1234')).rejects.toThrow(
+      /unavailable in Web Mode/i
+    );
+    const status = await bridge.getLicenseStatus?.();
+    expect(status?.tier).toBe('free');
+    expect(status?.hasLicense).toBe(false);
+  });
 });

@@ -1,33 +1,91 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { EventEmitter } from 'events';
 import {
   WhisperRuntime,
   WHISPER_MODELS,
   WHISPER_TEMP_DIR_PREFIX,
   LEGACY_WHISPER_TEMP_PREFIX,
   buildWhisperCliArgs,
+  whisperRuntime,
 } from '../electron/services/whisper-runtime';
+import { ipcMain } from 'electron';
+import { IpcRouter } from '../electron/domains/ipc-router';
+import { stateManager } from '../electron/domains/state';
+import { credentialVault } from '../electron/services/vault';
+import { sessionRepository } from '../electron/services/session-repository';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 
+function createFakeChild(options: {
+  closeDelayAfterKillMs?: number;
+  autoCloseAfterMs?: number;
+  exitCode?: number;
+  stdoutText?: string;
+} = {}) {
+  const child = new EventEmitter() as any;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.exitCode = null;
+  child.signalCode = null;
+  child.killed = false;
+  child.killCalls = [] as Array<string | undefined>;
+
+  const emitClose = (code: number | null, signal: string | null) => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.exitCode = code;
+    child.signalCode = signal;
+    child.emit('exit', code, signal);
+    child.emit('close', code, signal);
+  };
+
+  child.kill = vi.fn((sig?: string) => {
+    child.killed = true;
+    child.killCalls.push(sig);
+    const delay = options.closeDelayAfterKillMs ?? 0;
+    if (delay > 0) {
+      setTimeout(() => emitClose(null, sig || 'SIGKILL'), delay);
+    } else {
+      setImmediate(() => emitClose(null, sig || 'SIGKILL'));
+    }
+    return true;
+  });
+
+  if (options.autoCloseAfterMs !== undefined) {
+    setTimeout(() => {
+      if (options.stdoutText) {
+        child.stdout.emit('data', Buffer.from(options.stdoutText));
+      }
+      emitClose(options.exitCode ?? 0, null);
+    }, options.autoCloseAfterMs);
+  }
+
+  return child;
+}
+
 describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
   let runtime: WhisperRuntime;
+  let isolatedTmp: string;
   const testModelsDir = path.join(process.cwd(), '.test-whisper-models');
 
   beforeEach(() => {
     if (!fs.existsSync(testModelsDir)) {
       fs.mkdirSync(testModelsDir, { recursive: true });
     }
-    runtime = new WhisperRuntime();
+    isolatedTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scandium-whisper-suite-'));
+    runtime = new WhisperRuntime({ baseTmpDir: isolatedTmp, retryDelayMs: 15, maxCleanupRetries: 4 });
     (runtime as any).modelsDir = testModelsDir;
   });
 
   afterEach(() => {
-    if (fs.existsSync(testModelsDir)) {
-      try {
-        fs.rmSync(testModelsDir, { recursive: true, force: true });
-      } catch {}
+    vi.restoreAllMocks();
+    for (const dir of [testModelsDir, isolatedTmp]) {
+      if (fs.existsSync(dir)) {
+        try {
+          fs.rmSync(dir, { recursive: true, force: true });
+        } catch {}
+      }
     }
   });
 
@@ -52,7 +110,6 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     runtime.setActiveModel('ggml-base.en');
     expect(runtime.getActiveModelId()).toBe('ggml-base.en');
 
-    // Reject unknown model ID
     runtime.setActiveModel('unknown-model');
     expect(runtime.getActiveModelId()).toBe('ggml-base.en');
   });
@@ -85,7 +142,7 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     expect(result).toContain('Whisper runtime binary not found');
   });
 
-  it('omits -otxt from whisper-cli args so plaintext transcript files are never requested', () => {
+  it('omits -otxt and --output-txt from whisper-cli args so plaintext transcript files are never requested', () => {
     const args = buildWhisperCliArgs('/models/tiny.en.bin', '/tmp/scandium-stt-x/input.wav', 'en');
     expect(args).not.toContain('-otxt');
     expect(args).not.toContain('--output-txt');
@@ -102,10 +159,9 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     }
 
     const listScandiumTemp = () =>
-      fs.readdirSync(os.tmpdir()).filter(
+      fs.readdirSync(isolatedTmp).filter(
         name => name.startsWith(WHISPER_TEMP_DIR_PREFIX) || name.startsWith(LEGACY_WHISPER_TEMP_PREFIX)
       );
-    const beforeSet = new Set(listScandiumTemp());
 
     const wavBuffer = fs.readFileSync(fixturePath).buffer;
     const start = Date.now();
@@ -115,25 +171,20 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     expect(result.toLowerCase()).toContain('ask not what your country can do for you');
     expect(latencyMs).toBeGreaterThan(0);
     expect(latencyMs).toBeLessThan(30000);
-
-    const leaked = listScandiumTemp().filter(name => !beforeSet.has(name));
-    expect(leaked).toEqual([]);
+    expect(listScandiumTemp()).toEqual([]);
   });
 
-  it('cleans up temporary WAV/directory on non-zero exit and on aborted transcription', async () => {
+  it('cleans up temporary WAV/directory synchronously before settling on non-zero exit and on aborted transcription', async () => {
     const listTempDirs = () =>
-      fs.readdirSync(os.tmpdir()).filter(name => name.startsWith(WHISPER_TEMP_DIR_PREFIX));
-    const beforeSet = new Set(listTempDirs());
+      fs.readdirSync(isolatedTmp).filter(name => name.startsWith(WHISPER_TEMP_DIR_PREFIX));
 
-    // 1. Force a non-zero exit using node with an invalid model/audio or missing binary path
     const binary = runtime.findWhisperExecutable();
     if (binary) {
       const invalidWav = Buffer.from('NOT_A_VALID_WAV_PAYLOAD').buffer;
       const failedRes = await runtime.transcribeAudio(invalidWav, 'en');
       expect(failedRes).toBe('');
-      expect(listTempDirs().filter(name => !beforeSet.has(name))).toEqual([]);
+      expect(listTempDirs()).toEqual([]);
 
-      // 2. Abort mid-flight
       const fixturePath = path.join(__dirname, 'fixtures', 'jfk.wav');
       if (fs.existsSync(fixturePath)) {
         const controller = new AbortController();
@@ -141,39 +192,289 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
         const promise = runtime.transcribeAudio(wavBuffer, 'en', controller.signal);
         setTimeout(() => controller.abort(), 30);
         await expect(promise).rejects.toThrow(/Transcription cancelled/i);
-        // Wait for OS process handle release + cleanup retry under loaded CI runners
-        let leaked: string[] = [];
-        for (let attempt = 0; attempt < 25; attempt++) {
-          leaked = listTempDirs().filter(name => !beforeSet.has(name));
-          if (leaked.length === 0) break;
-          await new Promise(r => setTimeout(r, 80));
-        }
-        expect(leaked).toEqual([]);
+        // No polling: temp directory MUST already be deleted at the exact instant rejection settles.
+        expect(listTempDirs()).toEqual([]);
       }
     }
   });
 
-  it('sweeps orphaned scandium-stt temp directories and legacy scandium_stt_* transcript files', () => {
-    const isolatedTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scandium-sweep-test-'));
+  it('waits for delayed child-process close event and temp cleanup before rejecting cancelled transcription', async () => {
+    let spawnedAudioPath = '';
+    let childClosed = false;
+    const fakeChild = createFakeChild({ closeDelayAfterKillMs: 120 });
+    fakeChild.once('close', () => {
+      childClosed = true;
+    });
+
+    const rt = new WhisperRuntime({
+      baseTmpDir: isolatedTmp,
+      retryDelayMs: 10,
+      maxCleanupRetries: 4,
+      spawnFn: ((_bin: string, args: string[]) => {
+        spawnedAudioPath = args[args.indexOf('-f') + 1];
+        return fakeChild;
+      }) as any,
+    });
+    vi.spyOn(rt, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(rt, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+
+    const controller = new AbortController();
+    const promise = rt.transcribeAudio(new ArrayBuffer(256), 'en', controller.signal);
+
+    // Wait briefly until child is spawned and temp WAV exists on disk
+    await new Promise(r => setTimeout(r, 20));
+    expect(spawnedAudioPath).toBeTruthy();
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+
+    controller.abort();
+    await expect(promise).rejects.toThrow(/Transcription cancelled/i);
+
+    // Assert synchronously at settlement — no polling!
+    expect(childClosed).toBe(true);
+    expect(fs.existsSync(spawnedAudioPath)).toBe(false);
+    expect(fs.existsSync(path.dirname(spawnedAudioPath))).toBe(false);
+    expect(rt.getActiveTempDirs()).toEqual([]);
+  });
+
+  it('recovers from Windows-style EBUSY file locks via bounded retries during temp cleanup', async () => {
+    let unlinkAttempts = 0;
+    const fakeChild = createFakeChild({ autoCloseAfterMs: 15, exitCode: 0, stdoutText: 'Hello locked Windows file' });
+
+    const rt = new WhisperRuntime({
+      baseTmpDir: isolatedTmp,
+      retryDelayMs: 15,
+      maxCleanupRetries: 5,
+      spawnFn: (() => fakeChild) as any,
+      unlinkFileFn: (filePath: string) => {
+        unlinkAttempts++;
+        if (unlinkAttempts <= 2) {
+          const err: any = new Error('EBUSY: resource busy or locked');
+          err.code = 'EBUSY';
+          throw err;
+        }
+        fs.unlinkSync(filePath);
+      },
+    });
+    vi.spyOn(rt, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(rt, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+
+    const text = await rt.transcribeAudio(new ArrayBuffer(128), 'en');
+    expect(text).toBe('Hello locked Windows file');
+    expect(unlinkAttempts).toBe(3);
+    expect(fs.readdirSync(isolatedTmp)).toEqual([]);
+  });
+
+  it('explicitly reports failure instead of silently claiming success when temp deletion permanently fails', async () => {
+    const fakeChild = createFakeChild({ autoCloseAfterMs: 10, exitCode: 0, stdoutText: 'Transcript' });
+
+    const rt = new WhisperRuntime({
+      baseTmpDir: isolatedTmp,
+      retryDelayMs: 5,
+      maxCleanupRetries: 2,
+      spawnFn: (() => fakeChild) as any,
+      unlinkFileFn: () => {
+        const err: any = new Error('EACCES: permission denied');
+        err.code = 'EACCES';
+        throw err;
+      },
+    });
+    vi.spyOn(rt, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(rt, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+
+    await expect(rt.transcribeAudio(new ArrayBuffer(128), 'en')).rejects.toThrow(/cleanup failed/i);
+
+    const report = await rt.abortAllAndCleanup(isolatedTmp);
+    expect(report.success).toBe(false);
+    expect(report.failedPaths.length).toBeGreaterThan(0);
+    expect(report.failedPaths[0].error).toContain('EACCES');
+  });
+
+  it('terminates active transcription and deletes temp files on application shutdown, rejecting new jobs', async () => {
+    let spawnedAudioPath = '';
+    const fakeChild = createFakeChild({ closeDelayAfterKillMs: 60 });
+
+    const rt = new WhisperRuntime({
+      baseTmpDir: isolatedTmp,
+      retryDelayMs: 10,
+      maxCleanupRetries: 4,
+      spawnFn: ((_bin: string, args: string[]) => {
+        spawnedAudioPath = args[args.indexOf('-f') + 1];
+        return fakeChild;
+      }) as any,
+    });
+    vi.spyOn(rt, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(rt, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+
+    const activePromise = rt.transcribeAudio(new ArrayBuffer(256), 'en');
+    const activeCheck = expect(activePromise).rejects.toThrow(/Transcription cancelled/i);
+    await new Promise(r => setTimeout(r, 20));
+    expect(fs.existsSync(spawnedAudioPath)).toBe(true);
+
+    const shutdownReport = await rt.shutdown(isolatedTmp);
+    expect(shutdownReport.success).toBe(true);
+    expect(fs.existsSync(spawnedAudioPath)).toBe(false);
+    expect(fs.readdirSync(isolatedTmp)).toEqual([]);
+
+    await activeCheck;
+    await expect(rt.transcribeAudio(new ArrayBuffer(64), 'en')).rejects.toThrow(/shutting down/i);
+  });
+
+  it('sweeps orphaned scandium-stt temp directories and legacy scandium_stt_* files while preserving other live processes', async () => {
+    const orphanDir = path.join(isolatedTmp, `${WHISPER_TEMP_DIR_PREFIX}p999999-orphan`);
+    fs.mkdirSync(orphanDir, { recursive: true });
+    fs.writeFileSync(path.join(orphanDir, 'chunk.wav'), 'sensitive-audio-bytes');
+    fs.writeFileSync(path.join(orphanDir, 'chunk.wav.txt'), 'sensitive transcript text');
+
+    const legacyTxt = path.join(isolatedTmp, `${LEGACY_WHISPER_TEMP_PREFIX}999.wav.txt`);
+    fs.writeFileSync(legacyTxt, 'legacy leaked transcript');
+
+    const unrelated = path.join(isolatedTmp, 'keep-me.txt');
+    fs.writeFileSync(unrelated, 'do not touch');
+
+    // Simulate another live process PID (parent process PID, if different from current PID)
+    const otherLivePid = process.ppid && process.ppid !== process.pid ? process.ppid : null;
+    const otherLiveDir = otherLivePid
+      ? path.join(isolatedTmp, `${WHISPER_TEMP_DIR_PREFIX}p${otherLivePid}-live`)
+      : null;
+    if (otherLiveDir) {
+      fs.mkdirSync(otherLiveDir, { recursive: true });
+      fs.writeFileSync(path.join(otherLiveDir, 'active.wav'), 'live-other-process');
+    }
+
+    const report = await runtime.cleanupOrphanedTempFilesAsync(isolatedTmp);
+    expect(report.success).toBe(true);
+    expect(report.removedCount).toBe(2);
+    expect(fs.existsSync(orphanDir)).toBe(false);
+    expect(fs.existsSync(legacyTxt)).toBe(false);
+    expect(fs.existsSync(unrelated)).toBe(true);
+    if (otherLiveDir) {
+      expect(fs.existsSync(otherLiveDir)).toBe(true);
+    }
+
+    // Repeated purge is idempotent
+    const secondReport = await runtime.abortAllAndCleanup(isolatedTmp);
+    expect(secondReport.success).toBe(true);
+    expect(secondReport.removedCount).toBe(0);
+  });
+
+  it('handles multiple simultaneous transcription jobs and repeated purge safely', async () => {
+    const children: any[] = [];
+    const rt = new WhisperRuntime({
+      baseTmpDir: isolatedTmp,
+      retryDelayMs: 10,
+      maxCleanupRetries: 4,
+      spawnFn: (() => {
+        const c = createFakeChild({ closeDelayAfterKillMs: 40 });
+        children.push(c);
+        return c;
+      }) as any,
+    });
+    vi.spyOn(rt, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(rt, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+
+    const job1 = rt.transcribeAudio(new ArrayBuffer(128), 'en');
+    const job2 = rt.transcribeAudio(new ArrayBuffer(128), 'en');
+    const job3 = rt.transcribeAudio(new ArrayBuffer(128), 'en');
+    const job1Check = expect(job1).rejects.toThrow(/Transcription cancelled/i);
+    const job2Check = expect(job2).rejects.toThrow(/Transcription cancelled/i);
+    const job3Check = expect(job3).rejects.toThrow(/Transcription cancelled/i);
+
+    await new Promise(r => setTimeout(r, 20));
+    const [purge1, purge2] = await Promise.all([
+      rt.abortAllAndCleanup(isolatedTmp),
+      rt.abortAllAndCleanup(isolatedTmp),
+    ]);
+
+    expect(purge1.success).toBe(true);
+    expect(purge2.success).toBe(true);
+    expect(fs.readdirSync(isolatedTmp)).toEqual([]);
+
+    await Promise.all([job1Check, job2Check, job3Check]);
+  });
+
+  it('PROVES purge-all-data does NOT resolve while an active transcription temp file still exists on disk', async () => {
+    let activeTempAudioPath = '';
+    let activeTempDir = '';
+    let childClosed = false;
+    let unlinkRetryCount = 0;
+
+    const fakeChild = createFakeChild({ closeDelayAfterKillMs: 120 });
+    fakeChild.once('close', () => {
+      childClosed = true;
+    });
+
+    // Patch singleton whisperRuntime hooks cleanly for this test and restore in finally
+    const origSpawn = (whisperRuntime as any).spawnFn;
+    const origUnlink = (whisperRuntime as any).unlinkFileFn;
+    const origBaseTmp = (whisperRuntime as any).baseTmpDirOverride;
+    const origRetryDelay = (whisperRuntime as any).retryDelayMs;
+
+    (whisperRuntime as any).spawnFn = (_bin: string, args: string[]) => {
+      activeTempAudioPath = args[args.indexOf('-f') + 1];
+      activeTempDir = path.dirname(activeTempAudioPath);
+      return fakeChild;
+    };
+    (whisperRuntime as any).unlinkFileFn = (filePath: string) => {
+      unlinkRetryCount++;
+      if (unlinkRetryCount === 1) {
+        const err: any = new Error('EBUSY: simulated Windows handle hold');
+        err.code = 'EBUSY';
+        throw err;
+      }
+      fs.unlinkSync(filePath);
+    };
+    (whisperRuntime as any).baseTmpDirOverride = isolatedTmp;
+    (whisperRuntime as any).retryDelayMs = 25;
+
+    const handlers = new Map<string, (...args: any[]) => any>();
+    vi.spyOn(ipcMain, 'handle').mockImplementation(((channel: string, listener: any) => {
+      handlers.set(channel, listener);
+    }) as any);
+    vi.spyOn(ipcMain, 'on').mockImplementation((() => ipcMain) as any);
+    vi.spyOn(whisperRuntime, 'resolveModelPath').mockReturnValue(path.join(testModelsDir, 'mock.bin'));
+    vi.spyOn(whisperRuntime, 'findWhisperExecutable').mockReturnValue('/mock/whisper-cli');
+    vi.spyOn(credentialVault, 'deleteAllKeys').mockResolvedValue(undefined);
+    vi.spyOn(sessionRepository, 'purgeAll').mockResolvedValue(undefined);
+    vi.spyOn(stateManager, 'flushSaveOrThrow').mockImplementation(() => {});
+
     try {
-      const orphanDir = path.join(isolatedTmp, `${WHISPER_TEMP_DIR_PREFIX}orphan123`);
-      fs.mkdirSync(orphanDir, { recursive: true });
-      fs.writeFileSync(path.join(orphanDir, 'chunk.wav'), 'sensitive-audio-bytes');
-      fs.writeFileSync(path.join(orphanDir, 'chunk.wav.txt'), 'sensitive transcript text');
+      const router = new IpcRouter();
+      (router as any).registerHandlers();
+      const purgeHandler = handlers.get('purge-all-data');
+      expect(purgeHandler).toBeDefined();
 
-      const legacyTxt = path.join(isolatedTmp, `${LEGACY_WHISPER_TEMP_PREFIX}999.wav.txt`);
-      fs.writeFileSync(legacyTxt, 'legacy leaked transcript');
+      // Start an active transcription directly on whisperRuntime
+      const activeTranscription = whisperRuntime.transcribeAudio(new ArrayBuffer(256), 'en');
+      const activeTranscriptionCheck = expect(activeTranscription).rejects.toThrow(/Transcription cancelled/i);
+      await new Promise(r => setTimeout(r, 25));
 
-      const unrelated = path.join(isolatedTmp, 'keep-me.txt');
-      fs.writeFileSync(unrelated, 'do not touch');
+      expect(activeTempAudioPath).toBeTruthy();
+      expect(fs.existsSync(activeTempAudioPath)).toBe(true);
 
-      const removed = runtime.cleanupOrphanedTempFiles(isolatedTmp);
-      expect(removed).toBe(2);
-      expect(fs.existsSync(orphanDir)).toBe(false);
-      expect(fs.existsSync(legacyTxt)).toBe(false);
-      expect(fs.existsSync(unrelated)).toBe(true);
+      // Invoke purge-all-data while child is active & will hold file open + hit 1 EBUSY retry
+      let purgeResolvedWhileFileExisted = false;
+      const trustedEvent = { senderFrame: { url: 'http://localhost:5173/#dashboard' } };
+      const purgeResult = await purgeHandler!(trustedEvent);
+
+      // CRITICAL ASSERTION AT THE EXACT MOMENT PURGE RESOLVES (NO POLLING):
+      if (fs.existsSync(activeTempAudioPath) || fs.existsSync(activeTempDir)) {
+        purgeResolvedWhileFileExisted = true;
+      }
+
+      expect(purgeResult).toBe(true);
+      expect(purgeResolvedWhileFileExisted).toBe(false);
+      expect(childClosed).toBe(true);
+      expect(unlinkRetryCount).toBeGreaterThanOrEqual(2);
+      expect(fs.existsSync(activeTempAudioPath)).toBe(false);
+      expect(fs.existsSync(activeTempDir)).toBe(false);
+
+      await activeTranscriptionCheck;
     } finally {
-      fs.rmSync(isolatedTmp, { recursive: true, force: true });
+      (whisperRuntime as any).spawnFn = origSpawn;
+      (whisperRuntime as any).unlinkFileFn = origUnlink;
+      (whisperRuntime as any).baseTmpDirOverride = origBaseTmp;
+      (whisperRuntime as any).retryDelayMs = origRetryDelay;
+      stateManager.patchState({ isPurging: false });
     }
   });
 
@@ -197,5 +498,6 @@ describe('Local Speech Recognition (whisper.cpp) Subsystem', () => {
     expect(res1.toLowerCase()).toContain('ask not what your country can do for you');
     expect(res2.toLowerCase()).toContain('ask not what your country can do for you');
     expect(totalDurationMs).toBeGreaterThan(0);
+    expect(fs.readdirSync(isolatedTmp)).toEqual([]);
   });
 });

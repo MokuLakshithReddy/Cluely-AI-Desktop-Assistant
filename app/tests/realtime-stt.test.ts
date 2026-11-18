@@ -169,4 +169,33 @@ describe('RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT)', () =>
     await manager.shutdown();
     expect(manager.getStatus().status).toBe('stopped');
   });
+
+  it('rejects path traversal and parent-directory payloads in deleteModel without touching parent folders', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const os = await import('os');
+
+    const sandboxRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'scandium-rtstt-sec-'));
+    const modelsDir = path.join(sandboxRoot, 'realtime-models');
+    const siblingDir = path.join(sandboxRoot, 'sessions');
+    fs.mkdirSync(modelsDir, { recursive: true });
+    fs.mkdirSync(siblingDir, { recursive: true });
+    const sentinel = path.join(siblingDir, 'keep.json');
+    fs.writeFileSync(sentinel, 'protected');
+
+    try {
+      (manager as any).modelsDir = modelsDir;
+
+      for (const maliciousId of ['..', '.', '../sessions', '..\\sessions', 'foo/bar', 'foo\\bar', '']) {
+        const res = await manager.deleteModel(maliciousId);
+        expect(res.success).toBe(false);
+      }
+
+      expect(fs.existsSync(modelsDir)).toBe(true);
+      expect(fs.existsSync(siblingDir)).toBe(true);
+      expect(fs.existsSync(sentinel)).toBe(true);
+    } finally {
+      fs.rmSync(sandboxRoot, { recursive: true, force: true });
+    }
+  });
 });

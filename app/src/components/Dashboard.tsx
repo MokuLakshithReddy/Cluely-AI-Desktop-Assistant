@@ -31,6 +31,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { SharedState, KnowledgeDoc, SessionSummary, SessionRecord } from '../lib/types';
+import { MODEL_REGISTRY } from '../lib/model-registry';
 import { StateUpdater } from '../hooks/useSharedState';
 import { createKnowledgeDoc, parseDocumentFile } from '../lib/knowledge';
 import { getSubscriptionPageUrl } from '../lib/subscription';
@@ -764,7 +765,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     <p className="text-lg font-bold text-indigo-400 mt-1">$49 <span className="text-xs text-slate-400 font-normal">/ mo</span></p>
                     <ul className="mt-3 space-y-1.5 text-[11px] text-slate-300">
                       <li>• Interview & Coding Copilots</li>
-                      <li>• Full BYOK (OpenAI, Claude 3.5)</li>
+                      <li>• Full BYOK (OpenAI, Anthropic Claude)</li>
                       <li>• Priority Whisper Base STT</li>
                       <li>• 100 Document Indexing Limit</li>
                       <li>• 5 Device Activations</li>
@@ -935,7 +936,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     <Radio className="w-4 h-4 text-emerald-400" /> Local Speech-to-Text (whisper.cpp)
                   </h4>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Transcribes live microphone & system audio locally on your CPU/iGPU. \$0 cloud cost.
+                    Transcribes live microphone & system audio locally on your CPU/iGPU. $0 cloud cost.
                   </p>
                 </div>
               </div>
@@ -996,7 +997,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     <div className="space-y-1">
                       <span className="font-bold text-amber-200">First-Run Setup: Local Ollama Runtime Required</span>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        To maintain \$0 cloud cost, Scandium runs language models on your computer using the open-source Ollama runtime. Follow these steps to activate local AI:
+                        To maintain $0 cloud cost, Scandium runs language models on your computer using the open-source Ollama runtime. Follow these steps to activate local AI:
                       </p>
                     </div>
                   </div>
@@ -1008,7 +1009,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                     </div>
                     <div className="pl-6">
                       <button
-                        onClick={() => window.open('https://ollama.com/download', '_blank')}
+                        onClick={() => window.open('https://ollama.com/download', '_blank', 'noopener,noreferrer')}
                         className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-semibold text-xs transition-colors"
                       >
                         Download Ollama (Official Installer)
@@ -1189,19 +1190,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
                   onChange={e => patchState({ activeModel: e.target.value as any })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-cyan-500"
                 >
-                  <option value="gemini-3.5-flash-lite">Google Gemini 3.5 Flash-Lite (Sub-second &lt;1s Latency - Recommended)</option>
-                  <option value="gemini-3.6-flash">Google Gemini 3.6 Flash (Fast Multimodal)</option>
-                  <option value="gemini-3.8-flash">Google Gemini 3.8 Flash (Deep Multimodal)</option>
-                  <option value="gemini-3.1-pro-preview">Google Gemini 3.1 Pro Preview (Deep Complex Reasoning)</option>
-                  <option value="gpt-4o">OpenAI GPT-4o (Multimodal Vision)</option>
-                  <option value="gpt-4o-mini">OpenAI GPT-4o Mini (Fast & Cost Efficient)</option>
-                  <option value="claude-sonnet-5-5">Anthropic Claude Sonnet 5.5 (Recommended Balanced Claude)</option>
-                  <option value="claude-haiku-5-5">Anthropic Claude Haiku 5.5 (Fastest / Low Latency)</option>
-                  <option value="claude-opus-5-5">Anthropic Claude Opus 5.5 (Complex Agentic Coding)</option>
-                  <option value="claude-sonnet-5">Anthropic Claude Sonnet 5</option>
-                  <option value="claude-haiku-4-5-20251001">Anthropic Claude Haiku 4.5</option>
-                  <option value="claude-opus-5">Anthropic Claude Opus 5</option>
-                  <option value="ollama">Local Ollama (Offline - localhost:11434)</option>
+                  {MODEL_REGISTRY.map(model => (
+                    <option key={model.id} value={model.id}>
+                      {model.displayName}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1444,7 +1437,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, patchState, initial
             <div>
               <h3 className="text-lg font-bold text-slate-100">Global Keyboard Shortcuts</h3>
               <p className="text-xs text-slate-400 mt-1">
-                These hotkeys function globally across your operating system even when other windows are focused. Emergency Stop immediately stops microphone and system-audio capture and cancels active AI/STT work; it does not delete saved history. Emergency Stop immediately stops microphone and system-audio capture and cancels active AI/STT work; it does not delete saved history.
+                These hotkeys function globally across your operating system even when other windows are focused. Emergency Stop immediately stops microphone and system-audio capture and cancels active AI/STT work; it does not delete saved history.
               </p>
             </div>
 

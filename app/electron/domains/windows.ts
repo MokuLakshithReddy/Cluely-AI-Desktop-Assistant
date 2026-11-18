@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, app } from 'electron';
+import { BrowserWindow, screen, app, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { pathToFileURL } from 'url';
@@ -255,7 +255,26 @@ export class WindowCoordinator {
       }
     });
 
-    win.webContents.setWindowOpenHandler(() => {
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        const parsed = new URL(url);
+        const isAllowedExternal =
+          parsed.protocol === 'https:' &&
+          (
+            (parsed.hostname === 'mokulakshithreddy.github.io' && parsed.pathname.startsWith('/Scandium-Assistant')) ||
+            (parsed.hostname === 'ollama.com' && parsed.pathname.startsWith('/download')) ||
+            (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/MokuLakshithReddy/Scandium-Assistant'))
+          );
+        if (isAllowedExternal && typeof shell?.openExternal === 'function') {
+          void Promise.resolve(shell.openExternal(parsed.toString())).catch(err => {
+            console.warn('[WindowCoordinator] Failed to open external URL:', err);
+          });
+        } else {
+          console.warn('[WindowCoordinator] Denied untrusted window.open URL:', url);
+        }
+      } catch {
+        console.warn('[WindowCoordinator] Denied malformed window.open URL');
+      }
       return { action: 'deny' };
     });
   }

@@ -5,6 +5,7 @@ import { SharedState } from '../../src/lib/types';
 import { credentialVault } from '../services/vault';
 import { encryptStoragePayload, decryptStoragePayload } from '../services/storage-encryption';
 import { cleanAssistantSolution } from '../../src/lib/providers';
+import { normalizeLegacyModelId } from '../../src/lib/model-registry';
 
 function getApplicationVersion(): string {
   try {
@@ -128,10 +129,8 @@ export class StateManager {
   }
 
   public patchState(patch: Partial<SharedState>): SharedState {
-    if ((patch.activeModel as any) === 'gemini-2.5-flash') {
-      patch.activeModel = 'gemini-3.5-flash-lite';
-    } else if ((patch.activeModel as any) === 'gemini-3.1-pro') {
-      patch.activeModel = 'gemini-3.1-pro-preview';
+    if (patch.activeModel) {
+      patch.activeModel = normalizeLegacyModelId(patch.activeModel) as any;
     }
 
     // Enterprise Mode enforcement: strictly lock to local inference and disable telemetry

@@ -12,6 +12,7 @@ import {
   streamOllama,
   transcribeAudio,
 } from './providers';
+import { resolveProviderForModel } from './model-registry';
 import {
   inspectAndSanitizeOutboundPayload,
   sanitizeScreenshot,
@@ -375,10 +376,10 @@ export function initWebBridge(defaultState?: Partial<SharedState>): DesktopBridg
       await bridge.patchSharedState({ isGenerating: true });
 
       try {
-        let providerName = 'gemini';
-        if (model.includes('gpt') || model.includes('openai')) providerName = 'openai';
-        else if (model.includes('claude') || model.includes('anthropic')) providerName = 'anthropic';
-        else if (model.includes('ollama')) providerName = 'ollama';
+        const providerName = resolveProviderForModel(model);
+        if (!providerName) {
+          throw new Error(`[WebBridge] Unsupported or unrecognized AI model: "${model}"`);
+        }
 
         // Local-Only Privacy Mode enforcement
         if (currentState.privacyMode === 'local' && providerName !== 'ollama') {
@@ -673,17 +674,11 @@ export function initWebBridge(defaultState?: Partial<SharedState>): DesktopBridg
       developerMode: false,
       instanceName: 'Scandium-Web',
     }),
-    activateLicense: async (key: string) => ({
-      licenseKey: key,
-      instanceId: 'web-inst-1',
-      instanceName: 'Scandium-Web',
-      status: 'active',
-      tier: 'plus',
-      activationLimit: 2,
-      activationUsage: 1,
-      expiresAt: null,
-      lastValidatedAt: Date.now(),
-    }),
+    activateLicense: async (_key: string) => {
+      throw new Error(
+        'License activation is unavailable in Web Mode. Install and run the Scandium desktop application to validate and activate your license securely.'
+      );
+    },
     validateLicense: async () => null,
     deactivateLicense: async () => {},
 

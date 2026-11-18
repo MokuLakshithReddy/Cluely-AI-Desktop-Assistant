@@ -573,20 +573,40 @@ export class RealtimeSTTManager {
    * Refuses to delete the currently loaded active model.
    */
   public async deleteModel(modelId: string): Promise<{ success: boolean; message: string }> {
-    if (this.currentModel === modelId && (this.status === 'ready' || this.status === 'initializing')) {
-      return { success: false, message: `Cannot delete model ${modelId} while it is actively in use.` };
+    if (!modelId || typeof modelId !== 'string') {
+      return { success: false, message: 'Invalid model identifier.' };
     }
 
-    const safeId = path.basename(modelId);
-    const targetDir = path.join(this.modelsDir, safeId);
+    const trimmed = modelId.trim();
+    if (
+      !trimmed ||
+      trimmed === '.' ||
+      trimmed === '..' ||
+      trimmed.includes('/') ||
+      trimmed.includes('\\') ||
+      trimmed.includes('..') ||
+      !/^[a-zA-Z0-9._-]{1,128}$/.test(trimmed)
+    ) {
+      return { success: false, message: `Invalid model identifier: ${modelId}` };
+    }
+
+    if (this.currentModel === trimmed && (this.status === 'ready' || this.status === 'initializing')) {
+      return { success: false, message: `Cannot delete model ${trimmed} while it is actively in use.` };
+    }
+
+    const resolvedModelsDir = path.resolve(this.modelsDir);
+    const targetDir = path.resolve(resolvedModelsDir, trimmed);
+    if (!targetDir.startsWith(resolvedModelsDir + path.sep)) {
+      return { success: false, message: `Security boundary violation for model identifier: ${modelId}` };
+    }
 
     if (!fs.existsSync(targetDir)) {
-      return { success: false, message: `Model directory not found: ${modelId}` };
+      return { success: false, message: `Model directory not found: ${trimmed}` };
     }
 
     try {
       fs.rmSync(targetDir, { recursive: true, force: true });
-      return { success: true, message: `Model ${modelId} deleted successfully.` };
+      return { success: true, message: `Model ${trimmed} deleted successfully.` };
     } catch (err: any) {
       return { success: false, message: `Failed to delete model: ${err.message}` };
     }

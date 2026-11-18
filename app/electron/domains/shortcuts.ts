@@ -34,82 +34,65 @@ export class ShortcutManager {
     this.syncShortcuts(shortcuts);
   }
 
+  private registerShortcutSafe(name: string, accelerator: string | undefined, handler: () => void): void {
+    if (!accelerator || typeof accelerator !== 'string') return;
+    try {
+      globalShortcut.register(accelerator, handler);
+      this.registeredShortcuts.set(name, accelerator);
+    } catch (err) {
+      console.warn(`[ShortcutManager] Failed to register accelerator "${accelerator}" for "${name}":`, err);
+    }
+  }
+
   public syncShortcuts(shortcuts: Record<string, string>) {
     this.unregisterAll();
 
     // 1. Toggle visibility
-    if (shortcuts.toggleVisibility) {
-      globalShortcut.register(shortcuts.toggleVisibility, () => {
-        const state = stateManager.getState();
-        stateManager.patchState({ showChat: !state.showChat });
-      });
-      this.registeredShortcuts.set('toggleVisibility', shortcuts.toggleVisibility);
-    }
+    this.registerShortcutSafe('toggleVisibility', shortcuts.toggleVisibility, () => {
+      const state = stateManager.getState();
+      stateManager.patchState({ showChat: !state.showChat });
+    });
 
     // 2. Ask / Capture
-    if (shortcuts.ask) {
-      globalShortcut.register(shortcuts.ask, () => {
-        const chatWin = windowCoordinator.getChatWindow();
-        if (chatWin && !chatWin.isDestroyed()) {
-          chatWin.webContents.send('shortcut-action', 'ask');
-        }
-      });
-      this.registeredShortcuts.set('ask', shortcuts.ask);
-    }
+    this.registerShortcutSafe('ask', shortcuts.ask, () => {
+      const chatWin = windowCoordinator.getChatWindow();
+      if (chatWin && !chatWin.isDestroyed()) {
+        chatWin.webContents.send('shortcut-action', 'ask');
+      }
+    });
 
     // 3. Clear / Collapse
-    if (shortcuts.clear) {
-      globalShortcut.register(shortcuts.clear, () => {
-        const chatWin = windowCoordinator.getChatWindow();
-        if (chatWin && !chatWin.isDestroyed()) {
-          chatWin.webContents.send('shortcut-action', 'clear');
-        }
-      });
-      this.registeredShortcuts.set('clear', shortcuts.clear);
-    }
+    this.registerShortcutSafe('clear', shortcuts.clear, () => {
+      const chatWin = windowCoordinator.getChatWindow();
+      if (chatWin && !chatWin.isDestroyed()) {
+        chatWin.webContents.send('shortcut-action', 'clear');
+      }
+    });
 
     // 4. Emergency Stop (privacy control: stop streams and abort in-flight work)
-    if (shortcuts.emergencyStop) {
-      globalShortcut.register(shortcuts.emergencyStop, () => {
-        this.emergencyStopHandler?.();
-      });
-      this.registeredShortcuts.set('emergencyStop', shortcuts.emergencyStop);
-    }
+    this.registerShortcutSafe('emergencyStop', shortcuts.emergencyStop, () => {
+      this.emergencyStopHandler?.();
+    });
 
     // 5. Toggle Session
-    if (shortcuts.toggleSession) {
-      globalShortcut.register(shortcuts.toggleSession, () => {
-        const state = stateManager.getState();
-        stateManager.patchState({ isRecording: !state.isRecording });
-      });
-      this.registeredShortcuts.set('toggleSession', shortcuts.toggleSession);
-    }
+    this.registerShortcutSafe('toggleSession', shortcuts.toggleSession, () => {
+      const state = stateManager.getState();
+      stateManager.patchState({ isRecording: !state.isRecording });
+    });
 
-    // 5. Directional Nudge (80px)
-    if (shortcuts.moveUp) {
-      globalShortcut.register(shortcuts.moveUp, () => {
-        windowCoordinator.moveControlWindow({ x: 0, y: -80 });
-      });
-      this.registeredShortcuts.set('moveUp', shortcuts.moveUp);
-    }
-    if (shortcuts.moveDown) {
-      globalShortcut.register(shortcuts.moveDown, () => {
-        windowCoordinator.moveControlWindow({ x: 0, y: 80 });
-      });
-      this.registeredShortcuts.set('moveDown', shortcuts.moveDown);
-    }
-    if (shortcuts.moveLeft) {
-      globalShortcut.register(shortcuts.moveLeft, () => {
-        windowCoordinator.moveControlWindow({ x: -80, y: 0 });
-      });
-      this.registeredShortcuts.set('moveLeft', shortcuts.moveLeft);
-    }
-    if (shortcuts.moveRight) {
-      globalShortcut.register(shortcuts.moveRight, () => {
-        windowCoordinator.moveControlWindow({ x: 80, y: 0 });
-      });
-      this.registeredShortcuts.set('moveRight', shortcuts.moveRight);
-    }
+    // 6. Directional Nudge (80px)
+    this.registerShortcutSafe('moveUp', shortcuts.moveUp, () => {
+      windowCoordinator.moveControlWindow({ x: 0, y: -80 });
+    });
+    this.registerShortcutSafe('moveDown', shortcuts.moveDown, () => {
+      windowCoordinator.moveControlWindow({ x: 0, y: 80 });
+    });
+    this.registerShortcutSafe('moveLeft', shortcuts.moveLeft, () => {
+      windowCoordinator.moveControlWindow({ x: -80, y: 0 });
+    });
+    this.registerShortcutSafe('moveRight', shortcuts.moveRight, () => {
+      windowCoordinator.moveControlWindow({ x: 80, y: 0 });
+    });
   }
 
   public unregisterAll() {

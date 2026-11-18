@@ -31,16 +31,17 @@ Cloud providers process the payloads they receive according to their own terms, 
 
 Desktop credentials are encrypted with Electron `safeStorage` using the OS-backed provider. Linux basic-text and unknown backends are rejected. Raw credentials are kept out of renderer shared-state broadcasts.
 
-The current source uses Electron's asynchronous `safeStorage` APIs. Vault operations are serialized to prevent concurrent updates from overwriting each other, and encrypted file updates are written to a temporary file before an atomic rename. Existing ciphertext written through the legacy synchronous API is opened with Electron's asynchronous decryptor and can be re-encrypted when Electron requests key rotation. The AES-256-GCM test path requires an explicitly injected 32-byte test key and is not available as a production fallback. This migration was completed in [PR #56](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/pull/56), closing [issue #19](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/19).
+The current source uses Electron's asynchronous `safeStorage` APIs. Vault operations are serialized to prevent concurrent updates from overwriting each other, and encrypted file updates are written to a temporary file before an atomic rename. Existing ciphertext written through the legacy synchronous API is opened with Electron's asynchronous decryptor and can be re-encrypted when Electron requests key rotation. The AES-256-GCM test path requires an explicitly injected 32-byte test key and is not available as a production fallback. This migration was completed in [PR #56](https://github.com/MokuLakshithReddy/Scandium-Assistant/pull/56), closing [issue #19](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/19).
 
 ## Retention and deletion
 
-- Audio samples used by the live capture pipeline are processed in memory and are not intentionally added to archived session records.
+- Audio samples used by `RealtimeSTT` are streamed over in-memory stdin pipes without writing audio files to disk.
+- Local `whisper.cpp` (`whisper-cli`) transcription writes a temporary WAV inside an isolated, owner-restricted (`0o700`/`0o600`) OS temp directory, reads transcript text strictly from stdout (never using `-otxt` / `--output-txt`), and removes the temp directory with best-effort overwrite/unlink before settling completion, cancellation, shutdown, or purge.
 - Screenshot base64 content is stripped from saved message records.
 - Session archives, local knowledge data, and the credential vault are stored under the application user-data area.
-- The purge command removes application-managed archives and the vault and requests teardown of active capture/transcription work.
+- The purge command aborts active AI and transcription work, waits for active Whisper child processes to exit and temporary files to be removed, and deletes application-managed archives and the vault.
 
-Purge is logical application-level deletion, not certified forensic erasure. It cannot remove backups, filesystem snapshots, OS-level remnants, exported files, provider copies, or data outside the app's control.
+Purge and temporary-file overwrite/unlink are best-effort, logical application-level deletion techniques — **not** certified secure deletion or guaranteed forensic erasure on SSDs, flash storage, journaled filesystems, or copy-on-write filesystems. Purge cannot remove backups, filesystem snapshots, OS-level remnants, exported files, provider copies, or data outside the app's control.
 
 ## Display protection
 
@@ -48,4 +49,4 @@ The optional Electron content-protection setting asks the operating system to ex
 
 ## Testing and release evidence
 
-Automated tests include unit/integration coverage and a desktop Dashboard/preload/IPC smoke. Active-capture purge testing uses fake media sources. Physical device, permission, live provider, and packaged-app launch verification are separate release gates; see [issue #49](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/49) and [issue #48](https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/issues/48).
+Automated tests include unit/integration coverage and a desktop Dashboard/preload/IPC smoke. Active-capture purge testing uses fake media sources. Physical device, permission, live provider, and signed release verification are separate release gates; see [issue #49](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/49) and [issue #50](https://github.com/MokuLakshithReddy/Scandium-Assistant/issues/50).

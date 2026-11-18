@@ -9,6 +9,7 @@ import { sessionRepository } from './services/session-repository';
 import { licenseManager } from './services/license-manager';
 import { initStorageEncryptionAsync } from './services/storage-encryption';
 import { realtimeSTTManager } from './services/realtime-stt-manager';
+import { whisperRuntime } from './services/whisper-runtime';
 
 const smokeStatusFile = process.env.SMOKE_TEST_STATUS_FILE;
 const smokeLogFile = smokeStatusFile && path.isAbsolute(smokeStatusFile)
@@ -301,9 +302,14 @@ if (!gotSingleInstanceLock) {
       event.preventDefault();
       isAppShuttingDown = true;
       stateManager.flushSave();
-      realtimeSTTManager.shutdown().catch((err) => {
-        console.warn('[Main] Error shutting down RealtimeSTT:', err);
-      }).finally(() => {
+      Promise.allSettled([
+        realtimeSTTManager.shutdown().catch((err) => {
+          console.warn('[Main] Error shutting down RealtimeSTT:', err);
+        }),
+        whisperRuntime.shutdown().catch((err) => {
+          console.warn('[Main] Error shutting down WhisperRuntime:', err);
+        }),
+      ]).finally(() => {
         app.quit();
       });
       return;

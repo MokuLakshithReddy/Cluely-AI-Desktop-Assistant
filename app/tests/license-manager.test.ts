@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LicenseManager, LicenseRecord } from '../electron/services/license-manager';
+import {
+  verifyLemonSqueezyWebhookSignature,
+  parseVerifiedLemonSqueezyWebhook,
+  WebhookEventDeduplicator,
+} from '../electron/services/billing-webhook';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -251,5 +257,131 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(status.hasLicense).toBe(true);
     expect(status.tier).toBe('plus');
     expect(status.status).toBe('active');
+  });
+
+  it('rejects a cached license record copied from a different machine instance', () => {
+    const record: LicenseRecord = {
+      licenseKey: 'PRO-FOREIGN-MACHINE',
+      instanceId: 'inst_other',
+      instanceName: 'Scandium-darwin-00000000',
+      status: 'active',
+      tier: 'pro',
+      activationLimit: 5,
+      activationUsage: 1,
+      expiresAt: null,
+      lastValidatedAt: Date.now(),
+    };
+    (manager as any).currentLicense = record;
+    expect(manager.getCurrentTier()).toBe('free');
+  });
+
+  it('engages offline grace period on transient HTTP 429/503 errors rather than revoking active licenses', async () => {
+    const record: LicenseRecord = {
+      licenseKey: 'PRO-TRANSIENT-KEY',
+      instanceId: 'inst_transient',
+      instanceName: manager.getInstanceName(),
+      status: 'active',
+      tier: 'pro',
+      activationLimit: 5,
+      activationUsage: 1,
+      expiresAt: null,
+      lastValidatedAt: Date.now() - (24 * 60 * 60 * 1000),
+    };
+    (manager as any).currentLicense = record;
+
+    vi.spyOn(manager as any, 'postLemonSqueezy').mockRejectedValue(new Error('Lemon Squeezy transient HTTP 429'));
+    const validated = await manager.validateLicense();
+    expect(validated?.status).toBe('grace_period');
+    expect(manager.getCurrentTier()).toBe('pro');
+  });
+
+  it('fails closed on clock rollback and on disabled/expired remote license responses', async () => {
+    const record: LicenseRecord = {
+      licenseKey: 'PRO-ROLLBACK-KEY',
+      instanceId: 'inst_rb',
+      instanceName: manager.getInstanceName(),
+      status: 'active',
+      tier: 'pro',
+      activationLimit: 5,
+      activationUsage: 1,
+      expiresAt: null,
+      lastValidatedAt: Date.now() + (60 * 60 * 1000), // 1 hour in future -> clock rolled back
+    };
+    (manager as any).currentLicense = record;
+    const rbResult = await manager.validateLicense();
+    expect(rbResult?.status).toBe('expired');
+    expect(manager.getCurrentTier()).toBe('free');
+  });
+
+  it('verifies Lemon Squeezy HMAC-SHA256 webhook signatures, blocks replays, and maps subscription lifecycle transitions', () => {
+    vi.stubEnv('LEMON_PLUS_PRODUCT_ID', 'prod_plus_1');
+    vi.stubEnv('LEMON_PLUS_VARIANT_ID', 'var_plus_1');
+    vi.stubEnv('LEMON_PRO_PRODUCT_ID', 'prod_pro_2');
+    vi.stubEnv('LEMON_PRO_VARIANT_ID', 'var_pro_2');
+
+    const secret = 'whsec_test_signing_secret_2026';
+    const sign = (body: string) => crypto.createHmac('sha256', secret).update(body, 'utf8').digest('hex');
+
+    const activePayload = JSON.stringify({
+      meta: { event_name: 'subscription_payment_success' },
+      data: {
+        id: 'sub_100',
+        attributes: {
+          product_id: 'prod_pro_2',
+          variant_id: 'var_pro_2',
+          status: 'active',
+          renews_at: '2026-12-18T00:00:00Z',
+          updated_at: '2026-11-18T12:00:00Z',
+        },
+      },
+    });
+    const validSig = sign(activePayload);
+
+    expect(verifyLemonSqueezyWebhookSignature(activePayload, validSig, secret)).toBe(true);
+    expect(verifyLemonSqueezyWebhookSignature(activePayload, '0'.repeat(64), secret)).toBe(false);
+    expect(verifyLemonSqueezyWebhookSignature(activePayload + ' ', validSig, secret)).toBe(false);
+    expect(verifyLemonSqueezyWebhookSignature(activePayload, validSig, '')).toBe(false);
+
+    const dedup = new WebhookEventDeduplicator();
+    const transition = parseVerifiedLemonSqueezyWebhook(activePayload, validSig, secret, dedup);
+    expect(transition.tier).toBe('pro');
+    expect(transition.entitlementState).toBe('active');
+
+    // Duplicate replay must be rejected
+    expect(() => parseVerifiedLemonSqueezyWebhook(activePayload, validSig, secret, dedup)).toThrow(/Duplicate webhook/i);
+
+    // Failed payment revokes tier to free (past_due)
+    const failedPayload = JSON.stringify({
+      meta: { event_name: 'subscription_payment_failed' },
+      data: {
+        id: 'sub_100',
+        attributes: {
+          product_id: 'prod_pro_2',
+          variant_id: 'var_pro_2',
+          status: 'past_due',
+          updated_at: '2026-11-19T12:00:00Z',
+        },
+      },
+    });
+    const failedTransition = parseVerifiedLemonSqueezyWebhook(failedPayload, sign(failedPayload), secret, dedup);
+    expect(failedTransition.tier).toBe('free');
+    expect(failedTransition.entitlementState).toBe('past_due');
+
+    // Cancelled subscription revokes tier to free
+    const cancelledPayload = JSON.stringify({
+      meta: { event_name: 'subscription_cancelled' },
+      data: {
+        id: 'sub_100',
+        attributes: {
+          product_id: 'prod_pro_2',
+          variant_id: 'var_pro_2',
+          status: 'cancelled',
+          updated_at: '2026-11-20T12:00:00Z',
+        },
+      },
+    });
+    const cancelledTransition = parseVerifiedLemonSqueezyWebhook(cancelledPayload, sign(cancelledPayload), secret, dedup);
+    expect(cancelledTransition.tier).toBe('free');
+    expect(cancelledTransition.entitlementState).toBe('cancelled');
   });
 });
