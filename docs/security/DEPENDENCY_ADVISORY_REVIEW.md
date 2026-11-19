@@ -1,7 +1,7 @@
 # Dependency Advisory Review
 
 **Review date:** 2026-11-18  
-**Audited baseline:** `ef87cb0` (`main`) + `fix/production-readiness-hardening`  
+**Audited baseline:** `333d3de` (`main`)  
 **Status:** Production runtime audit (`npm audit --omit=dev`) reports **0 vulnerabilities**; full development/build tree retains 18 high-severity upstream `picomatch` findings with no patched npm release available yet.  
 **Scope:** JavaScript workspace dependencies used for CI, packaging, and runtime
 

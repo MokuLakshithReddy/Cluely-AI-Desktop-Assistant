@@ -158,9 +158,10 @@ app.whenReady().then(async () => {
 
   // TEST 5: State Persistence & Master Key Management
   try {
-    const { encryptStoragePayload, decryptStoragePayload } = require(
+    const { initStorageEncryptionAsync, encryptStoragePayload, decryptStoragePayload } = require(
       path.join(__dirname, '..', 'app', 'dist-electron', 'electron', 'services', 'storage-encryption.js')
     );
+    await initStorageEncryptionAsync();
     const testState = JSON.stringify({ activeMode: 'copilot', activeModel: 'gemini-3.8-flash', timestamp: Date.now() });
     const encrypted = encryptStoragePayload(testState);
     const decrypted = decryptStoragePayload(encrypted);

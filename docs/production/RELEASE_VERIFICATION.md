@@ -4,7 +4,7 @@
 
 The published [`v1.0.2`](https://github.com/MokuLakshithReddy/Scandium-Assistant/releases/tag/v1.0.2) GitHub release is an **unsigned CI validation prerelease** pointing to an older commit (not current `main`), with a SHA-256 file but **no GPG-signed checksum manifest** (`SHA256SUMS.txt.asc`). No signed production release has been published for the current `main` codebase yet.
 
-The latest verified `main` revision is [`ef87cb0`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/ef87cb099a9430bd27f7c2950a67b09e4f1c6dd9). Its [CI Verification Suite run #269](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44315105466) completed successfully across source verification, bundled RealtimeSTT real-audio transcription, and Windows, macOS, and Linux unsigned packaged-app build and launch smoke jobs.
+The latest verified `main` revision is [`333d3de`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/333d3de668b024cd407e2cb63aae2bead24103fa). Its [CI Verification Suite run #273](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44592286282) completed successfully across source verification, bundled RealtimeSTT real-audio transcription, and Windows, macOS, and Linux unsigned packaged-app build and launch smoke jobs.
 
 Do not use the `v1.0.2` prerelease or CI validation assets as evidence that production code-signing, Apple notarization, GPG manifest signing, physical-device sign-off, or live paid subscription checkout have completed.
 
