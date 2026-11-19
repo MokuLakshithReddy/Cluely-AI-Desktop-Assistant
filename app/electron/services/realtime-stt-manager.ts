@@ -36,6 +36,12 @@ export interface CachedModelInfo {
   isActive: boolean;
 }
 
+export interface RealtimeSTTManagerOptions {
+  gracefulStopTimeoutMs?: number;
+  forceStopTimeoutMs?: number;
+  syntheticTestMode?: boolean;
+}
+
 const MAX_AUDIO_QUEUE = 100; // Maximum queued audio frames (~10-20 seconds) before dropping oldest
 
 export class RealtimeSTTManager {
@@ -52,16 +58,24 @@ export class RealtimeSTTManager {
 
   // Concurrency & Lifecycle Mutex
   private startPromise: Promise<boolean> | null = null;
+  private stopPromise: Promise<void> | null = null;
   private pendingModel: string | null = null;
   private isShuttingDown: boolean = false;
   private isExpectedExit: boolean = false;
   private initTimeoutHandle: NodeJS.Timeout | null = null;
+  private readonly gracefulStopTimeoutMs: number;
+  private readonly forceStopTimeoutMs: number;
+  private readonly syntheticTestModeOverride?: boolean;
 
   // Audio queue and backpressure handling
   private audioQueue: string[] = [];
   private isDraining: boolean = false;
 
-  constructor() {
+  constructor(options: RealtimeSTTManagerOptions = {}) {
+    this.gracefulStopTimeoutMs = options.gracefulStopTimeoutMs ?? 1500;
+    this.forceStopTimeoutMs = options.forceStopTimeoutMs ?? 1500;
+    this.syntheticTestModeOverride = options.syntheticTestMode;
+
     const isPackaged = typeof app !== 'undefined' && app.isPackaged;
     const userData = typeof app !== 'undefined' && typeof app.getPath === 'function'
       ? app.getPath('userData')
@@ -79,6 +93,29 @@ export class RealtimeSTTManager {
     this.sidecarScriptPath = isPackaged
       ? path.join(process.resourcesPath, 'python-stt', 'scandium_stt_sidecar.py')
       : path.join(appRoot, 'python-stt', 'scandium_stt_sidecar.py');
+  }
+
+  private isSyntheticTestMode(): boolean {
+    if (this.syntheticTestModeOverride !== undefined) return this.syntheticTestModeOverride;
+    return process.env.VITEST === 'true' && process.env.ENABLE_REAL_STT_TEST !== 'true';
+  }
+
+  public hasActiveProcess(): boolean {
+    return Boolean(this.child && this.child.exitCode === null && this.child.signalCode === null);
+  }
+
+  public getChildProcess(): ChildProcess | null {
+    return this.child;
+  }
+
+  private isProcessAlive(pid: number): boolean {
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (err: any) {
+      return err?.code === 'EPERM';
+    }
   }
 
   /**
@@ -202,7 +239,7 @@ export class RealtimeSTTManager {
     }
 
     // Fast synthetic mode for headless unit testing when sidecar is not explicitly requested
-    if (process.env.VITEST === 'true' && process.env.ENABLE_REAL_STT_TEST !== 'true') {
+    if (this.isSyntheticTestMode()) {
       this.currentModel = model;
       this.setStatus('ready', `Synthetic test STT initialized with ${model}`);
       return true;
@@ -355,15 +392,18 @@ export class RealtimeSTTManager {
           finish(false);
         });
 
-        this.child.on('close', (code, signal) => {
+        const spawnedChild = this.child;
+        spawnedChild.on('close', (code, signal) => {
           if (!this.isExpectedExit) {
             console.warn(`[RealtimeSTT] Process terminated unexpectedly with code ${code}, signal ${signal}`);
             this.setStatus('error', `Speech engine stopped unexpectedly (exit code ${code}).`, 'UNEXPECTED_EXIT');
           } else {
             this.setStatus('stopped', `Speech engine stopped cleanly.`);
           }
-          this.child = null;
-          this.rl = null;
+          if (this.child === spawnedChild) {
+            this.child = null;
+            this.rl = null;
+          }
           this.audioQueue = [];
           this.isDraining = false;
           finish(false);
@@ -477,52 +517,175 @@ export class RealtimeSTTManager {
   }
 
   /**
-   * Gracefully shuts down the sidecar process.
+   * Stops the sidecar process and confirms actual child-process termination via exit/close events.
+   * Never reports success merely because a timeout elapsed or a kill signal was sent.
+   * If termination cannot be confirmed within the bounded deadline (or kill fails), preserves
+   * `this.child` for recovery/retry and rejects with an explicit error.
    */
   public async stop(): Promise<void> {
-    if (process.env.VITEST === 'true' && process.env.ENABLE_REAL_STT_TEST !== 'true') {
+    if (this.stopPromise) {
+      return this.stopPromise;
+    }
+
+    if (this.isSyntheticTestMode() && !this.child) {
       this.setStatus('stopped', 'Synthetic test STT stopped');
       return;
     }
-    if (!this.child || this.child.killed) {
+
+    const targetChild = this.child;
+    if (!targetChild) {
       this.setStatus('stopped', 'Sidecar already stopped');
+      return;
+    }
+
+    if (targetChild.exitCode !== null || targetChild.signalCode !== null) {
+      this.child = null;
+      this.rl = null;
+      this.audioQueue = [];
+      this.isDraining = false;
+      this.setStatus('stopped', 'Sidecar already exited');
       return;
     }
 
     this.isExpectedExit = true;
     this.audioQueue = [];
+    this.isDraining = false;
 
-    return new Promise((resolve) => {
-      const forceTimer = setTimeout(() => {
-        try { this.child?.kill('SIGKILL'); } catch {}
-        this.child = null;
-        this.rl = null;
-        this.setStatus('stopped', 'Sidecar forcibly terminated');
-        resolve();
-      }, 3000);
+    const runStop = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let forcedKillAttempted = false;
+      let gracefulTimer: NodeJS.Timeout | null = null;
+      let deadlineTimer: NodeJS.Timeout | null = null;
 
-      try {
-        this.child?.stdin?.write(JSON.stringify({ type: 'shutdown' }) + '\n');
-        this.child?.once('close', () => {
-          clearTimeout(forceTimer);
+      const clearTimersAndListeners = () => {
+        if (gracefulTimer) {
+          clearTimeout(gracefulTimer);
+          gracefulTimer = null;
+        }
+        if (deadlineTimer) {
+          clearTimeout(deadlineTimer);
+          deadlineTimer = null;
+        }
+        targetChild.removeListener('close', onTerminated);
+        targetChild.removeListener('exit', onTerminated);
+      };
+
+      const confirmStopped = (reason: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimersAndListeners();
+        if (this.child === targetChild) {
           this.child = null;
           this.rl = null;
-          this.setStatus('stopped', 'Sidecar stopped cleanly');
-          resolve();
-        });
-      } catch {
-        clearTimeout(forceTimer);
-        try { this.child?.kill('SIGKILL'); } catch {}
-        this.child = null;
-        this.rl = null;
-        this.setStatus('stopped');
+        }
+        this.setStatus('stopped', reason);
         resolve();
+      };
+
+      const failStop = (code: string, message: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimersAndListeners();
+        // Preserve this.child intentionally so callers can retry termination or inspect state.
+        this.setStatus('error', message, code);
+        reject(new Error(message));
+      };
+
+      const onTerminated = () => {
+        confirmStopped(forcedKillAttempted ? 'Sidecar forcibly terminated' : 'Sidecar stopped cleanly');
+      };
+
+      targetChild.once('close', onTerminated);
+      targetChild.once('exit', onTerminated);
+
+      const escalateForcedKill = () => {
+        if (settled) return;
+        if (targetChild.exitCode !== null || targetChild.signalCode !== null) {
+          onTerminated();
+          return;
+        }
+
+        forcedKillAttempted = true;
+        try {
+          const killAccepted = targetChild.kill('SIGKILL');
+          if (killAccepted === false) {
+            if (targetChild.exitCode !== null || targetChild.signalCode !== null) {
+              onTerminated();
+              return;
+            }
+            if (typeof targetChild.pid === 'number' && !this.isProcessAlive(targetChild.pid)) {
+              confirmStopped('Sidecar process confirmed no longer alive');
+              return;
+            }
+            failStop(
+              'KILL_FAILED',
+              '[RealtimeSTT] Forced SIGKILL was rejected by OS; sidecar process reference preserved for recovery.'
+            );
+            return;
+          }
+        } catch (killErr: any) {
+          if (killErr?.code === 'ESRCH' && typeof targetChild.pid === 'number' && !this.isProcessAlive(targetChild.pid)) {
+            confirmStopped('Sidecar process confirmed exited (ESRCH)');
+            return;
+          }
+          failStop(
+            'KILL_FAILED',
+            `[RealtimeSTT] Forced SIGKILL failed (${killErr?.message || String(killErr)}); sidecar process reference preserved for recovery.`
+          );
+          return;
+        }
+
+        // Wait up to forceStopTimeoutMs for actual OS exit/close confirmation.
+        deadlineTimer = setTimeout(() => {
+          if (settled) return;
+          if (targetChild.exitCode !== null || targetChild.signalCode !== null) {
+            onTerminated();
+            return;
+          }
+          const totalMs = this.gracefulStopTimeoutMs + this.forceStopTimeoutMs;
+          failStop(
+            'STOP_TIMEOUT',
+            `[RealtimeSTT] Sidecar did not confirm termination within ${totalMs}ms deadline; process reference preserved for recovery.`
+          );
+        }, this.forceStopTimeoutMs);
+        if (typeof deadlineTimer.unref === 'function') deadlineTimer.unref();
+      };
+
+      // Attempt graceful shutdown command over stdin first.
+      let gracefulRequested = false;
+      try {
+        if (targetChild.stdin && !targetChild.stdin.destroyed && targetChild.stdin.writable !== false) {
+          targetChild.stdin.write(JSON.stringify({ type: 'shutdown' }) + '\n');
+          gracefulRequested = true;
+        }
+      } catch {
+        gracefulRequested = false;
+      }
+
+      if (gracefulRequested) {
+        gracefulTimer = setTimeout(() => {
+          gracefulTimer = null;
+          escalateForcedKill();
+        }, this.gracefulStopTimeoutMs);
+        if (typeof gracefulTimer.unref === 'function') gracefulTimer.unref();
+      } else {
+        escalateForcedKill();
       }
     });
+
+    this.stopPromise = runStop;
+    try {
+      await runStop;
+    } finally {
+      if (this.stopPromise === runStop) {
+        this.stopPromise = null;
+      }
+    }
   }
 
   /**
    * Explicit application-exit shutdown handler.
+   * Rejects if the sidecar cannot be confirmed terminated within the bounded deadline.
    */
   public async shutdown(): Promise<void> {
     this.isShuttingDown = true;
@@ -573,20 +736,40 @@ export class RealtimeSTTManager {
    * Refuses to delete the currently loaded active model.
    */
   public async deleteModel(modelId: string): Promise<{ success: boolean; message: string }> {
-    if (this.currentModel === modelId && (this.status === 'ready' || this.status === 'initializing')) {
-      return { success: false, message: `Cannot delete model ${modelId} while it is actively in use.` };
+    if (!modelId || typeof modelId !== 'string') {
+      return { success: false, message: 'Invalid model identifier.' };
     }
 
-    const safeId = path.basename(modelId);
-    const targetDir = path.join(this.modelsDir, safeId);
+    const trimmed = modelId.trim();
+    if (
+      !trimmed ||
+      trimmed === '.' ||
+      trimmed === '..' ||
+      trimmed.includes('/') ||
+      trimmed.includes('\\') ||
+      trimmed.includes('..') ||
+      !/^[a-zA-Z0-9._-]{1,128}$/.test(trimmed)
+    ) {
+      return { success: false, message: `Invalid model identifier: ${modelId}` };
+    }
+
+    if (this.currentModel === trimmed && (this.status === 'ready' || this.status === 'initializing')) {
+      return { success: false, message: `Cannot delete model ${trimmed} while it is actively in use.` };
+    }
+
+    const resolvedModelsDir = path.resolve(this.modelsDir);
+    const targetDir = path.resolve(resolvedModelsDir, trimmed);
+    if (!targetDir.startsWith(resolvedModelsDir + path.sep)) {
+      return { success: false, message: `Security boundary violation for model identifier: ${modelId}` };
+    }
 
     if (!fs.existsSync(targetDir)) {
-      return { success: false, message: `Model directory not found: ${modelId}` };
+      return { success: false, message: `Model directory not found: ${trimmed}` };
     }
 
     try {
       fs.rmSync(targetDir, { recursive: true, force: true });
-      return { success: true, message: `Model ${modelId} deleted successfully.` };
+      return { success: true, message: `Model ${trimmed} deleted successfully.` };
     } catch (err: any) {
       return { success: false, message: `Failed to delete model: ${err.message}` };
     }

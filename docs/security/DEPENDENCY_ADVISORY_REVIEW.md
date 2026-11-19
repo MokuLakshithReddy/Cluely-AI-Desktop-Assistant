@@ -1,30 +1,39 @@
-# Dependency advisory review
+# Dependency Advisory Review
 
-**Review date:** 2026-11-17  
-**Status:** Production-dependency audit gate required; full development tree has an unresolved high-severity advisory.  
+**Review date:** 2026-11-18  
+**Audited baseline:** `ef87cb0` (`main`) + `fix/production-readiness-hardening`  
+**Status:** Production runtime audit (`npm audit --omit=dev`) reports **0 vulnerabilities**; full development/build tree retains 18 high-severity upstream `picomatch` findings with no patched npm release available yet.  
 **Scope:** JavaScript workspace dependencies used for CI, packaging, and runtime
 
-## Current finding — picomatch ReDoS
+## Current finding — `picomatch` ReDoS (development/build tooling only)
 
-The full workspace audit in CI run #244 and the rerun #245 reports **18 high-severity findings** involving `picomatch`, associated with [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) / CVE-2026-112366. The advisory describes regular-expression denial of service from single-branch repeated extglobs. The audit reports affected `picomatch` through 4.0.7 and transitive paths through development/build tooling such as `anymatch`, `chokidar`, `tailwindcss`, `fdir`, and `tinyglobby`.
+Running `npm audit` across the full workspace reports **18 high-severity findings**, all rooted in `picomatch` through version `4.0.7` under [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) / **CVE-2026-112366** (ReDoS via single-branch repeated extglob patterns).
 
-The app's declared production dependencies in `app/package.json` are `clsx`, `lucide-react`, `react`, `react-dom`, `tailwind-merge`, and `pdfjs-dist`; `picomatch` is not a direct production dependency. The CI pipeline now enforces a separate, strict `npm audit --omit=dev` check for the production dependency graph while retaining the full audit JSON as an artifact. The production-only audit must pass before merge. Do not describe the entire development/build dependency tree as audit-clean.
+### Verified dependency paths (devDependencies / build tooling only)
+- `vitest` / `vite` -> `tinyglobby` -> `fdir` / `picomatch`
+- `tailwindcss` -> `chokidar` / `anymatch` / `micromatch` / `readdirp` / `fast-glob` / `sucrase` -> `picomatch`
+- `electron-builder` -> `app-builder-lib` / `dmg-builder` / `electron-builder-squirrel-windows` / `@electron/rebuild` / `node-gyp` -> `fast-glob` / `micromatch` -> `picomatch`
 
-Upstream remediation is not yet available as a released version at this review: the upstream fix proposal [micromatch/picomatch PR #237](https://github.com/micromatch/picomatch/pull/237) remains open. Do not silently override picomatch to an unreviewed fork or downgrade the advisory severity. Revisit the full dependency audit and remove this exception once a patched upstream release is available and validated.
+### Runtime exposure assessment
+- The application's declared production dependencies in `app/package.json` are `clsx`, `lucide-react`, `react`, `react-dom`, `tailwind-merge`, and `pdfjs-dist`.
+- `npm audit --omit=dev` reports **0 vulnerabilities** (0 critical, 0 high, 0 moderate, 0 low).
+- `picomatch` is **not** shipped in the production application bundle and never parses untrusted user glob input at runtime.
 
-## Audit policy for this branch
+### Upstream remediation status (verified against npm registry on 2026-11-18)
+- `npm view picomatch dist-tags` confirms `latest` is **`4.0.7`** (`4.0.8`, `4.0.9`, and `4.1.0` do not exist on npm).
+- Upstream fix proposal [micromatch/picomatch PR #237](https://github.com/micromatch/picomatch/pull/237) remains unmerged/unreleased.
+- Per security engineering policy, we do **not** suppress `npm audit`, force incompatible major downgrades (`vitest` / `electron-builder` / `tailwindcss`), or override `picomatch` to an unreviewed fork. Re-evaluate and remove this documented dev-only exception as soon as a patched upstream `picomatch` release is published.
 
-| Check | Policy |
-|---|---|
-| Production dependency graph | Blocking: `npm audit --omit=dev` must pass with no reported production vulnerabilities |
-| Complete development/build dependency graph | Always captured as JSON artifact; current picomatch advisory is explicitly recorded and must be rechecked after an upstream fix |
-| Critical/high production findings | Blocking; do not suppress or relabel |
-| Python/native runtime | Separately validated through pinned interpreter checks, runtime package inventory, native library packaging, and real RealtimeSTT integration tests |
+## Audit policy
+
+| Check | Policy | Current Result (2026-11-18) |
+|---|---|---|
+| Production dependency graph (`npm audit --omit=dev`) | **Blocking** in both `ci.yml` and `release.yml` | **0 vulnerabilities** (PASS) |
+| Complete development/build dependency graph (`npm audit`) | Always captured and uploaded as JSON artifact (`npm-audit-full.json`); never silently suppressed | **18 high (`picomatch <=4.0.7`, dev-only, no upstream patch)** |
+| Critical/high production findings | Blocking; do not suppress or relabel | **0** |
+| Python/native runtime | Separately validated via pinned checksum Python runtime (`scripts/provision-python-runtime.cjs`), `test_sidecar.py`, and `test_realtime_inference.py` | **PASS** |
 
 ## Previous dependency fixes
 
-The earlier six moderate paths corresponding to [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) affecting `minimatch <11.0.1` were addressed by overriding `minimatch` to `^11.0.8` across the workspace, with `@isaacs/nonrecursive-glob-match@^1.1.0` included for compatibility.
-
-The earlier `undici` finding was addressed by pinning `undici` to `^7.30.2`.
-
-These earlier fixes do not resolve the newly reported picomatch advisory.
+- The earlier 6 moderate paths for [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (`minimatch <11.0.1`) were resolved via workspace override `minimatch@^11.0.8` with `@isaacs/nonrecursive-glob-match@^1.1.0`.
+- The earlier `undici` finding was resolved by pinning `undici@^7.30.2`.

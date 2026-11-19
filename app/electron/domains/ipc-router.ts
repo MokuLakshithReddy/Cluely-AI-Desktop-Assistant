@@ -10,6 +10,7 @@ import { sessionRepository, SessionRecord } from '../services/session-repository
 import { SharedState } from '../../src/lib/types';
 import { broadcastSharedStateToAppWindows } from './state-broadcast';
 import { streamGemini, streamOpenAI, streamClaude, streamOllama, transcribeAudio, cleanAssistantSolution } from '../../src/lib/providers';
+import { resolveProviderForModel } from '../../src/lib/model-registry';
 import { inspectAndSanitizeOutboundPayload, containsSensitiveData, sanitizeScreenshot } from '../../src/lib/redaction';
 import { hardwareDetector } from '../services/hardware-detector';
 import { whisperRuntime } from '../services/whisper-runtime';
@@ -391,7 +392,7 @@ export class IpcRouter {
     if (!options || typeof options !== 'object' || Array.isArray(options)) {
       throw new Error('[IpcRouter] Invalid AI request: expected an options object');
     }
-    if (typeof options.model !== 'string' || options.model.trim().length === 0 || options.model.length > 100) {
+    if (typeof options.model !== 'string' || options.model.trim().length === 0 || options.model.length > 100 || !resolveProviderForModel(options.model)) {
       throw new Error('[IpcRouter] Invalid AI request model');
     }
     if (typeof options.mode !== 'string' || !ALLOWED_OPERATING_MODES.has(options.mode)) {
@@ -550,26 +551,10 @@ export class IpcRouter {
         sanitized[key] = val;
       }
 
-      // Capture status is a small finite state machine, never arbitrary renderer text.
-      else if (key === 'microphoneCaptureStatus' || key === 'systemAudioCaptureStatus') {
-        if (typeof val !== 'string' || !VALID_CAPTURE_STATUSES.has(val)) {
-          throw new Error(`[IpcRouter] Invalid capture status for "${key}"`);
-        }
-        sanitized[key] = val;
-      }
-
-      // Capture warning is user-visible diagnostics, bounded to avoid oversized state patches.
-      else if (key === 'captureWarning') {
-        if (val !== null && (typeof val !== 'string' || val.length > 256)) {
-          throw new Error('[IpcRouter] Invalid capture warning: expected null or a string up to 256 characters');
-        }
-        sanitized[key] = val;
-      }
-
       // 3. Validate active model name
       else if (key === 'activeModel') {
-        if (typeof val !== 'string' || val.trim().length === 0 || val.length > 100) {
-          throw new Error('[IpcRouter] Invalid activeModel: Expected non-empty string under 100 characters');
+        if (typeof val !== 'string' || val.trim().length === 0 || val.length > 100 || !resolveProviderForModel(val)) {
+          throw new Error('[IpcRouter] Invalid activeModel: Expected a supported model identifier under 100 characters');
         }
         sanitized[key] = val.trim();
       }
@@ -628,8 +613,8 @@ export class IpcRouter {
           if (!ALLOWED_SHORTCUT_KEYS.has(sKey)) {
             throw new Error(`[IpcRouter] Unknown shortcut action: "${sKey}"`);
           }
-          if (typeof sVal !== 'string' || sVal.trim().length === 0) {
-            throw new Error(`[IpcRouter] Invalid accelerator for shortcut "${sKey}": Expected non-empty string`);
+          if (typeof sVal !== 'string' || sVal.trim().length === 0 || sVal.trim().length > 64 || !/^[A-Za-z0-9+_-]+$/.test(sVal.trim())) {
+            throw new Error(`[IpcRouter] Invalid accelerator for shortcut "${sKey}": Expected valid Electron accelerator string`);
           }
           cleanShortcuts[sKey] = sVal.trim();
         }
@@ -1012,11 +997,11 @@ export class IpcRouter {
       stateManager.patchState({ isGenerating: true });
 
       try {
-        // Determine required provider
-        let providerName = 'gemini';
-        if (model && (model.includes('gpt') || model.includes('openai'))) providerName = 'openai';
-        else if (model && (model.includes('claude') || model.includes('anthropic'))) providerName = 'anthropic';
-        else if (model && model.includes('ollama')) providerName = 'ollama';
+        // Determine required provider from centralized model registry
+        const providerName = resolveProviderForModel(model);
+        if (!providerName) {
+          throw new Error(`[IpcRouter] Unsupported or unrecognized AI model: "${model}"`);
+        }
 
         const currentState = stateManager.getState();
         const currentTier = this.getEffectiveTier();
@@ -1216,8 +1201,34 @@ export class IpcRouter {
         ]);
         this.activeTranscriptionTasks.clear();
         this.activeTranscriptionControllers.clear();
-        try { await realtimeSTTManager.stop(); } catch {}
-        try { whisperRuntime.cleanupOrphanedTempFiles(); } catch {}
+        let realtimeStopError: Error | null = null;
+        try {
+          await realtimeSTTManager.stop();
+        } catch (err: any) {
+          realtimeStopError = err instanceof Error ? err : new Error(String(err));
+        }
+
+        // Guarantee all active Whisper child processes have exited and temporary audio
+        // directories/files are deleted before reporting purge completion.
+        const whisperCleanup = await whisperRuntime.abortAllAndCleanup();
+
+        if (realtimeStopError) {
+          throw new Error(
+            `[IpcRouter] Data purge failed closed: RealtimeSTT sidecar could not be confirmed stopped (${realtimeStopError.message})`
+          );
+        }
+        if (realtimeSTTManager.hasActiveProcess()) {
+          throw new Error(
+            `[IpcRouter] Data purge failed closed: RealtimeSTT sidecar child process remains active.`
+          );
+        }
+        if (!whisperCleanup.success || whisperRuntime.hasActiveProcesses()) {
+          const details = whisperCleanup.failedPaths.map(f => `${f.path} (${f.error})`).join('; ');
+          throw new Error(
+            `[IpcRouter] Data purge incomplete: failed to remove temporary Whisper files or child processes remain: ${details || 'active child process'}`
+          );
+        }
+
         await credentialVault.deleteAllKeys();
         await sessionRepository.purgeAll();
 

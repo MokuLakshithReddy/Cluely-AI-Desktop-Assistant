@@ -16,7 +16,7 @@ Scandium operates with **$0 owner backend infrastructure**:
 ## 2. Execution Modes & Data Flow
 
 ### A. Local AI Mode (Default)
-- **Speech Recognition**: Transcribed locally on your hardware via `RealtimeSTT` (streaming PCM over in-memory stdin pipes with no audio files written to disk) or `whisper.cpp` (`whisper-cli`, which uses an owner-restricted `0o700`/`0o600` ephemeral temporary WAV inside a private OS temp directory during inference, outputs transcripts strictly via stdout without writing `.txt` files, and zero-overwrites and deletes the temp directory immediately upon completion, failure, cancellation, data purge, or startup sweep).
+- **Speech Recognition**: Transcribed locally on your hardware via `RealtimeSTT` (streaming PCM over in-memory stdin pipes with no audio files written to disk) or `whisper.cpp` (`whisper-cli`, which writes a temporary WAV inside an isolated, owner-restricted `0o700`/`0o600` OS temp directory during inference, streams transcripts strictly over stdout without creating `.txt` files, and performs best-effort zero-overwrite and removal immediately upon completion, failure, cancellation, data purge, or application shutdown). Overwriting a temporary file before unlinking it is a best-effort application-level cleanup technique; it does not guarantee certified secure deletion or forensic erasure on SSDs, flash storage, journaled filesystems, or copy-on-write filesystems.
 - **Language & Vision Models**: Processed through local runtimes (such as Ollama) over `localhost:11434`.
 - **Perimeter Guarantee**: In Local AI Mode, **zero audio packets, zero screen pixels, and zero prompt text** are transmitted across the internet.
 
@@ -47,4 +47,4 @@ Payment processing and subscription billing are managed by our Merchant of Recor
 
 ## 5. Local Data Purge
 
-You can permanently delete all local sessions, encrypted archives, and cached credentials at any time by selecting **Purge All Data** in the Scandium Dashboard settings.
+You can delete all application-managed local sessions, encrypted archives, cached credentials, and active Whisper temporary files at any time by selecting **Purge All Data** in the Scandium Dashboard settings. Purge waits for active transcription child processes to terminate and verifies temporary file removal before reporting completion. Local purge is logical, application-level deletion — not certified forensic erasure — and cannot erase OS backups, filesystem snapshots, or wear-leveled SSD/flash blocks.

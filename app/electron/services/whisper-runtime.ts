@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import https from 'https';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { app } from 'electron';
 
 export interface WhisperModelInfo {
@@ -14,6 +14,29 @@ export interface WhisperModelInfo {
   url: string;
   sha256: string;
   isDownloaded: boolean;
+}
+
+export interface TempCleanupResult {
+  removed: boolean;
+  path: string;
+  attempts: number;
+  error?: string;
+}
+
+export interface WhisperCleanupReport {
+  removedCount: number;
+  failedPaths: Array<{ path: string; error: string }>;
+  success: boolean;
+}
+
+export interface WhisperRuntimeOptions {
+  spawnFn?: typeof spawn;
+  unlinkFileFn?: (filePath: string) => void;
+  rmDirFn?: (dirPath: string) => void;
+  retryDelayMs?: number;
+  maxCleanupRetries?: number;
+  childExitTimeoutMs?: number;
+  baseTmpDir?: string;
 }
 
 export const WHISPER_MODELS: Record<string, WhisperModelInfo> = {
@@ -40,6 +63,11 @@ export const WHISPER_MODELS: Record<string, WhisperModelInfo> = {
 export const WHISPER_TEMP_DIR_PREFIX = 'scandium-stt-';
 export const LEGACY_WHISPER_TEMP_PREFIX = 'scandium_stt_';
 
+const MAX_DOWNLOAD_REDIRECTS = 5;
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+const MAX_OVERWRITE_BYTES = 32 * 1024 * 1024;
+const RETRYABLE_FS_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY', 'EMFILE']);
+
 /**
  * Builds whisper-cli arguments for stdout-only transcription.
  * Explicitly omits -otxt / --output-txt so plaintext transcripts are never written to disk.
@@ -54,13 +82,56 @@ export function buildWhisperCliArgs(modelPath: string, tempAudioPath: string, la
   ];
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    if (typeof timer.unref === 'function') timer.unref();
+  });
+}
+
+function getAppVersionSafe(): string {
+  try {
+    const v = app?.getVersion?.();
+    return typeof v === 'string' && v.trim() ? v.trim() : '1.0.2';
+  } catch {
+    return '1.0.2';
+  }
+}
+
+const registeredWhisperRuntimes = new Set<WhisperRuntime>();
+let globalExitCleanupHookRegistered = false;
+
+function registerGlobalWhisperExitHook(instance: WhisperRuntime): void {
+  registeredWhisperRuntimes.add(instance);
+  if (globalExitCleanupHookRegistered) return;
+  globalExitCleanupHookRegistered = true;
+  process.once('exit', () => {
+    for (const rt of Array.from(registeredWhisperRuntimes)) {
+      rt.cleanupSyncOnProcessExit();
+    }
+  });
+}
+
 export class WhisperRuntime {
   private modelsDir: string;
   private activeModelId = 'ggml-tiny.en';
   private downloadingModelId: string | null = null;
   private downloadProgress = 0;
   private activeTempDirs = new Set<string>();
+  private pendingCleanups = new Map<string, Promise<TempCleanupResult>>();
+  private activeChildren = new Set<ChildProcess>();
+  private activeChildByTempDir = new Map<string, ChildProcess>();
+  private activeExecutions = new Set<Promise<void>>();
+  private activeAbortControllers = new Set<AbortController>();
+  private isShuttingDown = false;
   private exitHookRegistered = false;
+  private readonly spawnFn: typeof spawn;
+  private readonly unlinkFileFn: (filePath: string) => void;
+  private readonly rmDirFn: (dirPath: string) => void;
+  private readonly retryDelayMs: number;
+  private readonly maxCleanupRetries: number;
+  private readonly childExitTimeoutMs: number;
+  private readonly baseTmpDirOverride?: string;
   private transcriptionQueue: Array<{
     wavBuffer: ArrayBuffer;
     language: string;
@@ -70,7 +141,15 @@ export class WhisperRuntime {
   }> = [];
   private isProcessingQueue = false;
 
-  constructor() {
+  constructor(options: WhisperRuntimeOptions = {}) {
+    this.spawnFn = options.spawnFn || spawn;
+    this.unlinkFileFn = options.unlinkFileFn || ((p: string) => fs.unlinkSync(p));
+    this.rmDirFn = options.rmDirFn || ((p: string) => fs.rmSync(p, { recursive: true, force: false }));
+    this.retryDelayMs = options.retryDelayMs ?? 100;
+    this.maxCleanupRetries = options.maxCleanupRetries ?? 8;
+    this.childExitTimeoutMs = options.childExitTimeoutMs ?? 3000;
+    this.baseTmpDirOverride = options.baseTmpDir;
+
     const baseDir = app?.getPath ? app.getPath('userData') : path.join(process.cwd(), '.scandium');
     this.modelsDir = path.join(baseDir, 'whisper-models');
     try {
@@ -85,57 +164,266 @@ export class WhisperRuntime {
     }
   }
 
+  private getBaseTmpDir(): string {
+    return this.baseTmpDirOverride || os.tmpdir();
+  }
+
   private registerExitCleanupHook(): void {
     if (this.exitHookRegistered) return;
     this.exitHookRegistered = true;
-    process.once('exit', () => {
-      for (const dir of Array.from(this.activeTempDirs)) {
-        this.secureRemoveTempDir(dir);
-      }
-    });
+    registerGlobalWhisperExitHook(this);
   }
 
-  private secureUnlinkFile(filePath: string): void {
+  /** @internal Synchronous last-resort cleanup on Node process exit. */
+  public cleanupSyncOnProcessExit(): void {
+    for (const child of Array.from(this.activeChildren)) {
+      try { child.kill('SIGKILL'); } catch {}
+    }
+    for (const dir of Array.from(this.activeTempDirs)) {
+      const boundChild = this.activeChildByTempDir.get(dir);
+      if (boundChild && boundChild.exitCode === null && boundChild.signalCode === null) {
+        continue;
+      }
+      this.removeTempDirSyncOnce(dir);
+    }
+  }
+
+  /**
+   * Best-effort application-level overwrite and unlink of a single file.
+   * Note: Overwriting before unlink is a best-effort application hygiene step and
+   * does not guarantee forensic erasure on SSDs, flash storage, or copy-on-write filesystems.
+   */
+  private bestEffortUnlinkFile(filePath: string): { removed: boolean; error?: string; code?: string } {
     try {
-      if (!fs.existsSync(filePath)) return;
+      if (!fs.existsSync(filePath)) return { removed: true };
       const stat = fs.lstatSync(filePath);
-      if (stat.isFile() && stat.size > 0 && stat.size <= 32 * 1024 * 1024) {
+      if (stat.isFile() && stat.size > 0 && stat.size <= MAX_OVERWRITE_BYTES) {
         try {
           fs.writeFileSync(filePath, Buffer.alloc(stat.size), { mode: 0o600 });
-        } catch {}
+        } catch {
+          // Proceed to unlink even if overwrite is blocked (e.g., read-only file)
+        }
       }
-      fs.unlinkSync(filePath);
-    } catch {}
+      this.unlinkFileFn(filePath);
+      if (fs.existsSync(filePath)) {
+        return { removed: false, error: 'File still exists after unlink' };
+      }
+      return { removed: true };
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') return { removed: true };
+      return { removed: false, error: err?.message || String(err), code: err?.code };
+    }
   }
 
-  private secureRemoveTempDir(tempDir: string, retriesLeft = 3): void {
+  private removeTempDirSyncOnce(tempDir: string): { removed: boolean; error?: string; code?: string } {
     try {
       if (!fs.existsSync(tempDir)) {
         this.activeTempDirs.delete(tempDir);
-        return;
+        return { removed: true };
       }
+      const stat = fs.lstatSync(tempDir);
+      if (!stat.isDirectory()) {
+        const res = this.bestEffortUnlinkFile(tempDir);
+        if (res.removed) this.activeTempDirs.delete(tempDir);
+        return res;
+      }
+
       const entries = fs.readdirSync(tempDir);
+      let firstErr: { error?: string; code?: string } | null = null;
       for (const entry of entries) {
         const fullPath = path.join(tempDir, entry);
         try {
-          const stat = fs.lstatSync(fullPath);
-          if (stat.isDirectory()) {
-            fs.rmSync(fullPath, { recursive: true, force: true });
+          const entryStat = fs.lstatSync(fullPath);
+          if (entryStat.isDirectory()) {
+            const nested = this.removeTempDirSyncOnce(fullPath);
+            if (!nested.removed && !firstErr) firstErr = nested;
           } else {
-            this.secureUnlinkFile(fullPath);
+            const fileRes = this.bestEffortUnlinkFile(fullPath);
+            if (!fileRes.removed && !firstErr) firstErr = fileRes;
           }
-        } catch {}
+        } catch (err: any) {
+          if (err?.code !== 'ENOENT' && !firstErr) {
+            firstErr = { error: err?.message || String(err), code: err?.code };
+          }
+        }
       }
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch {}
 
-    if (!fs.existsSync(tempDir)) {
+      if (firstErr) {
+        return { removed: false, error: firstErr.error, code: firstErr.code };
+      }
+
+      this.rmDirFn(tempDir);
+      if (fs.existsSync(tempDir)) {
+        return { removed: false, error: 'Temporary directory still exists after removal attempt' };
+      }
       this.activeTempDirs.delete(tempDir);
-    } else if (retriesLeft > 0) {
-      // On Windows, a forcibly killed child process may briefly hold a file handle (EBUSY).
-      const timer = setTimeout(() => this.secureRemoveTempDir(tempDir, retriesLeft - 1), 100);
-      if (typeof timer.unref === 'function') timer.unref();
+      return { removed: true };
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        this.activeTempDirs.delete(tempDir);
+        return { removed: true };
+      }
+      return { removed: false, error: err?.message || String(err), code: err?.code };
     }
+  }
+
+  /**
+   * Idempotent, concurrency-safe asynchronous directory removal with bounded retries
+   * for Windows file locking (EBUSY / EPERM) and explicit failure reporting.
+   */
+  public secureRemoveTempDirAsync(tempDir: string): Promise<TempCleanupResult> {
+    const existing = this.pendingCleanups.get(tempDir);
+    if (existing) return existing;
+
+    const cleanupPromise = (async (): Promise<TempCleanupResult> => {
+      let lastError: string | undefined;
+      let attempts = 0;
+      const maxAttempts = Math.max(1, this.maxCleanupRetries + 1);
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        attempts = attempt;
+        const result = this.removeTempDirSyncOnce(tempDir);
+        if (result.removed) {
+          return { removed: true, path: tempDir, attempts };
+        }
+        lastError = result.error || 'Unknown cleanup error';
+
+        const shouldRetry =
+          attempt < maxAttempts &&
+          (!result.code || RETRYABLE_FS_CODES.has(result.code));
+        if (!shouldRetry) break;
+
+        await sleep(this.retryDelayMs);
+      }
+
+      const stillExists = fs.existsSync(tempDir);
+      if (!stillExists) {
+        this.activeTempDirs.delete(tempDir);
+        return { removed: true, path: tempDir, attempts };
+      }
+
+      return {
+        removed: false,
+        path: tempDir,
+        attempts,
+        error: lastError || 'Temporary directory remains on disk after bounded retries',
+      };
+    })();
+
+    this.pendingCleanups.set(tempDir, cleanupPromise);
+    cleanupPromise.finally(() => {
+      if (this.pendingCleanups.get(tempDir) === cleanupPromise) {
+        this.pendingCleanups.delete(tempDir);
+      }
+    });
+
+    return cleanupPromise;
+  }
+
+  /**
+   * Terminates a spawned whisper-cli child process and waits for confirmed OS exit/close.
+   * Never reports `{ exited: true }` merely because a kill signal was sent or a deadline elapsed.
+   */
+  public terminateChildAndWait(child: ChildProcess): Promise<{ exited: boolean; error?: string }> {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return Promise.resolve({ exited: true });
+    }
+
+    return new Promise<{ exited: boolean; error?: string }>(resolve => {
+      let finished = false;
+      let escalateTimer: NodeJS.Timeout | null = null;
+      let deadlineTimer: NodeJS.Timeout | null = null;
+
+      const finish = (result: { exited: boolean; error?: string }) => {
+        if (finished) return;
+        finished = true;
+        if (escalateTimer) clearTimeout(escalateTimer);
+        if (deadlineTimer) clearTimeout(deadlineTimer);
+        child.removeListener('close', onExit);
+        child.removeListener('exit', onExit);
+        child.removeListener('error', onError);
+        resolve(result);
+      };
+
+      const onExit = () => {
+        finish({ exited: true });
+      };
+
+      const onError = (err: any) => {
+        // Spawn failure before an OS process ever started (pid undefined) means no process is running.
+        if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+          finish({ exited: true });
+          return;
+        }
+        finish({
+          exited: false,
+          error: `whisper-cli process error during termination: ${err?.message || String(err)}`,
+        });
+      };
+
+      const sendSignal = (sig: NodeJS.Signals): boolean => {
+        try {
+          const accepted = child.kill(sig);
+          if (accepted === false) {
+            if (child.exitCode !== null || child.signalCode !== null) {
+              finish({ exited: true });
+              return false;
+            }
+            if (typeof child.pid === 'number' && !this.isProcessAlive(child.pid)) {
+              finish({ exited: true });
+              return false;
+            }
+            finish({
+              exited: false,
+              error: `Failed to signal whisper-cli (${sig} rejected by OS); process may still be running`,
+            });
+            return false;
+          }
+          return true;
+        } catch (killErr: any) {
+          if (killErr?.code === 'ESRCH' && typeof child.pid === 'number' && !this.isProcessAlive(child.pid)) {
+            finish({ exited: true });
+            return false;
+          }
+          finish({
+            exited: false,
+            error: `Failed to kill whisper-cli (${sig}): ${killErr?.message || String(killErr)}`,
+          });
+          return false;
+        }
+      };
+
+      child.once('close', onExit);
+      child.once('exit', onExit);
+      child.once('error', onError);
+
+      const initialSignal: NodeJS.Signals = process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM';
+      if (!sendSignal(initialSignal)) {
+        return;
+      }
+
+      if (initialSignal !== 'SIGKILL') {
+        const halfTimeout = Math.max(25, Math.floor(this.childExitTimeoutMs / 2));
+        escalateTimer = setTimeout(() => {
+          if (!finished && child.exitCode === null && child.signalCode === null) {
+            sendSignal('SIGKILL');
+          }
+        }, halfTimeout);
+        if (typeof escalateTimer.unref === 'function') escalateTimer.unref();
+      }
+
+      deadlineTimer = setTimeout(() => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          finish({ exited: true });
+          return;
+        }
+        finish({
+          exited: false,
+          error: `whisper-cli child process did not terminate within ${this.childExitTimeoutMs}ms deadline`,
+        });
+      }, this.childExitTimeoutMs);
+      if (typeof deadlineTimer.unref === 'function') deadlineTimer.unref();
+    });
   }
 
   private isProcessAlive(pid: number): boolean {
@@ -149,12 +437,18 @@ export class WhisperRuntime {
     }
   }
 
+  private isOwnedByAnotherLiveProcess(entryName: string): boolean {
+    const pidMatch = /^scandium-stt-p(\d+)-/.exec(entryName);
+    if (!pidMatch) return false;
+    const ownerPid = Number(pidMatch[1]);
+    return ownerPid !== process.pid && this.isProcessAlive(ownerPid);
+  }
+
   /**
-   * Sweeps any orphaned Scandium Whisper temp directories or legacy scandium_stt_* files
-   * left behind by a crash, forced kill, or older application version.
-   * Respects PID-tagged directories owned by other currently running processes.
+   * Synchronous best-effort orphan sweep (used at startup).
+   * Counts only entries verified removed; never silently claims success on failed deletions.
    */
-  public cleanupOrphanedTempFiles(baseTmpDir: string = os.tmpdir()): number {
+  public cleanupOrphanedTempFiles(baseTmpDir: string = this.getBaseTmpDir()): number {
     let removed = 0;
     try {
       if (!fs.existsSync(baseTmpDir)) return 0;
@@ -162,22 +456,186 @@ export class WhisperRuntime {
       for (const entry of entries) {
         const fullPath = path.join(baseTmpDir, entry);
         if (entry.startsWith(WHISPER_TEMP_DIR_PREFIX) && !this.activeTempDirs.has(fullPath)) {
-          const pidMatch = /^scandium-stt-p(\d+)-/.exec(entry);
-          if (pidMatch) {
-            const ownerPid = Number(pidMatch[1]);
-            if (ownerPid !== process.pid && this.isProcessAlive(ownerPid)) {
-              continue; // Belongs to another active process; do not disrupt live transcription
-            }
-          }
-          this.secureRemoveTempDir(fullPath);
-          removed++;
+          if (this.isOwnedByAnotherLiveProcess(entry)) continue;
+          const res = this.removeTempDirSyncOnce(fullPath);
+          if (res.removed) removed++;
         } else if (entry.startsWith(LEGACY_WHISPER_TEMP_PREFIX)) {
-          this.secureUnlinkFile(fullPath);
-          removed++;
+          const res = this.bestEffortUnlinkFile(fullPath);
+          if (res.removed) removed++;
         }
       }
     } catch {}
     return removed;
+  }
+
+  /**
+   * Asynchronous orphan sweep with bounded retries and explicit failure reporting.
+   * Respects active transcriptions and PID-tagged directories owned by other live processes.
+   */
+  public async cleanupOrphanedTempFilesAsync(baseTmpDir: string = this.getBaseTmpDir()): Promise<WhisperCleanupReport> {
+    let removedCount = 0;
+    const failedPaths: Array<{ path: string; error: string }> = [];
+
+    if (!fs.existsSync(baseTmpDir)) {
+      return { removedCount: 0, failedPaths: [], success: true };
+    }
+
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(baseTmpDir);
+    } catch (err: any) {
+      return {
+        removedCount: 0,
+        failedPaths: [{ path: baseTmpDir, error: err?.message || String(err) }],
+        success: false,
+      };
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(baseTmpDir, entry);
+      if (entry.startsWith(WHISPER_TEMP_DIR_PREFIX) && !this.activeTempDirs.has(fullPath)) {
+        if (this.isOwnedByAnotherLiveProcess(entry)) continue;
+        const res = await this.secureRemoveTempDirAsync(fullPath);
+        if (res.removed) {
+          removedCount++;
+        } else {
+          failedPaths.push({ path: fullPath, error: res.error || 'Failed to remove orphaned temp directory' });
+        }
+      } else if (entry.startsWith(LEGACY_WHISPER_TEMP_PREFIX)) {
+        const res = await this.secureRemoveTempDirAsync(fullPath);
+        if (res.removed) {
+          removedCount++;
+        } else {
+          failedPaths.push({ path: fullPath, error: res.error || 'Failed to remove legacy Whisper temp file' });
+        }
+      }
+    }
+
+    return {
+      removedCount,
+      failedPaths,
+      success: failedPaths.length === 0,
+    };
+  }
+
+  /**
+   * Aborts all queued and in-flight transcriptions, waits for child processes to terminate
+   * and all active/pending temporary directories to be deleted, then sweeps orphaned files.
+   * Does not report success if any owned temporary directory or legacy file remains on disk.
+   */
+  public async abortAllAndCleanup(baseTmpDir: string = this.getBaseTmpDir()): Promise<WhisperCleanupReport> {
+    // 1. Cancel any queued (not yet started) jobs immediately
+    while (this.transcriptionQueue.length > 0) {
+      const queued = this.transcriptionQueue.shift();
+      queued?.reject(new Error('Transcription cancelled'));
+    }
+
+    // 2. Abort all active executions
+    for (const controller of Array.from(this.activeAbortControllers)) {
+      try { controller.abort(); } catch {}
+    }
+
+    // 3. Wait for all active executions (which wait for child close + temp cleanup)
+    if (this.activeExecutions.size > 0) {
+      await Promise.allSettled(Array.from(this.activeExecutions));
+    }
+
+    // 4. Wait for any remaining pending cleanup promises
+    if (this.pendingCleanups.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingCleanups.values()));
+    }
+
+    let removedCount = 0;
+    const failedPaths: Array<{ path: string; error: string }> = [];
+    const seenFailed = new Set<string>();
+
+    // 5. Explicitly verify/retry any activeTempDirs that survived a prior termination or cleanup failure.
+    // Never delete a temporary WAV directory while its child process has not been confirmed terminated.
+    for (const dir of Array.from(this.activeTempDirs)) {
+      const boundChild = this.activeChildByTempDir.get(dir);
+      if (boundChild) {
+        const termRes = await this.terminateChildAndWait(boundChild);
+        if (!termRes.exited) {
+          if (!seenFailed.has(dir)) {
+            seenFailed.add(dir);
+            failedPaths.push({
+              path: dir,
+              error: termRes.error || 'Whisper child process is still running; refusing to delete active temporary WAV',
+            });
+          }
+          continue;
+        }
+        this.activeChildren.delete(boundChild);
+        this.activeChildByTempDir.delete(dir);
+      }
+
+      const res = await this.secureRemoveTempDirAsync(dir);
+      if (res.removed) {
+        removedCount++;
+      } else if (!seenFailed.has(dir)) {
+        seenFailed.add(dir);
+        failedPaths.push({ path: dir, error: res.error || 'Active temporary directory could not be deleted' });
+      }
+    }
+
+    // Ensure any remaining active children (even if not associated with an active temp dir) are confirmed terminated
+    for (const child of Array.from(this.activeChildren)) {
+      if (child.exitCode === null && child.signalCode === null) {
+        const termRes = await this.terminateChildAndWait(child);
+        if (!termRes.exited) {
+          const childKey = `whisper-child-pid-${child.pid ?? 'unknown'}`;
+          if (!seenFailed.has(childKey)) {
+            seenFailed.add(childKey);
+            failedPaths.push({
+              path: childKey,
+              error: termRes.error || 'Whisper child process could not be confirmed terminated',
+            });
+          }
+        } else {
+          this.activeChildren.delete(child);
+        }
+      } else {
+        this.activeChildren.delete(child);
+      }
+    }
+
+    // 6. Sweep orphaned own-process / dead-PID dirs and legacy scandium_stt_* files
+    const orphanReport = await this.cleanupOrphanedTempFilesAsync(baseTmpDir);
+    removedCount += orphanReport.removedCount;
+    for (const failure of orphanReport.failedPaths) {
+      if (!seenFailed.has(failure.path)) {
+        seenFailed.add(failure.path);
+        failedPaths.push(failure);
+      }
+    }
+
+    return {
+      removedCount,
+      failedPaths,
+      success: failedPaths.length === 0,
+    };
+  }
+
+  /**
+   * Application shutdown hook: blocks new transcriptions, terminates active child processes,
+   * and awaits temporary-file cleanup before exit.
+   */
+  public async shutdown(baseTmpDir: string = this.getBaseTmpDir()): Promise<WhisperCleanupReport> {
+    this.isShuttingDown = true;
+    return this.abortAllAndCleanup(baseTmpDir);
+  }
+
+  public getActiveTempDirs(): string[] {
+    return Array.from(this.activeTempDirs);
+  }
+
+  public hasActiveProcesses(): boolean {
+    for (const child of this.activeChildren) {
+      if (child.exitCode === null && child.signalCode === null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public getModels(): WhisperModelInfo[] {
@@ -298,22 +756,42 @@ export class WhisperRuntime {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(destPath);
-      const handleRequest = (currentUrl: string) => {
-        const parsed = new URL(currentUrl);
-        https.get(
+      const userAgent = `Scandium-Desktop/${getAppVersionSafe()}`;
+
+      const handleRequest = (currentUrl: string, redirectDepth: number) => {
+        if (redirectDepth > MAX_DOWNLOAD_REDIRECTS) {
+          file.close();
+          return reject(new Error('Model download exceeded maximum redirect limit'));
+        }
+        let parsed: URL;
+        try {
+          parsed = new URL(currentUrl);
+        } catch {
+          file.close();
+          return reject(new Error('Invalid model download URL'));
+        }
+        if (parsed.protocol !== 'https:') {
+          file.close();
+          return reject(new Error('Model downloads must use HTTPS'));
+        }
+
+        const req = https.get(
           {
             hostname: parsed.hostname,
             path: parsed.pathname + parsed.search,
-            headers: { 'User-Agent': 'Scandium-Desktop/1.0.2' },
+            headers: { 'User-Agent': userAgent },
+            timeout: DOWNLOAD_TIMEOUT_MS,
           },
           res => {
             // Follow redirects
             if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+              res.resume();
               const redirectUrl = new URL(res.headers.location, currentUrl).href;
-              return handleRequest(redirectUrl);
+              return handleRequest(redirectUrl, redirectDepth + 1);
             }
 
             if (res.statusCode !== 200) {
+              res.resume();
               file.close();
               return reject(new Error(`Download failed with HTTP ${res.statusCode}`));
             }
@@ -328,8 +806,7 @@ export class WhisperRuntime {
             });
 
             res.on('end', () => {
-              file.end();
-              resolve();
+              file.end(() => resolve());
             });
 
             res.on('error', err => {
@@ -337,13 +814,21 @@ export class WhisperRuntime {
               reject(err);
             });
           }
-        ).on('error', err => {
+        );
+
+        req.on('timeout', () => {
+          req.destroy();
+          file.close();
+          reject(new Error('Model download timed out'));
+        });
+
+        req.on('error', err => {
           file.close();
           reject(err);
         });
       };
 
-      handleRequest(urlStr);
+      handleRequest(urlStr, 0);
     });
   }
 
@@ -352,6 +837,12 @@ export class WhisperRuntime {
     language = 'en',
     signal?: AbortSignal
   ): Promise<string> {
+    if (this.isShuttingDown) {
+      return Promise.reject(new Error('Transcription rejected: Whisper runtime is shutting down'));
+    }
+    if (signal?.aborted) {
+      return Promise.reject(new Error('Transcription cancelled'));
+    }
     return new Promise<string>((resolve, reject) => {
       this.transcriptionQueue.push({
         wavBuffer,
@@ -368,24 +859,29 @@ export class WhisperRuntime {
     if (this.isProcessingQueue) return;
     this.isProcessingQueue = true;
 
-    while (this.transcriptionQueue.length > 0) {
-      const task = this.transcriptionQueue.shift();
-      if (!task) break;
+    try {
+      while (this.transcriptionQueue.length > 0) {
+        const task = this.transcriptionQueue.shift();
+        if (!task) break;
 
-      if (task.signal?.aborted) {
-        task.reject(new Error('Transcription cancelled'));
-        continue;
+        if (this.isShuttingDown || task.signal?.aborted) {
+          task.reject(new Error('Transcription cancelled'));
+          continue;
+        }
+
+        try {
+          const text = await this.executeTranscription(task.wavBuffer, task.language, task.signal);
+          task.resolve(text);
+        } catch (err) {
+          task.reject(err);
+        }
       }
-
-      try {
-        const text = await this.executeTranscription(task.wavBuffer, task.language, task.signal);
-        task.resolve(text);
-      } catch (err) {
-        task.reject(err);
+    } finally {
+      this.isProcessingQueue = false;
+      if (this.transcriptionQueue.length > 0 && !this.isShuttingDown) {
+        void this.processQueue();
       }
     }
-
-    this.isProcessingQueue = false;
   }
 
   private async executeTranscription(
@@ -393,6 +889,10 @@ export class WhisperRuntime {
     language = 'en',
     signal?: AbortSignal
   ): Promise<string> {
+    if (this.isShuttingDown || signal?.aborted) {
+      throw new Error('Transcription cancelled');
+    }
+
     const modelPath = this.resolveModelPath(this.activeModelId) || this.resolveModelPath('ggml-tiny.en');
 
     if (!modelPath) {
@@ -406,8 +906,8 @@ export class WhisperRuntime {
 
     // Create an isolated, owner-only temporary directory tagged with this process PID.
     // Transcript output is streamed strictly via stdout (no -otxt file is ever requested),
-    // and every file in tempDir is zero-wiped and unlinked on success, error, abort, or exit.
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `${WHISPER_TEMP_DIR_PREFIX}p${process.pid}-`));
+    // and every file in tempDir undergoes best-effort overwrite and removal before settlement.
+    const tempDir = fs.mkdtempSync(path.join(this.getBaseTmpDir(), `${WHISPER_TEMP_DIR_PREFIX}p${process.pid}-`));
     if (process.platform !== 'win32') {
       try { fs.chmodSync(tempDir, 0o700); } catch {}
     }
@@ -422,93 +922,199 @@ export class WhisperRuntime {
         try { fs.chmodSync(tempAudioPath, 0o600); } catch {}
       }
     } catch (writeErr) {
-      this.secureRemoveTempDir(tempDir);
+      await this.secureRemoveTempDirAsync(tempDir);
       throw writeErr;
     } finally {
       wavBytes.fill(0);
     }
 
-    return new Promise<string>((resolve, reject) => {
-      let isAborted = false;
-      let settled = false;
-      const cleanupTemp = () => {
-        this.secureRemoveTempDir(tempDir);
-      };
+    const internalController = new AbortController();
+    this.activeAbortControllers.add(internalController);
+    const forwardAbort = () => internalController.abort();
+    signal?.addEventListener('abort', forwardAbort, { once: true });
 
-      const binaryDir = path.dirname(whisperBinary);
-      let child: ReturnType<typeof spawn>;
-      try {
-        child = spawn(
-          whisperBinary,
-          buildWhisperCliArgs(modelPath, tempAudioPath, language),
-          {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: {
-              ...process.env,
-              LD_LIBRARY_PATH: binaryDir + (process.env.LD_LIBRARY_PATH ? ':' + process.env.LD_LIBRARY_PATH : ''),
-              DYLD_LIBRARY_PATH: binaryDir + (process.env.DYLD_LIBRARY_PATH ? ':' + process.env.DYLD_LIBRARY_PATH : ''),
-            },
-          }
-        );
-      } catch (spawnErr) {
-        cleanupTemp();
-        console.warn('[WhisperRuntime] Failed to spawn whisper-cli:', spawnErr);
-        return resolve('');
+    let resolveExecution!: () => void;
+    const executionPromise = new Promise<void>(resolve => {
+      resolveExecution = resolve;
+    });
+    this.activeExecutions.add(executionPromise);
+
+    const finalizeTracking = () => {
+      signal?.removeEventListener('abort', forwardAbort);
+      this.activeAbortControllers.delete(internalController);
+      this.activeExecutions.delete(executionPromise);
+      resolveExecution();
+    };
+
+    try {
+      if (internalController.signal.aborted || this.isShuttingDown) {
+        const cleanupRes = await this.secureRemoveTempDirAsync(tempDir);
+        if (!cleanupRes.removed) {
+          throw new Error(`Transcription cancelled; temporary file cleanup failed: ${cleanupRes.error}`);
+        }
+        throw new Error('Transcription cancelled');
       }
 
-      const abortHandler = () => {
-        isAborted = true;
-        try { child.kill('SIGKILL'); } catch {}
-        cleanupTemp();
-        if (!settled) {
+      return await new Promise<string>((resolve, reject) => {
+        let isAborted = false;
+        let settled = false;
+        let abortInProgress: Promise<void> | null = null;
+
+        const binaryDir = path.dirname(whisperBinary);
+        let child: ChildProcess;
+        try {
+          child = this.spawnFn(
+            whisperBinary,
+            buildWhisperCliArgs(modelPath, tempAudioPath, language),
+            {
+              stdio: ['ignore', 'pipe', 'pipe'],
+              env: {
+                ...process.env,
+                LD_LIBRARY_PATH: binaryDir + (process.env.LD_LIBRARY_PATH ? ':' + process.env.LD_LIBRARY_PATH : ''),
+                DYLD_LIBRARY_PATH: binaryDir + (process.env.DYLD_LIBRARY_PATH ? ':' + process.env.DYLD_LIBRARY_PATH : ''),
+              },
+            }
+          );
+        } catch (spawnErr) {
+          console.warn('[WhisperRuntime] Failed to spawn whisper-cli:', spawnErr);
+          void this.secureRemoveTempDirAsync(tempDir).then(cleanupRes => {
+            if (!cleanupRes.removed) {
+              console.error('[WhisperRuntime] Failed to clean up temporary directory after spawn error:', cleanupRes);
+            }
+            if (!settled) {
+              settled = true;
+              resolve('');
+            }
+          });
+          return;
+        }
+
+        this.activeChildren.add(child);
+        this.activeChildByTempDir.set(tempDir, child);
+
+        const releaseChildTracking = () => {
+          this.activeChildren.delete(child);
+          if (this.activeChildByTempDir.get(tempDir) === child) {
+            this.activeChildByTempDir.delete(tempDir);
+          }
+        };
+
+        const settleAfterCleanup = async (outcome: { ok: true; text: string } | { ok: false; err: Error }) => {
+          releaseChildTracking();
+          internalController.signal.removeEventListener('abort', abortHandler);
+          const cleanupRes = await this.secureRemoveTempDirAsync(tempDir);
+          if (!cleanupRes.removed) {
+            console.error('[WhisperRuntime] Temporary audio cleanup failed:', cleanupRes);
+          }
+          if (settled) return;
           settled = true;
-          reject(new Error('Transcription cancelled'));
+          if (!cleanupRes.removed) {
+            const baseMsg = outcome.ok ? 'Transcription completed but temporary file cleanup failed' : outcome.err.message;
+            reject(new Error(`${baseMsg} (${cleanupRes.error})`));
+            return;
+          }
+          if (outcome.ok) {
+            resolve(outcome.text);
+          } else {
+            reject(outcome.err);
+          }
+        };
+
+        const abortHandler = () => {
+          if (abortInProgress) return;
+          isAborted = true;
+          abortInProgress = (async () => {
+            // Wait for confirmed OS child process exit/close BEFORE removing tempDir.
+            // If termination cannot be confirmed, do NOT delete the WAV under a live process
+            // and preserve both child and tempDir references for fail-closed error reporting / retry.
+            const termRes = await this.terminateChildAndWait(child);
+            if (!termRes.exited) {
+              internalController.signal.removeEventListener('abort', abortHandler);
+              // If the unresponsive child exits later, release tracking and remove tempDir then.
+              const onLateExit = () => {
+                releaseChildTracking();
+                void this.secureRemoveTempDirAsync(tempDir);
+              };
+              child.once('close', onLateExit);
+              child.once('exit', onLateExit);
+              if (!settled) {
+                settled = true;
+                reject(
+                  new Error(
+                    `Transcription cancellation failed: ${termRes.error || 'whisper-cli process did not terminate'}`
+                  )
+                );
+              }
+              return;
+            }
+            await settleAfterCleanup({ ok: false, err: new Error('Transcription cancelled') });
+          })();
+        };
+
+        internalController.signal.addEventListener('abort', abortHandler, { once: true });
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout?.on('data', data => {
+          stdout += data.toString();
+        });
+
+        child.stderr?.on('data', data => {
+          stderr += data.toString();
+        });
+
+        child.once('close', code => {
+          if (isAborted || abortInProgress) return;
+
+          if (code !== 0) {
+            console.warn('[WhisperRuntime] Exit code:', code, stderr);
+            void settleAfterCleanup({ ok: true, text: '' });
+            return;
+          }
+
+          // Clean any residual timestamps or timing metadata from stdout
+          const cleaned = stdout
+            .replace(/\[\d\d:\d\d:\d\d\.\d\d\d --> \d\d:\d\d:\d\d\.\d\d\d\]/g, '')
+            .replace(/whisper_print_timings:[\s\S]*$/, '')
+            .trim();
+
+          void settleAfterCleanup({ ok: true, text: cleaned });
+        });
+
+        child.once('error', err => {
+          if (isAborted || abortInProgress) return;
+          console.warn('[WhisperRuntime] Failed to run whisper-cli:', err);
+          if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+            abortInProgress = (async () => {
+              const termRes = await this.terminateChildAndWait(child);
+              if (!termRes.exited) {
+                internalController.signal.removeEventListener('abort', abortHandler);
+                if (!settled) {
+                  settled = true;
+                  reject(
+                    new Error(
+                      `whisper-cli errored and termination could not be confirmed: ${termRes.error || err.message}`
+                    )
+                  );
+                }
+                return;
+              }
+              await settleAfterCleanup({ ok: true, text: '' });
+            })();
+            return;
+          }
+          void settleAfterCleanup({ ok: true, text: '' });
+        });
+
+        // Handle race if abort fired synchronously right before listener attachment
+        if (internalController.signal.aborted) {
+          abortHandler();
         }
-      };
-
-      signal?.addEventListener('abort', abortHandler);
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout?.on('data', data => {
-        stdout += data.toString();
       });
-
-      child.stderr?.on('data', data => {
-        stderr += data.toString();
-      });
-
-      child.on('close', code => {
-        signal?.removeEventListener('abort', abortHandler);
-        cleanupTemp();
-
-        if (isAborted || settled) return;
-        settled = true;
-
-        if (code !== 0) {
-          console.warn('[WhisperRuntime] Exit code:', code, stderr);
-          return resolve('');
-        }
-
-        // Clean any residual timestamps or timing metadata from stdout
-        const cleaned = stdout
-          .replace(/\[\d\d:\d\d:\d\d\.\d\d\d --> \d\d:\d\d:\d\d\.\d\d\d\]/g, '')
-          .replace(/whisper_print_timings:[\s\S]*$/, '')
-          .trim();
-
-        resolve(cleaned);
-      });
-
-      child.on('error', err => {
-        signal?.removeEventListener('abort', abortHandler);
-        cleanupTemp();
-        if (isAborted || settled) return;
-        settled = true;
-        console.warn('[WhisperRuntime] Failed to spawn whisper-cli:', err);
-        resolve('');
-      });
-    });
+    } finally {
+      finalizeTracking();
+    }
   }
 
   public findWhisperExecutable(): string | null {

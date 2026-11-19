@@ -51,7 +51,7 @@ All desktop windows (`createControlWindow`, `createChatWindow`, `openDashboardWi
 - `sandbox: true`
 - `webSecurity: true`
 - Navigation outside trusted application files (`file://` index.html) is denied.
-- Window opening (`setWindowOpenHandler`) is denied.
+- Window opening (`setWindowOpenHandler`) always returns `{ action: 'deny' }` (no untrusted Electron child windows) and forwards only explicitly allowlisted HTTPS URLs to the system browser via `shell.openExternal`.
 - Dynamic code evaluation (`eval`) is prohibited; IPC arguments undergo strict type and length schema validation.
 
 ### 7. Permission Transparency
@@ -93,9 +93,9 @@ Designed for defense, healthcare, legal, and financial environments:
 
 ## Data Purge & Retention Control
 
-- **Logical Data Purge**: Users can delete individual sessions or execute a full cryptographic purge (`purgeAllData`).
-- **Vault Clearing**: Purge securely unlinks the encrypted credential vault and session archives.
-- **Physical Erasure Notice**: Application purge performs OS-level file deletion. Users requiring forensic erasure against hardware forensic tools should employ OS-level full-disk encryption (BitLocker / FileVault / LUKS).
+- **Logical Data Purge**: Users can delete individual sessions or execute a full application-level purge (`purgeAllData`), which aborts active AI/STT operations, waits for Whisper child processes to exit and temporary audio directories to be deleted, and removes encrypted session archives and credentials.
+- **Vault Clearing**: Purge removes the encrypted credential vault and session archives.
+- **Physical Erasure Notice**: Overwriting temporary files before unlinking is a best-effort application-level cleanup technique and does **not** guarantee certified secure deletion or forensic erasure on SSDs, flash storage, journaled filesystems, or copy-on-write filesystems. Users requiring protection against physical media forensics should employ OS-level full-disk encryption (BitLocker / FileVault / LUKS).
 
 ---
 

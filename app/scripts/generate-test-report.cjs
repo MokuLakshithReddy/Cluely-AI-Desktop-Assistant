@@ -259,8 +259,8 @@ if (fs.existsSync(readmePath)) {
     `badge/CI%20checks-${grandPassedTests}%2F${grandTotalTests}%20passing-success`
   );
   readme = readme.replace(
-    /https:\/\/github\.com\/MokuLakshithReddy\/Cluely-AI-Desktop-Assistant\/actions\/runs\/\d+/g,
-    'https://github.com/MokuLakshithReddy/Cluely-AI-Desktop-Assistant/actions/workflows/ci.yml'
+    /https:\/\/github\.com\/MokuLakshithReddy\/(?:Cluely-AI-Desktop-Assistant|Scandium-Assistant)\/actions\/runs\/\d+/g,
+    'https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/workflows/ci.yml'
   );
 
   // Synchronize Table of Contents anchor
