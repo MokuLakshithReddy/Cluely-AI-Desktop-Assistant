@@ -13,8 +13,8 @@ Complete this section for each validation campaign. Do not reuse a result after 
 | Field | Value |
 |---|---|
 | Release candidate version | `1.0.2` (development baseline — `v1.0.2` is an older unsigned prerelease; next signed production target is `v1.0.3`) |
-| Latest verified `main` commit SHA | [`ef87cb0`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/ef87cb099a9430bd27f7c2950a67b09e4f1c6dd9) |
-| CI workflow run URL | [CI Verification Suite (run #269)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44315105466) |
+| Latest verified `main` commit SHA | [`333d3de`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/333d3de668b024cd407e2cb63aae2bead24103fa) |
+| CI workflow run URL | [CI Verification Suite (run #273)](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44592286282) |
 | Signed production artifact | **NOT YET PRODUCED** (CI artifacts are unsigned validation builds; `v1.0.2` tag points to an older commit and is an unsigned prerelease) |
 | Electron version | `45.2.3` |
 | Node.js CI version | `24.22.2` |

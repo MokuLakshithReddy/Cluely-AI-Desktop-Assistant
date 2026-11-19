@@ -26,7 +26,7 @@ A CI package artifact is not a release until this workflow completes and attache
 - **Physical-device validation (INCOMPLETE):** `DEVICE_EVIDENCE_RUN.json` is a partial Windows host snapshot, not the required 40-case signed campaign across Windows, macOS, and Linux; all platforms remain `NOT APPROVED` in [`DEVICE_VALIDATION_MATRIX.md`](../testing/DEVICE_VALIDATION_MATRIX.md).
 - **Signed release automation (FAIL-CLOSED, SECRETS PENDING):** `.github/workflows/release.yml` strictly rejects unsigned builds and missing GPG/Authenticode/Apple credentials. Signing secrets have not yet been configured for production publication.
 - **Paid subscriptions (NOT READY):** `app/electron/config/billing-products.ts` intentionally leaves Plus and Pro product/variant IDs empty and `website/index.html` keeps checkout disabled until real Lemon Squeezy products are created and tested.
-- **Latest verified `main` CI:** Commit [`ef87cb0`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/ef87cb099a9430bd27f7c2950a67b09e4f1c6dd9) passed [CI Verification Suite run #269](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44315105466) across `Build & Verify (Windows)` and all three native packaging + packaged launch smoke jobs (`windows-portable`, `macos-dmg`, `linux-appimage`).
+- **Latest verified `main` CI:** Commit [`333d3de`](https://github.com/MokuLakshithReddy/Scandium-Assistant/commit/333d3de668b024cd407e2cb63aae2bead24103fa) passed [CI Verification Suite run #273](https://github.com/MokuLakshithReddy/Scandium-Assistant/actions/runs/44592286282) across `Build & Verify (Windows)` and all three native packaging + packaged launch smoke jobs (`windows-portable`, `macos-dmg`, `linux-appimage`).
 
 ## Required repository Actions secrets
 
