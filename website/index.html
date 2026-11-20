@@ -17,11 +17,11 @@ a{color:inherit;text-decoration:none}.shell{width:min(1120px,calc(100% - 44px));
 <main id="top">
 <section class="hero"><span class="eyebrow">Local-first desktop intelligence</span><h1>Powerful AI.<br><span>Under your control.</span></h1><p class="hero-copy">Scandium brings a desktop copilot, local models and speech recognition into one focused workspace. Choose the capability tier that fits how you work — while keeping local inference on your own machine.</p><div class="chips"><span class="chip">Local-first by design</span><span class="chip">Your hardware, your models</span><span class="chip">Optional BYOK providers</span></div></section>
 <section id="plans"><div class="heading"><div><p class="kicker">Scandium subscriptions</p><h2>Pick your level of capability.</h2><p>One desktop app. Clear limits. No Scandium-hosted inference fees.</p></div></div>
-<div class="notice" role="status"><strong>Checkout is not live yet.</strong> The paid prices below are proposed monthly prices, not active offers. No payment details are collected and no charge can be made here. Purchase buttons will only be enabled after the real subscription products, variants and official checkout URLs are configured.</div>
+<div class="notice" role="status"><strong>Checkout is not live yet.</strong> Subscriptions will be billed and fulfilled internationally via Paddle, our Merchant of Record. The prices below are proposed monthly prices, not active offers. No payment details are collected and no charge can be made here. Purchase buttons will only be enabled after genuine Paddle product price IDs and merchant credentials are configured.</div>
 <div class="plans">
 <article class="plan" data-plan-card="free"><div><div class="tier">Start here</div><h3>Scandium Free</h3><div class="price">$0 <small>/ month</small></div><div class="caption">Included with the desktop app</div><ul><li>Local AI with supported small models</li><li>Core Copilot assistant mode</li><li>1 device activation</li><li>No Scandium-hosted inference fees</li></ul></div><div class="foot"><div class="cta" style="text-align:center">Included</div></div></article>
-<article class="plan popular" data-plan-card="plus"><span class="popular-label">Most popular</span><div><div class="tier">For focused work</div><h3>Scandium Plus</h3><div class="price">$19 <small>/ month</small></div><div class="caption">Proposed price · subject to final offer</div><ul><li>Local Whisper speech recognition</li><li>Local vision and OCR</li><li>Personal knowledge base and RAG</li><li>Gemini and Groq BYOK providers</li><li>Up to 2 device activations</li></ul></div><div class="foot"><button class="cta primary" type="button" data-checkout-button="plus" disabled>Checkout not open yet</button><p class="hint" data-checkout-note="plus">Secure checkout is being configured.</p></div></article>
-<article class="plan" data-plan-card="pro"><div><div class="tier">For power users</div><h3>Scandium Pro</h3><div class="price">$49 <small>/ month</small></div><div class="caption">Proposed price · subject to final offer</div><ul><li>Interview, Coding, Sales and Executive modes</li><li>OpenAI and Anthropic BYOK providers</li><li>Priority local Whisper model options</li><li>Knowledge base with up to 100 documents</li><li>Up to 5 device activations</li></ul></div><div class="foot"><button class="cta" type="button" data-checkout-button="pro" disabled>Checkout not open yet</button><p class="hint" data-checkout-note="pro">Secure checkout is being configured.</p></div></article>
+<article class="plan popular" data-plan-card="plus"><span class="popular-label">Most popular</span><div><div class="tier">For focused work</div><h3>Scandium Plus</h3><div class="price">$19 <small>/ month</small></div><div class="caption">Proposed price · subject to final offer</div><ul><li>Local Whisper speech recognition</li><li>Local vision and OCR</li><li>Personal knowledge base and RAG</li><li>Gemini and Groq BYOK providers</li><li>Up to 2 device activations</li></ul></div><div class="foot"><button class="cta primary" type="button" data-checkout-button="plus" disabled>Checkout not open yet</button><p class="hint" data-checkout-note="plus">Secure checkout via Paddle is being configured.</p></div></article>
+<article class="plan" data-plan-card="pro"><div><div class="tier">For power users</div><h3>Scandium Pro</h3><div class="price">$49 <small>/ month</small></div><div class="caption">Proposed price · subject to final offer</div><ul><li>Interview, Coding, Sales and Executive modes</li><li>OpenAI and Anthropic BYOK providers</li><li>Priority local Whisper model options</li><li>Knowledge base with up to 100 documents</li><li>Up to 5 device activations</li></ul></div><div class="foot"><button class="cta" type="button" data-checkout-button="pro" disabled>Checkout not open yet</button><p class="hint" data-checkout-note="pro">Secure checkout via Paddle is being configured.</p></div></article>
 </div>
 <section class="comparison"><h3>Plan comparison</h3><div class="matrix" role="table" aria-label="Scandium plan comparison">
 <div class="cell head" role="columnheader">Capability</div><div class="cell head" role="columnheader">Free</div><div class="cell head" role="columnheader">Plus</div><div class="cell head" role="columnheader">Pro</div>
@@ -33,27 +33,67 @@ a{color:inherit;text-decoration:none}.shell{width:min(1120px,calc(100% - 44px));
 </div></section>
 <section class="bottom"><div><h3>Already have a Scandium license?</h3><p>Open the desktop app → Dashboard → Subscription &amp; License → Activate License Key.</p></div><a href="https://github.com/MokuLakshithReddy/Scandium-Assistant" target="_blank" rel="noreferrer">Scandium on GitHub ↗</a></section>
 </section></main>
-<footer><span>© 2026 Scandium. Local-first desktop intelligence.</span><span>First-party pricing page · Paid checkout is not yet enabled.</span></footer></div>
+<footer><span>© 2026 Scandium. Local-first desktop intelligence.</span><span>Merchant of Record: Order processing, tax collection, and invoicing are conducted by Paddle.com Market Ltd (Paddle).</span></footer></div>
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
-  // Populate only with official checkout URLs copied from your own published products.
-  // Leave empty until the real Scandium Plus and Pro products are created.
-  const checkoutUrls = { plus: '', pro: '' };
+  // Paddle Configuration
+  // Fill in clientToken and priceIds when authenticating production or sandbox credentials
+  const paddleConfig = {
+    environment: 'production', // 'sandbox' or 'production'
+    clientToken: '', // e.g. 'live_...' or 'test_...'
+    priceIds: {
+      plus: '', // e.g. 'pri_...'
+      pro: ''   // e.g. 'pri_...'
+    },
+    checkoutUrls: {
+      plus: '',
+      pro: ''
+    }
+  };
+
   const plan = new URLSearchParams(window.location.search).get('plan');
   if (plan === 'plus' || plan === 'pro') {
     const card = document.querySelector('[data-plan-card="' + plan + '"]');
     if (card) { card.classList.add('selected'); card.setAttribute('aria-current', 'true'); }
   }
+
+  // Initialize Paddle.js if clientToken is configured
+  if (paddleConfig.clientToken && typeof Paddle !== 'undefined') {
+    try {
+      if (paddleConfig.environment === 'sandbox') {
+        Paddle.Environment.set('sandbox');
+      }
+      Paddle.Initialize({ token: paddleConfig.clientToken });
+    } catch (e) {
+      console.warn('Paddle initialization failed:', e);
+    }
+  }
+
   document.querySelectorAll('[data-checkout-button]').forEach(function(button) {
     const tier = button.getAttribute('data-checkout-button');
-    const checkout = String(checkoutUrls[tier] || '').trim();
-    if (!checkout) return;
-    let parsed;
-    try { parsed = new URL(checkout); } catch (_) { parsed = null; }
-    if (!parsed || parsed.protocol !== 'https:') return;
-    button.disabled = false;
-    button.textContent = 'Continue to secure checkout';
-    button.addEventListener('click', function() { window.location.assign(parsed.href); });
-    const hint = document.querySelector('[data-checkout-note="' + tier + '"]');
-    if (hint) hint.textContent = 'You will continue to the official payment page.';
+    const priceId = String(paddleConfig.priceIds[tier] || '').trim();
+    const checkoutUrl = String(paddleConfig.checkoutUrls[tier] || '').trim();
+
+    if (priceId && paddleConfig.clientToken && typeof Paddle !== 'undefined') {
+      button.disabled = false;
+      button.textContent = 'Subscribe with Paddle';
+      button.addEventListener('click', function() {
+        Paddle.Checkout.open({
+          items: [{ priceId: priceId, quantity: 1 }]
+        });
+      });
+      const hint = document.querySelector('[data-checkout-note="' + tier + '"]');
+      if (hint) hint.textContent = 'Secure international checkout powered by Paddle.';
+    } else if (checkoutUrl) {
+      let parsed;
+      try { parsed = new URL(checkoutUrl); } catch (_) { parsed = null; }
+      if (parsed && parsed.protocol === 'https:') {
+        button.disabled = false;
+        button.textContent = 'Continue to secure checkout';
+        button.addEventListener('click', function() { window.location.assign(parsed.href); });
+        const hint = document.querySelector('[data-checkout-note="' + tier + '"]');
+        if (hint) hint.textContent = 'You will continue to the official Paddle checkout page.';
+      }
+    }
   });
 </script></body></html>

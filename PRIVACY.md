@@ -39,9 +39,10 @@ Scandium provides real-time audio and screen contextual understanding capabiliti
 
 ## 4. Licensing & Transaction Data
 
-Payment processing and subscription billing are managed by our Merchant of Record, **Lemon Squeezy**:
-- Billing details, credit card numbers, and invoices are processed directly by Lemon Squeezy under their security and privacy policies.
-- Scandium validates subscription status using Lemon Squeezy's public License API (`/validate`, `/activate`) transmitting only your license key and a non-reversible SHA-256 hardware hash (`Scandium-<platform>-<hash>`) derived strictly from coarse non-PII hardware traits (OS platform, CPU architecture, CPU model, CPU core count, and total memory). Your personal computer hostname is never read for, hashed into, transmitted with, or logged by licensing requests.
+Payment processing, tax calculation, and subscription billing are managed by our Merchant of Record, **Paddle** (Paddle.com Market Ltd):
+- Billing details, payment card numbers, international taxes, and invoices are processed directly by Paddle under their security and privacy policies. Scandium servers and desktop clients never collect or store payment card numbers.
+- Scandium validates subscription entitlements using our provider-independent licensing service (`/api/v1/license/*`). The client transmits only your license key and a non-reversible SHA-256 hardware hash (`Scandium-<platform>-<hash>`) derived strictly from coarse non-PII hardware traits (OS platform, CPU architecture, CPU model, CPU core count, and total memory). Your personal computer hostname is never read for, hashed into, transmitted with, or logged by licensing requests.
+- Entitlement responses from our licensing service are cryptographically signed using Ed25519, allowing your desktop client to verify license authenticity independently using an embedded public key.
 
 ---
 

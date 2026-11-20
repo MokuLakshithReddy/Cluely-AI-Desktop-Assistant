@@ -1,16 +1,31 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LicenseManager, LicenseRecord } from '../electron/services/license-manager';
 import {
+  verifyPaddleWebhookSignature,
+  parseVerifiedPaddleWebhook,
   verifyLemonSqueezyWebhookSignature,
   parseVerifiedLemonSqueezyWebhook,
   WebhookEventDeduplicator,
 } from '../electron/services/billing-webhook';
+import { canonicalLicenseString } from '../electron/services/licensing-signature';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
+const TEST_PRIVATE_KEY = '302e020100300506032b657004220420c1825d15e4a70d9b8c730702ce385c9f80ec3e6cb610d79390a6a9cd550c2070';
+const privKeyObj = crypto.createPrivateKey({
+  key: Buffer.from(TEST_PRIVATE_KEY, 'hex'),
+  format: 'der',
+  type: 'pkcs8',
+});
+
+function signTestLicense(lic: Record<string, any>): string {
+  const canonical = canonicalLicenseString(lic);
+  return crypto.sign(null, Buffer.from(canonical, 'utf8'), privKeyObj).toString('hex');
+}
+
+describe('Scandium Provider-Independent Licensing & Offline Grace Subsystem', () => {
   let manager: LicenseManager;
   const testLicenseDir = path.join(process.cwd(), '.test-scandium-license');
   const testLicenseFile = path.join(testLicenseDir, 'scandium-license.enc');
@@ -66,33 +81,12 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(status.status).toBe('none');
   });
 
-  it('fails closed to Free tier when IDs are missing or only product names match', () => {
-    const fn = (manager as any).resolveTierFromMeta.bind(manager);
-    expect(fn({ product_name: 'Unknown Random Product' })).toBe('free');
-    expect(fn({ product_name: 'Photoshop License' })).toBe('free');
-    expect(fn({ product_name: 'Scandium Plus', variant_name: 'Plus Monthly' })).toBe('free');
-    expect(fn({ product_name: 'Scandium Pro', variant_name: 'Pro Monthly' })).toBe('free');
-    expect(fn(null)).toBe('free');
-  });
-
-  it('grants paid tiers only for the exact configured product and variant ID pair', () => {
-    vi.stubEnv('LEMON_PLUS_PRODUCT_ID', 'plus-product-123');
-    vi.stubEnv('LEMON_PLUS_VARIANT_ID', 'plus-variant-456');
-    vi.stubEnv('LEMON_PRO_PRODUCT_ID', 'pro-product-789');
-    vi.stubEnv('LEMON_PRO_VARIANT_ID', 'pro-variant-012');
-
-    const fn = (manager as any).resolveTierFromMeta.bind(manager);
-    expect(fn({ product_name: 'Renamed Product', product_id: 'plus-product-123', variant_id: 'plus-variant-456' })).toBe('plus');
-    expect(fn({ product_name: 'Renamed Product', product_id: 'pro-product-789', variant_id: 'pro-variant-012' })).toBe('pro');
-    expect(fn({ product_name: 'Scandium Pro', product_id: 'plus-product-123', variant_id: 'pro-variant-012' })).toBe('free');
-    expect(fn({ product_name: 'Scandium Plus', product_id: 'plus-product-123', variant_id: 'wrong-variant' })).toBe('free');
-  });
-
   it('expires license immediately if expiresAt date is in the past', () => {
     const record: LicenseRecord = {
       licenseKey: 'PLUS-EXPIRED-KEY',
       instanceId: 'inst_exp',
       instanceName: manager.getInstanceName(),
+      hardwareFingerprint: manager.getHardwareFingerprint(),
       status: 'active',
       tier: 'plus',
       activationLimit: 2,
@@ -104,32 +98,31 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(manager.getCurrentTier()).toBe('free');
   });
 
-  it('activates a license and saves encrypted cache to disk', async () => {
-    vi.stubEnv('LEMON_PLUS_PRODUCT_ID', 'plus-product-123');
-    vi.stubEnv('LEMON_PLUS_VARIANT_ID', 'plus-variant-456');
+  it('activates a license, verifies Ed25519 signature, and saves encrypted cache to disk', async () => {
+    const hwFp = manager.getHardwareFingerprint();
+    const instName = manager.getInstanceName();
 
-    const mockApiResponse = {
-      activated: true,
-      license_key: {
-        status: 'active',
-        activation_limit: 2,
-        activation_usage: 1,
-        expires_at: '2028-12-31T23:59:59Z',
-      },
-      instance: {
-        id: 'inst_12345',
-        name: manager.getInstanceName(),
-      },
-      meta: {
-        product_id: 'plus-product-123',
-        variant_id: 'plus-variant-456',
-        product_name: 'Renamed Product',
-        customer_name: 'Jane Doe',
-        customer_email: 'jane@example.com',
-      },
+    const mockLicensePayload = {
+      licenseKey: 'ABCD-1234-EFGH-5678',
+      tier: 'plus',
+      status: 'active',
+      instanceName: instName,
+      hardwareFingerprint: hwFp,
+      customerEmail: 'jane@example.com',
+      activationLimit: 2,
+      activationUsage: 1,
+      activatedAt: new Date().toISOString(),
+      expiresAt: '2028-12-31T23:59:59Z',
+      issuedAt: Date.now(),
     };
 
-    vi.spyOn(manager as any, 'postLemonSqueezy').mockResolvedValue(mockApiResponse);
+    const signature = signTestLicense(mockLicensePayload);
+
+    vi.spyOn(manager as any, 'postLicensingService').mockResolvedValue({
+      success: true,
+      license: mockLicensePayload,
+      signature,
+    });
 
     const activated = await manager.activateLicense('ABCD-1234-EFGH-5678');
     expect(activated.status).toBe('active');
@@ -144,18 +137,61 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(status.licenseKeyMasked).toBe('ABCD...5678');
   });
 
-  it('rejects activation when the license belongs to an unconfigured product', async () => {
-    vi.spyOn(manager as any, 'postLemonSqueezy').mockResolvedValue({
-      activated: true,
-      license_key: { status: 'active', activation_limit: 2, activation_usage: 1 },
-      instance: { id: 'inst_unconfigured' },
-      meta: { product_name: 'Scandium Plus', variant_name: 'Plus Monthly' },
+  it('rejects activation when Ed25519 cryptographic signature is forged or invalid', async () => {
+    const hwFp = manager.getHardwareFingerprint();
+    const instName = manager.getInstanceName();
+
+    const forgedPayload = {
+      licenseKey: 'FORGED-PRO-KEY',
+      tier: 'pro',
+      status: 'active',
+      instanceName: instName,
+      hardwareFingerprint: hwFp,
+      activationLimit: 5,
+      activationUsage: 1,
+      expiresAt: null,
+      issuedAt: Date.now(),
+    };
+
+    vi.spyOn(manager as any, 'postLicensingService').mockResolvedValue({
+      success: true,
+      license: forgedPayload,
+      signature: '0'.repeat(128), // Invalid forged signature
     });
 
-    await expect(manager.activateLicense('UNCONFIGURED-KEY')).rejects.toThrow(
-      'does not match a configured Scandium Plus or Pro product'
+    await expect(manager.activateLicense('FORGED-PRO-KEY')).rejects.toThrow(
+      /Ed25519 signature verification failed/i
     );
     expect(fs.existsSync(testLicenseFile)).toBe(false);
+    expect(manager.getCurrentTier()).toBe('free');
+  });
+
+  it('rejects activation if response hardware fingerprint does not match local machine', async () => {
+    const instName = manager.getInstanceName();
+
+    const mismatchedPayload = {
+      licenseKey: 'PRO-FOREIGN-MACHINE-KEY',
+      tier: 'pro',
+      status: 'active',
+      instanceName: instName,
+      hardwareFingerprint: 'different_alien_fingerprint',
+      activationLimit: 5,
+      activationUsage: 1,
+      expiresAt: null,
+      issuedAt: Date.now(),
+    };
+
+    const signature = signTestLicense(mismatchedPayload);
+
+    vi.spyOn(manager as any, 'postLicensingService').mockResolvedValue({
+      success: true,
+      license: mismatchedPayload,
+      signature,
+    });
+
+    await expect(manager.activateLicense('PRO-FOREIGN-MACHINE-KEY')).rejects.toThrow(
+      /does not match this machine hardware fingerprint/i
+    );
     expect(manager.getCurrentTier()).toBe('free');
   });
 
@@ -164,6 +200,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
       licenseKey: 'PRO-9999-XXXX-YYYY',
       instanceId: 'inst_99',
       instanceName: manager.getInstanceName(),
+      hardwareFingerprint: manager.getHardwareFingerprint(),
       status: 'active',
       tier: 'pro',
       activationLimit: 5,
@@ -174,12 +211,12 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     (manager as any).currentLicense = record;
     (manager as any).saveCachedLicense();
 
-    vi.spyOn(manager as any, 'postLemonSqueezy').mockRejectedValue(new Error('ENOTFOUND api.lemonsqueezy.com'));
+    vi.spyOn(manager as any, 'postLicensingService').mockRejectedValue(new Error('ENOTFOUND licensing.scandium.internal'));
 
     const validated = await manager.validateLicense();
-    expect(validated.status).toBe('grace_period');
-    expect(validated.graceRemainingDays).toBeGreaterThanOrEqual(4);
-    expect(validated.graceRemainingDays).toBeLessThanOrEqual(5);
+    expect(validated?.status).toBe('grace_period');
+    expect(validated?.graceRemainingDays).toBeGreaterThanOrEqual(4);
+    expect(validated?.graceRemainingDays).toBeLessThanOrEqual(5);
 
     expect(manager.getCurrentTier()).toBe('pro');
   });
@@ -189,6 +226,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
       licenseKey: 'PRO-9999-XXXX-YYYY',
       instanceId: 'inst_99',
       instanceName: manager.getInstanceName(),
+      hardwareFingerprint: manager.getHardwareFingerprint(),
       status: 'active',
       tier: 'pro',
       activationLimit: 5,
@@ -198,10 +236,10 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     };
     (manager as any).currentLicense = record;
 
-    vi.spyOn(manager as any, 'postLemonSqueezy').mockRejectedValue(new Error('ENOTFOUND api.lemonsqueezy.com'));
+    vi.spyOn(manager as any, 'postLicensingService').mockRejectedValue(new Error('ENOTFOUND licensing.scandium.internal'));
 
     const validated = await manager.validateLicense();
-    expect(validated.status).toBe('expired');
+    expect(validated?.status).toBe('expired');
     expect(manager.getCurrentTier()).toBe('free');
   });
 
@@ -210,6 +248,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
       licenseKey: 'ABCD-1234-EFGH-5678',
       instanceId: 'inst_12345',
       instanceName: manager.getInstanceName(),
+      hardwareFingerprint: manager.getHardwareFingerprint(),
       status: 'active',
       tier: 'plus',
       activationLimit: 2,
@@ -221,7 +260,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     (manager as any).saveCachedLicense();
     expect(fs.existsSync(testLicenseFile)).toBe(true);
 
-    vi.spyOn(manager as any, 'postLemonSqueezy').mockResolvedValue({ deactivated: true });
+    vi.spyOn(manager as any, 'postLicensingService').mockResolvedValue({ success: true, deactivated: true });
 
     await manager.deactivateLicense();
     expect(manager.getCurrentTier()).toBe('free');
@@ -233,6 +272,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
       licenseKey: 'PLUS-RESTART-TEST-KEY',
       instanceId: 'inst_restart',
       instanceName: manager.getInstanceName(),
+      hardwareFingerprint: manager.getHardwareFingerprint(),
       status: 'active',
       tier: 'plus',
       activationLimit: 2,
@@ -244,12 +284,10 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     (manager as any).saveCachedLicense();
     expect(fs.existsSync(testLicenseFile)).toBe(true);
 
-    // Simulate restart: new instance before app.whenReady() where safeStorage was unavailable
     const newManager = new LicenseManager();
     (newManager as any).licenseFile = testLicenseFile;
-    (newManager as any).currentLicense = null; // simulate pre-ready null state
+    (newManager as any).currentLicense = null;
 
-    // Call init() after app.whenReady()
     newManager.init();
 
     expect(newManager.getCurrentTier()).toBe('plus');
@@ -264,6 +302,7 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
       licenseKey: 'PRO-FOREIGN-MACHINE',
       instanceId: 'inst_other',
       instanceName: 'Scandium-darwin-00000000',
+      hardwareFingerprint: 'different_alien_hw_fingerprint',
       status: 'active',
       tier: 'pro',
       activationLimit: 5,
@@ -275,31 +314,12 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(manager.getCurrentTier()).toBe('free');
   });
 
-  it('engages offline grace period on transient HTTP 429/503 errors rather than revoking active licenses', async () => {
-    const record: LicenseRecord = {
-      licenseKey: 'PRO-TRANSIENT-KEY',
-      instanceId: 'inst_transient',
-      instanceName: manager.getInstanceName(),
-      status: 'active',
-      tier: 'pro',
-      activationLimit: 5,
-      activationUsage: 1,
-      expiresAt: null,
-      lastValidatedAt: Date.now() - (24 * 60 * 60 * 1000),
-    };
-    (manager as any).currentLicense = record;
-
-    vi.spyOn(manager as any, 'postLemonSqueezy').mockRejectedValue(new Error('Lemon Squeezy transient HTTP 429'));
-    const validated = await manager.validateLicense();
-    expect(validated?.status).toBe('grace_period');
-    expect(manager.getCurrentTier()).toBe('pro');
-  });
-
   it('fails closed on clock rollback and on disabled/expired remote license responses', async () => {
     const record: LicenseRecord = {
       licenseKey: 'PRO-ROLLBACK-KEY',
       instanceId: 'inst_rb',
       instanceName: manager.getInstanceName(),
+      hardwareFingerprint: manager.getHardwareFingerprint(),
       status: 'active',
       tier: 'pro',
       activationLimit: 5,
@@ -313,75 +333,99 @@ describe('Lemon Squeezy Licensing & Offline Grace Subsystem', () => {
     expect(manager.getCurrentTier()).toBe('free');
   });
 
-  it('verifies Lemon Squeezy HMAC-SHA256 webhook signatures, blocks replays, and maps subscription lifecycle transitions', () => {
-    vi.stubEnv('LEMON_PLUS_PRODUCT_ID', 'prod_plus_1');
-    vi.stubEnv('LEMON_PLUS_VARIANT_ID', 'var_plus_1');
-    vi.stubEnv('LEMON_PRO_PRODUCT_ID', 'prod_pro_2');
-    vi.stubEnv('LEMON_PRO_VARIANT_ID', 'var_pro_2');
+  it('verifies Paddle Billing HMAC-SHA256 webhook signatures, timestamp tolerance, and maps subscription events', () => {
+    vi.stubEnv('PADDLE_PLUS_PRICE_ID', 'pri_plus_abc123');
+    vi.stubEnv('PADDLE_PRO_PRICE_ID', 'pri_pro_xyz789');
 
-    const secret = 'whsec_test_signing_secret_2026';
-    const sign = (body: string) => crypto.createHmac('sha256', secret).update(body, 'utf8').digest('hex');
+    const secret = 'pdl_ntf_set_test_secret_key_2026';
+    const now = Math.floor(Date.now() / 1000);
 
     const activePayload = JSON.stringify({
-      meta: { event_name: 'subscription_payment_success' },
+      event_id: 'evt_paddle_test_1',
+      event_type: 'subscription.created',
+      occurred_at: '2026-11-20T12:00:00Z',
       data: {
-        id: 'sub_100',
-        attributes: {
-          product_id: 'prod_pro_2',
-          variant_id: 'var_pro_2',
-          status: 'active',
-          renews_at: '2026-12-18T00:00:00Z',
-          updated_at: '2026-11-18T12:00:00Z',
-        },
+        id: 'sub_paddle_123',
+        status: 'active',
+        items: [{ price: { id: 'pri_pro_xyz789' }, quantity: 1 }],
+        customer: { email: 'subscriber@example.com' },
+        current_billing_period: { ends_at: '2026-12-20T12:00:00Z' },
       },
     });
-    const validSig = sign(activePayload);
 
-    expect(verifyLemonSqueezyWebhookSignature(activePayload, validSig, secret)).toBe(true);
-    expect(verifyLemonSqueezyWebhookSignature(activePayload, '0'.repeat(64), secret)).toBe(false);
-    expect(verifyLemonSqueezyWebhookSignature(activePayload + ' ', validSig, secret)).toBe(false);
-    expect(verifyLemonSqueezyWebhookSignature(activePayload, validSig, '')).toBe(false);
+    const signPaddle = (body: string, ts: number) => {
+      const signed = `${ts}:${body}`;
+      const h1 = crypto.createHmac('sha256', secret).update(signed, 'utf8').digest('hex');
+      return `ts=${ts};h1=${h1}`;
+    };
+
+    const validHeader = signPaddle(activePayload, now);
+
+    expect(verifyPaddleWebhookSignature(activePayload, validHeader, secret)).toBe(true);
+    expect(verifyPaddleWebhookSignature(activePayload, 'ts=123;h1=' + '0'.repeat(64), secret)).toBe(false);
+    expect(verifyPaddleWebhookSignature(activePayload + ' ', validHeader, secret)).toBe(false);
+    expect(verifyPaddleWebhookSignature(activePayload, validHeader, '')).toBe(false);
+
+    // Expired timestamp (>300s old)
+    const expiredHeader = signPaddle(activePayload, now - 600);
+    expect(verifyPaddleWebhookSignature(activePayload, expiredHeader, secret)).toBe(false);
 
     const dedup = new WebhookEventDeduplicator();
-    const transition = parseVerifiedLemonSqueezyWebhook(activePayload, validSig, secret, dedup);
+    const transition = parseVerifiedPaddleWebhook(activePayload, validHeader, secret, dedup);
     expect(transition.tier).toBe('pro');
     expect(transition.entitlementState).toBe('active');
+    expect(transition.subscriptionId).toBe('sub_paddle_123');
 
     // Duplicate replay must be rejected
-    expect(() => parseVerifiedLemonSqueezyWebhook(activePayload, validSig, secret, dedup)).toThrow(/Duplicate webhook/i);
+    expect(() => parseVerifiedPaddleWebhook(activePayload, validHeader, secret, dedup)).toThrow(/Duplicate webhook/i);
 
-    // Failed payment revokes tier to free (past_due)
+    // Payment failed -> past_due, tier revoked to free
     const failedPayload = JSON.stringify({
-      meta: { event_name: 'subscription_payment_failed' },
+      event_id: 'evt_paddle_fail_1',
+      event_type: 'subscription.past_due',
+      occurred_at: '2026-11-20T14:00:00Z',
       data: {
-        id: 'sub_100',
-        attributes: {
-          product_id: 'prod_pro_2',
-          variant_id: 'var_pro_2',
-          status: 'past_due',
-          updated_at: '2026-11-19T12:00:00Z',
-        },
+        id: 'sub_paddle_123',
+        status: 'past_due',
+        items: [{ price: { id: 'pri_pro_xyz789' }, quantity: 1 }],
       },
     });
-    const failedTransition = parseVerifiedLemonSqueezyWebhook(failedPayload, sign(failedPayload), secret, dedup);
+    const failedTransition = parseVerifiedPaddleWebhook(
+      failedPayload,
+      signPaddle(failedPayload, now),
+      secret,
+      dedup
+    );
     expect(failedTransition.tier).toBe('free');
     expect(failedTransition.entitlementState).toBe('past_due');
 
-    // Cancelled subscription revokes tier to free
-    const cancelledPayload = JSON.stringify({
-      meta: { event_name: 'subscription_cancelled' },
+    // Canceled -> cancelled, tier revoked to free
+    const cancelPayload = JSON.stringify({
+      event_id: 'evt_paddle_cancel_1',
+      event_type: 'subscription.canceled',
+      occurred_at: '2026-11-20T16:00:00Z',
       data: {
-        id: 'sub_100',
-        attributes: {
-          product_id: 'prod_pro_2',
-          variant_id: 'var_pro_2',
-          status: 'cancelled',
-          updated_at: '2026-11-20T12:00:00Z',
-        },
+        id: 'sub_paddle_123',
+        status: 'canceled',
+        items: [{ price: { id: 'pri_pro_xyz789' }, quantity: 1 }],
       },
     });
-    const cancelledTransition = parseVerifiedLemonSqueezyWebhook(cancelledPayload, sign(cancelledPayload), secret, dedup);
-    expect(cancelledTransition.tier).toBe('free');
-    expect(cancelledTransition.entitlementState).toBe('cancelled');
+    const cancelTransition = parseVerifiedPaddleWebhook(
+      cancelPayload,
+      signPaddle(cancelPayload, now),
+      secret,
+      dedup
+    );
+    expect(cancelTransition.tier).toBe('free');
+    expect(cancelTransition.entitlementState).toBe('cancelled');
+  });
+
+  it('retains backward compatibility for legacy Lemon Squeezy webhook signature verification', () => {
+    const secret = 'whsec_legacy_lemon_secret';
+    const body = JSON.stringify({ meta: { event_name: 'subscription_created' } });
+    const sig = crypto.createHmac('sha256', secret).update(body, 'utf8').digest('hex');
+
+    expect(verifyLemonSqueezyWebhookSignature(body, sig, secret)).toBe(true);
+    expect(verifyLemonSqueezyWebhookSignature(body, '0'.repeat(64), secret)).toBe(false);
   });
 });
