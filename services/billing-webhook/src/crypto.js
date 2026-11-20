@@ -108,3 +108,25 @@ export async function verifyLicensePayload(licenseObj, sigHex, spkiHex) {
     return false;
   }
 }
+
+/**
+ * Generates a high-entropy commercial license key with at least 192 bits of
+ * cryptographically secure random material (24 bytes = 48 hex characters).
+ * Formatted as: SCANDIUM-<TIER>-<8HEX>-<8HEX>-<8HEX>-<8HEX>-<8HEX>-<8HEX>
+ */
+export function generateStrongLicenseKey(tier) {
+  const prefix = tier === 'pro' ? 'SCANDIUM-PRO' : 'SCANDIUM-PLUS';
+  const entropy = new Uint8Array(24); // 24 bytes = 192 bits of CSPRNG randomness
+  crypto.getRandomValues(entropy);
+  const hex = bytesToHex(entropy).toUpperCase();
+  const chunks = [
+    hex.slice(0, 8),
+    hex.slice(8, 16),
+    hex.slice(16, 24),
+    hex.slice(24, 32),
+    hex.slice(32, 40),
+    hex.slice(40, 48),
+  ];
+  return `${prefix}-${chunks.join('-')}`;
+}
+
