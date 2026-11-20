@@ -1,144 +1,105 @@
 /**
- * Scandium Assistant - Production Lemon Squeezy Webhook Receiver
+ * Scandium Assistant - Provider-Independent Licensing & Paddle Webhook Service
  *
- * Edge-deployed Cloudflare Worker backed by Upstash Redis for durable,
- * persistent event deduplication and entitlement state synchronization.
- *
- * Enforces:
- * 1. Constant-time HMAC-SHA256 signature verification (X-Signature).
- * 2. Strict replay rejection via Upstash Redis SET NX (7-day TTL).
- * 3. Exact product/variant ID validation (never trusts display names).
- * 4. Canonical state transitions matching Scandium desktop client.
+ * Edge Cloudflare Worker architecture:
+ * 1. Paddle Billing Webhook Ingestion with HMAC-SHA256 & replay timestamp protection.
+ * 2. Atomic event deduplication and out-of-order event protection on Upstash Redis.
+ * 3. Provider-independent licensing service (activation, validation, deactivation).
+ * 4. Asymmetric Ed25519 cryptographic signing of client entitlement responses.
+ * 5. Strict fail-closed health reporting.
  */
 
-// Constant-time string/hex comparison
-function timingSafeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
+import { sha256Hex } from './crypto.js';
+import { verifyPaddleSignature, parsePaddleEvent } from './paddle.js';
+import {
+  redisCommand,
+  isEventProcessed,
+  markEventProcessed,
+  isEventNewer,
+  getSubscription,
+  saveSubscription,
+  saveLicenseByHash,
+} from './storage.js';
+import {
+  handleActivate,
+  handleValidate,
+  handleDeactivate,
+} from './licensing.js';
 
-// Compute HMAC-SHA256 hex digest using Web Crypto API
-async function computeHmacSha256Hex(secret, message) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(secret.trim()),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, enc.encode(message));
-  const hashArray = Array.from(new Uint8Array(signature));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Verify Lemon Squeezy signature
-async function verifySignature(rawBody, signatureHeader, secret) {
-  if (!secret || typeof secret !== 'string' || !secret.trim()) return false;
-  if (!signatureHeader || typeof signatureHeader !== 'string') return false;
-  const cleanSig = signatureHeader.trim().toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(cleanSig)) return false;
-  if (rawBody === undefined || rawBody === null || rawBody.length === 0) return false;
-
-  const expectedHex = await computeHmacSha256Hex(secret, rawBody);
-  return timingSafeEqual(expectedHex, cleanSig);
-}
-
-// Upstash Redis command runner
-async function redisCommand(url, token, command) {
-  const res = await fetch(`${url}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(command),
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Upstash Redis error (${res.status}): ${text}`);
-  }
-  const data = await res.json();
-  return data.result;
 }
 
-// Resolve tier based on configured product + variant ID pairs
-function resolveConfiguredTier(productId, variantId, env) {
-  const plusProduct = (env.LEMON_PLUS_PRODUCT_ID || '').trim();
-  const plusVariant = (env.LEMON_PLUS_VARIANT_ID || '').trim();
-  const proProduct = (env.LEMON_PRO_PRODUCT_ID || '').trim();
-  const proVariant = (env.LEMON_PRO_VARIANT_ID || '').trim();
-
-  if (proProduct && proVariant && productId === proProduct && variantId === proVariant) return 'pro';
-  if (plusProduct && plusVariant && productId === plusProduct && variantId === plusVariant) return 'plus';
-  return 'free';
+function generateLicenseKey(tier) {
+  const prefix = tier === 'pro' ? 'SCANDIUM-PRO' : 'SCANDIUM-PLUS';
+  const randA = crypto.randomUUID().slice(0, 8).toUpperCase();
+  const randB = crypto.randomUUID().slice(9, 13).toUpperCase();
+  return `${prefix}-${randA}-${randB}`;
 }
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Root Info
+    // Root info
     if (url.pathname === '/' && request.method === 'GET') {
-      return new Response(
-        JSON.stringify({
-          service: 'Scandium Billing Webhook Receiver',
-          version: '1.0.3',
-          status: 'online',
-          repository: 'https://github.com/MokuLakshithReddy/Scandium-Assistant',
-          docs: 'https://github.com/MokuLakshithReddy/Scandium-Assistant/blob/main/docs/billing/SETUP.md',
-        }, null, 2),
-        { headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse({
+        service: 'Scandium Licensing & Paddle Webhook Backend',
+        version: '1.0.3',
+        status: 'online',
+        provider: 'Paddle Billing (Merchant of Record)',
+        architecture: 'provider-independent',
+        repository: 'https://github.com/MokuLakshithReddy/Scandium-Assistant',
+        docs: 'https://github.com/MokuLakshithReddy/Scandium-Assistant/blob/main/docs/billing/SETUP.md',
+      });
     }
 
-    // Health check with Upstash Redis ping
+    // Health check distinguishing all subsystem dependencies
     if (url.pathname === '/health' && request.method === 'GET') {
       let redisStatus = 'unconfigured';
       if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) {
         try {
-          const pong = await redisCommand(env.UPSTASH_REDIS_REST_URL, env.UPSTASH_REDIS_REST_TOKEN, ['PING']);
+          const pong = await redisCommand(env, ['PING']);
           redisStatus = pong === 'PONG' ? 'connected' : 'error';
         } catch (err) {
           redisStatus = `failed: ${err.message}`;
         }
       }
 
-      const healthy = redisStatus === 'connected' || redisStatus === 'unconfigured';
-      return new Response(
-        JSON.stringify({
-          status: healthy ? 'healthy' : 'degraded',
+      const paddleConfigured = Boolean(env.PADDLE_WEBHOOK_SECRET_KEY?.trim());
+      const signingKeyConfigured = Boolean(env.SCANDIUM_LICENSING_PRIVATE_KEY?.trim());
+      const isHealthy = redisStatus === 'connected' && paddleConfigured && signingKeyConfigured;
+
+      return jsonResponse(
+        {
+          status: isHealthy ? 'healthy' : 'degraded',
           timestamp: new Date().toISOString(),
           edgeRegion: request.cf?.colo || 'local',
-          redis: redisStatus,
-          lemonSqueezyWebhookConfigured: Boolean(env.LEMON_SQUEEZY_WEBHOOK_SECRET),
-        }, null, 2),
-        {
-          status: healthy ? 200 : 503,
-          headers: { 'Content-Type': 'application/json' },
-        }
+          subsystems: {
+            redis: redisStatus,
+            paddleWebhook: paddleConfigured ? 'configured' : 'unconfigured',
+            licensingSigningKey: signingKeyConfigured ? 'configured' : 'unconfigured',
+          },
+          productionReady: isHealthy,
+        },
+        isHealthy ? 200 : 503
       );
     }
 
-    // Lemon Squeezy Webhook Ingestion Endpoint
-    if (url.pathname === '/api/webhook/lemonsqueezy' && request.method === 'POST') {
-      const signatureHeader = request.headers.get('x-signature');
-      const webhookSecret = env.LEMON_SQUEEZY_WEBHOOK_SECRET || '';
+    // Official Paddle Billing Webhook Ingestion Endpoint
+    if (url.pathname === '/api/webhook/paddle' && request.method === 'POST') {
+      const signatureHeader = request.headers.get('paddle-signature');
+      const webhookSecret = env.PADDLE_WEBHOOK_SECRET_KEY || '';
 
       const rawBody = await request.text();
 
-      // 1. Verify HMAC-SHA256 signature
-      const isValidSig = await verifySignature(rawBody, signatureHeader, webhookSecret);
+      // 1. Signature & replay protection check
+      const isValidSig = await verifyPaddleSignature(rawBody, signatureHeader, webhookSecret);
       if (!isValidSig) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid or missing Lemon Squeezy webhook signature' }),
-          { status: 401, headers: { 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse({ error: 'Invalid or missing Paddle webhook signature' }, 401);
       }
 
       // 2. Parse payload
@@ -146,119 +107,104 @@ export default {
       try {
         parsed = JSON.parse(rawBody);
       } catch {
-        return new Response(
-          JSON.stringify({ error: 'Malformed JSON payload' }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse({ error: 'Malformed JSON payload' }, 400);
       }
 
-      const eventName = String(parsed?.meta?.event_name || '').trim();
-      const rawEventId = String(parsed?.meta?.custom_data?.event_id || parsed?.data?.id || '').trim();
-      const eventTimestamp = String(parsed?.data?.attributes?.updated_at || parsed?.data?.attributes?.created_at || '').trim();
-      const eventId = rawEventId ? `${eventName}:${rawEventId}:${eventTimestamp}` : '';
-
-      if (!eventName || !eventId) {
-        return new Response(
-          JSON.stringify({ error: 'Missing required webhook event metadata (event_name or event_id)' }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
+      let transition;
+      try {
+        transition = parsePaddleEvent(parsed, env);
+      } catch (err) {
+        return jsonResponse({ error: err.message }, 400);
       }
 
-      // 3. Durable Event Deduplication via Upstash Redis SET NX (7-day TTL)
-      const redisUrl = env.UPSTASH_REDIS_REST_URL;
-      const redisToken = env.UPSTASH_REDIS_REST_TOKEN;
+      // 3. Deduplication check
+      const eventId = transition.eventId;
+      const alreadyProcessed = await isEventProcessed(env, eventId);
+      if (alreadyProcessed) {
+        return jsonResponse({
+          status: 'duplicate_ignored',
+          eventId,
+          message: 'Event was already processed',
+        });
+      }
 
-      if (redisUrl && redisToken) {
-        const dedupKey = `scandium:webhook:event:${eventId}`;
-        // SET key 1 EX 604800 NX (returns 'OK' if newly set, null if key already existed)
-        const claim = await redisCommand(redisUrl, redisToken, ['SET', dedupKey, '1', 'EX', '604800', 'NX']);
-        if (!claim) {
-          return new Response(
-            JSON.stringify({
-              status: 'duplicate_ignored',
-              message: `Event ID ${eventId} was already processed and stored in Upstash Redis deduplication cache.`,
+      // 4. Out-of-order check
+      let activeKey = transition.licenseKey;
+      if (transition.subscriptionId) {
+        const existing = await getSubscription(env, transition.subscriptionId);
+        if (existing) {
+          // If the incoming event is older than our existing record, do not overwrite newer state
+          if (!isEventNewer(existing.occurredAt, transition.occurredAt)) {
+            // Acknowledge delivery to Paddle so it doesn't retry
+            await markEventProcessed(env, eventId);
+            return jsonResponse({
+              status: 'out_of_order_ignored',
               eventId,
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } }
-          );
+              message: 'Existing subscription state is newer than incoming event',
+            });
+          }
+          if (!activeKey && existing.licenseKey) {
+            activeKey = existing.licenseKey;
+          }
         }
       }
 
-      // 4. Map entitlement transition
-      const attrs = parsed?.data?.attributes || {};
-      const productId = String(attrs.product_id ?? '').trim();
-      const variantId = String(attrs.variant_id ?? '').trim();
-      const resolvedTier = resolveConfiguredTier(productId, variantId, env);
-      const status = String(attrs.status || '').trim().toLowerCase();
-
-      let entitlementState = 'disabled';
-      if (eventName === 'subscription_payment_failed' || status === 'past_due' || status === 'unpaid') {
-        entitlementState = 'past_due';
-      } else if (eventName === 'subscription_expired' || status === 'expired') {
-        entitlementState = 'expired';
-      } else if (eventName === 'subscription_cancelled' || status === 'cancelled') {
-        entitlementState = 'cancelled';
-      } else if (
-        (eventName === 'subscription_created' ||
-          eventName === 'subscription_updated' ||
-          eventName === 'subscription_payment_success' ||
-          eventName === 'license_key_updated') &&
-        (status === 'active' || status === 'on_trial') &&
-        resolvedTier !== 'free'
-      ) {
-        entitlementState = 'active';
+      // 5. Generate secure license key if not present
+      if (!activeKey) {
+        activeKey = generateLicenseKey(transition.tier);
       }
 
-      const effectiveTier = entitlementState === 'active' ? resolvedTier : 'free';
-      const licenseKey = typeof attrs.key === 'string' ? attrs.key.trim() : undefined;
-      const userEmail = typeof attrs.user_email === 'string' ? attrs.user_email.trim().toLowerCase() : undefined;
-      const subscriptionId = String(attrs.subscription_id || parsed?.data?.id || '').trim();
-
-      const transition = {
-        eventId,
-        eventName,
-        tier: effectiveTier,
-        entitlementState,
-        productId,
-        variantId,
-        subscriptionId: subscriptionId || undefined,
-        licenseKey: licenseKey || undefined,
-        userEmail: userEmail || undefined,
-        renewsAt: attrs.renews_at || null,
-        endsAt: attrs.ends_at || null,
-        processedAt: new Date().toISOString(),
+      // 6. Persist subscription and license records
+      const licenseRecord = {
+        licenseKey: activeKey,
+        subscriptionId: transition.subscriptionId,
+        tier: transition.tier,
+        status: transition.entitlementState,
+        customerEmail: transition.customerEmail,
+        priceId: transition.priceId,
+        expiresAt: transition.expiresAt,
+        occurredAt: transition.occurredAt,
+        updatedAt: new Date().toISOString(),
       };
 
-      // 5. Persist synchronized entitlement record to Upstash Redis
-      if (redisUrl && redisToken) {
-        const payloadJson = JSON.stringify(transition);
-        const persistTasks = [];
-
-        if (subscriptionId) {
-          persistTasks.push(redisCommand(redisUrl, redisToken, ['SET', `scandium:entitlement:sub:${subscriptionId}`, payloadJson]));
-        }
-        if (userEmail) {
-          persistTasks.push(redisCommand(redisUrl, redisToken, ['SET', `scandium:entitlement:email:${userEmail}`, payloadJson]));
-        }
-        if (licenseKey) {
-          persistTasks.push(redisCommand(redisUrl, redisToken, ['SET', `scandium:entitlement:key:${licenseKey}`, payloadJson]));
-        }
-
-        await Promise.all(persistTasks);
+      if (transition.subscriptionId) {
+        await saveSubscription(env, transition.subscriptionId, licenseRecord);
       }
 
-      return new Response(
-        JSON.stringify({
-          status: 'success',
-          transition,
-        }, null, 2),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+      const keyHash = await sha256Hex(activeKey);
+      await saveLicenseByHash(env, keyHash, licenseRecord);
+
+      if (transition.customerEmail) {
+        await redisCommand(env, [
+          'SET',
+          `scandium:customer:${transition.customerEmail.toLowerCase().trim()}`,
+          activeKey,
+        ]);
+      }
+
+      // 7. Mark event as processed (only AFTER successful persistence)
+      await markEventProcessed(env, eventId);
+
+      return jsonResponse({
+        status: 'success',
+        transition,
+        licenseKey: activeKey,
+      });
     }
 
-    return new Response(JSON.stringify({ error: 'Not found' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // Provider-Independent Desktop Client Licensing Endpoints
+    if (url.pathname === '/api/v1/license/activate' && request.method === 'POST') {
+      return await handleActivate(request, env);
+    }
+
+    if (url.pathname === '/api/v1/license/validate' && request.method === 'POST') {
+      return await handleValidate(request, env);
+    }
+
+    if (url.pathname === '/api/v1/license/deactivate' && request.method === 'POST') {
+      return await handleDeactivate(request, env);
+    }
+
+    return jsonResponse({ error: 'Endpoint not found' }, 404);
   },
 };

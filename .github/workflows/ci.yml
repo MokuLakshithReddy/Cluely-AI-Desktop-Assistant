@@ -96,6 +96,8 @@ jobs:
         run: node scripts/validate-device-evidence.cjs docs/testing/DEVICE_EVIDENCE_CAMPAIGN.json --allow-incomplete
       - name: Run Vitest Suite
         run: npm test
+      - name: Run Billing & Licensing Backend Tests
+        run: npm run test:billing
       - name: Build Renderer and Electron Bundle
         run: npm run build
       - name: Run Verified Electron Smoke Test (Clean exit code 0)

@@ -16,7 +16,7 @@
 ### Core Architectural Principles
 1. **$0 Owner-Paid AI Infrastructure**: Language inference runs locally via **Ollama** and speech recognition runs locally via **whisper.cpp**. The software author pays \$0 for customer tokens or cloud transcription.
 2. **Customer BYOK (Bring Your Own Key)**: Customers requiring cloud LLMs (Gemini, OpenAI, Claude, Groq) configure their own personal credentials stored in OS-backed hardware keychains (Windows DPAPI, macOS Keychain).
-3. **Turnkey Commercial Monetization**: Integrated with **Lemon Squeezy** as Merchant of Record with automated public license validation, hardware-based instance binding, and a 7-day offline grace period.
+3. **Turnkey Commercial Monetization**: Integrated with **Paddle** as Merchant of Record paired with Scandium's provider-independent licensing service using Ed25519 asymmetric cryptography, hardware-based instance binding, and a 7-day offline grace period.
 4. **Privacy-First Desktop Understanding**: Dual-channel audio loopback and opt-in desktop screen analysis with client-side sensitive content redaction. No pixels or audio leave your computer in Local Mode.
 
 ---
@@ -333,7 +333,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 7 |
 | `ipc-security.test.ts` | Sender validation, request identity and payload limits | 35 |
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
-| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 15 |
+| `license-manager.test.ts` | Provider-Independent Licensing & Offline Grace Subsystem | 14 |
 | `lifecycle-shutdown.test.ts` | Lifecycle Shutdown Coordinator & Application Lifecycle Guarantees | 8 |
 | `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 14 |
 | `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 19 |

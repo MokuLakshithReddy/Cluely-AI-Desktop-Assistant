@@ -2,16 +2,20 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import http from 'http';
 import https from 'https';
 import { app } from 'electron';
 import { SubscriptionTier, TierEntitlements, getEntitlements, isDeveloperEntitlementOverrideEnabled } from '../domains/entitlements';
 import { encryptStoragePayload, decryptStoragePayload } from './storage-encryption';
-import { BILLING_PRODUCTS } from '../config/billing-products';
+import { PADDLE_PRODUCTS } from '../config/billing-products';
+import { getLicensingServiceUrl } from '../config/licensing-keys';
+import { verifySignedLicense } from './licensing-signature';
 
 export interface LicenseRecord {
   licenseKey: string;
   instanceId: string;
   instanceName: string;
+  hardwareFingerprint: string;
   status: 'active' | 'inactive' | 'expired' | 'disabled' | 'grace_period';
   tier: SubscriptionTier;
   customerName?: string;
@@ -21,19 +25,17 @@ export interface LicenseRecord {
   expiresAt: string | null;
   lastValidatedAt: number;
   graceRemainingDays?: number;
+  signature?: string;
 }
 
 export class LicenseManager {
   private licenseFile: string;
   private currentLicense: LicenseRecord | null = null;
   private readonly GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-  private readonly LEMON_API_BASE = 'https://api.lemonsqueezy.com/v1/licenses';
 
   constructor() {
     const baseDir = app?.getPath ? app.getPath('userData') : path.join(process.cwd(), '.scandium');
     this.licenseFile = path.join(baseDir, 'scandium-license.enc');
-    // Note: On Windows and Linux, safeStorage is only available after app.whenReady().
-    // We attempt initial load for test environments, but full initialization is invoked via init() after ready.
     try {
       this.loadCachedLicense();
     } catch {}
@@ -69,6 +71,11 @@ export class LicenseManager {
     if (!this.currentLicense) return 'free';
 
     // Machine-binding guard: reject a cached license record copied from another machine.
+    const expectedFp = this.getHardwareFingerprint();
+    if (this.currentLicense.hardwareFingerprint && this.currentLicense.hardwareFingerprint !== expectedFp) {
+      console.warn('[LicenseManager] Cached license hardware fingerprint does not match this machine. Failing closed to Free tier.');
+      return 'free';
+    }
     if (this.currentLicense.instanceName && this.currentLicense.instanceName !== this.getInstanceName()) {
       console.warn('[LicenseManager] Cached license instance does not match this machine. Failing closed to Free tier.');
       return 'free';
@@ -103,8 +110,8 @@ export class LicenseManager {
   public isDeveloperModeEnabled(): boolean {
     return isDeveloperEntitlementOverrideEnabled(
       process.env.SCANDIUM_DEVELOPER_MODE,
-      app.isPackaged,
-      process.env.NODE_ENV,
+      app?.isPackaged ?? false,
+      process.env.NODE_ENV
     );
   }
 
@@ -157,42 +164,67 @@ export class LicenseManager {
     };
   }
 
+  /**
+   * Activates a license key with the provider-independent Scandium Licensing Service.
+   * Enforces cryptographic Ed25519 signature verification on the received entitlement response.
+   */
   public async activateLicense(licenseKey: string): Promise<LicenseRecord> {
     const trimmed = licenseKey.trim();
     if (!trimmed) throw new Error('License key cannot be empty');
 
+    const hardwareFingerprint = this.getHardwareFingerprint();
     const instanceName = this.getInstanceName();
-    const payload = new URLSearchParams({
-      license_key: trimmed,
-      instance_name: instanceName,
-    });
+    let appVersion = '1.0.3';
+    try {
+      const v = app?.getVersion?.();
+      if (typeof v === 'string' && v.trim()) appVersion = v.trim();
+    } catch {}
 
-    const res = await this.postLemonSqueezy('/activate', payload);
-    if (!res.activated) {
+    const payload = {
+      licenseKey: trimmed,
+      instanceName,
+      hardwareFingerprint,
+      appVersion,
+      platform: process.platform,
+    };
+
+    const res = await this.postLicensingService('/api/v1/license/activate', payload);
+    if (!res.success) {
       throw new Error(res.error || 'Failed to activate license key');
     }
 
-    const lk = res.license_key || {};
-    const instance = res.instance || {};
-    const meta = res.meta || {};
+    const lic = res.license || {};
+    const signature = res.signature;
 
-    const tier = this.resolveTierFromMeta(meta);
+    // Cryptographic signature verification: verify Ed25519 signature over canonical license object
+    if (!verifySignedLicense(lic, signature)) {
+      throw new Error('[LicenseManager] Untrusted license response: cryptographic Ed25519 signature verification failed.');
+    }
+
+    // Machine-binding verification: response must be bound to this hardware fingerprint
+    if (lic.hardwareFingerprint && lic.hardwareFingerprint !== hardwareFingerprint) {
+      throw new Error('[LicenseManager] License activation instance does not match this machine hardware fingerprint.');
+    }
+
+    const tier: SubscriptionTier = lic.tier === 'pro' ? 'pro' : lic.tier === 'plus' ? 'plus' : 'free';
     if (tier === 'free') {
-      throw new Error('This license does not match a configured Scandium Plus or Pro product. Verify the exact product and variant IDs before activating it.');
+      throw new Error('This license does not match a configured Scandium Plus or Pro plan.');
     }
 
     const record: LicenseRecord = {
       licenseKey: trimmed,
-      instanceId: instance.id || '',
+      instanceId: lic.instanceId || instanceName,
       instanceName,
-      status: lk.status === 'active' ? 'active' : 'inactive',
+      hardwareFingerprint,
+      status: lic.status === 'active' ? 'active' : 'inactive',
       tier,
-      customerName: meta.customer_name,
-      customerEmail: meta.customer_email,
-      activationLimit: lk.activation_limit || 1,
-      activationUsage: lk.activation_usage || 1,
-      expiresAt: lk.expires_at || null,
+      customerName: lic.customerName,
+      customerEmail: lic.customerEmail,
+      activationLimit: lic.activationLimit || (tier === 'pro' ? 5 : 2),
+      activationUsage: lic.activationUsage || 1,
+      expiresAt: lic.expiresAt || null,
       lastValidatedAt: Date.now(),
+      signature,
     };
 
     this.currentLicense = record;
@@ -200,6 +232,10 @@ export class LicenseManager {
     return record;
   }
 
+  /**
+   * Validates the active license with the Scandium Licensing Service.
+   * If the service is unreachable (network failure / 429 / 5xx), engages the 7-day offline grace period.
+   */
   public async validateLicense(): Promise<LicenseRecord | null> {
     if (!this.currentLicense) return null;
 
@@ -211,32 +247,43 @@ export class LicenseManager {
       return this.currentLicense;
     }
 
-    const payload = new URLSearchParams({
-      license_key: this.currentLicense.licenseKey,
-      instance_id: this.currentLicense.instanceId,
-    });
+    const hardwareFingerprint = this.getHardwareFingerprint();
+    const payload = {
+      licenseKey: this.currentLicense.licenseKey,
+      instanceName: this.currentLicense.instanceName,
+      hardwareFingerprint,
+    };
 
     try {
-      const res = await this.postLemonSqueezy('/validate', payload);
-      const lk = res.license_key || {};
-      const isValid = res.valid === true && lk.status === 'active';
+      const res = await this.postLicensingService('/api/v1/license/validate', payload);
+      const lic = res.license || {};
+      const isValid = res.valid === true && lic.status === 'active';
 
       if (isValid) {
-        const verifiedTier = this.resolveTierFromMeta(res.meta || {});
+        if (!verifySignedLicense(lic, res.signature)) {
+          console.warn('[LicenseManager] Validation signature verification failed. Failing closed.');
+          this.currentLicense.status = 'disabled';
+          this.saveCachedLicense();
+          return this.currentLicense;
+        }
+
+        const verifiedTier: SubscriptionTier = lic.tier === 'pro' ? 'pro' : lic.tier === 'plus' ? 'plus' : 'free';
         if (verifiedTier === 'free') {
           this.currentLicense.tier = 'free';
           this.currentLicense.status = 'disabled';
           this.saveCachedLicense();
           return this.currentLicense;
         }
+
         this.currentLicense.tier = verifiedTier;
         this.currentLicense.status = 'active';
-        this.currentLicense.expiresAt = lk.expires_at || null;
-        this.currentLicense.activationLimit = lk.activation_limit || this.currentLicense.activationLimit;
-        this.currentLicense.activationUsage = lk.activation_usage || this.currentLicense.activationUsage;
+        this.currentLicense.expiresAt = lic.expiresAt || null;
+        this.currentLicense.activationLimit = lic.activationLimit || this.currentLicense.activationLimit;
+        this.currentLicense.activationUsage = lic.activationUsage || this.currentLicense.activationUsage;
         this.currentLicense.lastValidatedAt = Date.now();
+        this.currentLicense.signature = res.signature;
       } else {
-        this.currentLicense.status = lk.status || 'expired';
+        this.currentLicense.status = lic.status || 'expired';
       }
 
       this.saveCachedLicense();
@@ -261,15 +308,19 @@ export class LicenseManager {
     }
   }
 
+  /**
+   * Deactivates the active license from this device.
+   */
   public async deactivateLicense(): Promise<void> {
     if (!this.currentLicense) return;
 
     try {
-      const payload = new URLSearchParams({
-        license_key: this.currentLicense.licenseKey,
-        instance_id: this.currentLicense.instanceId,
-      });
-      await this.postLemonSqueezy('/deactivate', payload);
+      const payload = {
+        licenseKey: this.currentLicense.licenseKey,
+        instanceName: this.currentLicense.instanceName,
+        hardwareFingerprint: this.getHardwareFingerprint(),
+      };
+      await this.postLicensingService('/api/v1/license/deactivate', payload);
     } catch (e) {
       console.warn('[LicenseManager] Deactivation remote notice failed:', e);
     } finally {
@@ -280,38 +331,22 @@ export class LicenseManager {
     }
   }
 
-  private resolveTierFromMeta(meta: any): SubscriptionTier {
-    const productId = String(meta?.product_id ?? '').trim();
-    const variantId = String(meta?.variant_id ?? '').trim();
-
-    // Exact product + variant pairs are required. Display names can be changed
-    // by the store owner and must never be used to grant paid entitlements.
-    const plusProductId = String(process.env.LEMON_PLUS_PRODUCT_ID || BILLING_PRODUCTS.plus.productId || '').trim();
-    const plusVariantId = String(process.env.LEMON_PLUS_VARIANT_ID || BILLING_PRODUCTS.plus.variantId || '').trim();
-    const proProductId = String(process.env.LEMON_PRO_PRODUCT_ID || BILLING_PRODUCTS.pro.productId || '').trim();
-    const proVariantId = String(process.env.LEMON_PRO_VARIANT_ID || BILLING_PRODUCTS.pro.variantId || '').trim();
-
-    const plusConfigured = Boolean(plusProductId && plusVariantId);
-    const proConfigured = Boolean(proProductId && proVariantId);
-
-    if (proConfigured && productId === proProductId && variantId === proVariantId) return 'pro';
-    if (plusConfigured && productId === plusProductId && variantId === plusVariantId) return 'plus';
-
-    // Unknown, unconfigured or mismatched pairs always fail closed to Free.
-    console.warn('[LicenseManager] Unrecognized or unconfigured product/variant pair. Failing closed to Free tier:', {
-      productId, variantId, plusConfigured, proConfigured,
-    });
-    return 'free';
-  }
-
   public isPaidBillingConfigured(): { plus: boolean; pro: boolean } {
-    const plusProductId = String(process.env.LEMON_PLUS_PRODUCT_ID || BILLING_PRODUCTS.plus.productId || '').trim();
-    const plusVariantId = String(process.env.LEMON_PLUS_VARIANT_ID || BILLING_PRODUCTS.plus.variantId || '').trim();
-    const proProductId = String(process.env.LEMON_PRO_PRODUCT_ID || BILLING_PRODUCTS.pro.productId || '').trim();
-    const proVariantId = String(process.env.LEMON_PRO_VARIANT_ID || BILLING_PRODUCTS.pro.variantId || '').trim();
+    const plusPriceId = String(
+      process.env.PADDLE_PLUS_PRICE_ID ||
+      PADDLE_PRODUCTS.plus.priceId ||
+      process.env.LEMON_PLUS_PRODUCT_ID ||
+      ''
+    ).trim();
+    const proPriceId = String(
+      process.env.PADDLE_PRO_PRICE_ID ||
+      PADDLE_PRODUCTS.pro.priceId ||
+      process.env.LEMON_PRO_PRODUCT_ID ||
+      ''
+    ).trim();
     return {
-      plus: Boolean(plusProductId && plusVariantId),
-      pro: Boolean(proProductId && proVariantId),
+      plus: Boolean(plusPriceId),
+      pro: Boolean(proPriceId),
     };
   }
 
@@ -347,24 +382,30 @@ export class LicenseManager {
     }
   }
 
-  private postLemonSqueezy(endpoint: string, params: URLSearchParams): Promise<any> {
+  private postLicensingService(endpoint: string, jsonPayload: Record<string, any>): Promise<any> {
     return new Promise((resolve, reject) => {
-      const postData = params.toString();
-      const parsed = new URL(`${this.LEMON_API_BASE}${endpoint}`);
-      let version = '1.0.2';
+      const postData = JSON.stringify(jsonPayload);
+      const baseUrl = getLicensingServiceUrl();
+      const parsed = new URL(`${baseUrl}${endpoint}`);
+      let version = '1.0.3';
       try {
         const v = app?.getVersion?.();
         if (typeof v === 'string' && v.trim()) version = v.trim();
       } catch {}
 
-      const req = https.request(
+      const isHttps = parsed.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      const req = client.request(
         {
+          protocol: parsed.protocol,
           hostname: parsed.hostname,
-          path: parsed.pathname,
+          port: parsed.port || (isHttps ? 443 : 80),
+          path: `${parsed.pathname}${parsed.search}`,
           method: 'POST',
           headers: {
             'Accept': 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(postData),
             'User-Agent': `Scandium-Desktop-Assistant/${version}`,
           },
@@ -375,16 +416,15 @@ export class LicenseManager {
           res.on('data', chunk => (data += chunk));
           res.on('end', () => {
             const statusCode = res.statusCode || 0;
-            // Treat transient rate-limit / upstream outage statuses as retryable network failures
-            // so validateLicense() engages the 7-day offline grace period rather than revoking an active license.
+            // Transient rate-limits / upstream outages trigger offline grace in validateLicense()
             if (statusCode === 429 || (statusCode >= 500 && statusCode <= 599)) {
-              return reject(new Error(`Lemon Squeezy transient HTTP ${statusCode}`));
+              return reject(new Error(`Scandium Licensing Service transient HTTP ${statusCode}`));
             }
             try {
               const parsedJson = JSON.parse(data);
               resolve(parsedJson);
             } catch (e) {
-              reject(new Error(`Lemon Squeezy response parse error (HTTP ${statusCode}): ${data.slice(0, 100)}`));
+              reject(new Error(`Licensing service response parse error (HTTP ${statusCode}): ${data.slice(0, 100)}`));
             }
           });
         }
@@ -393,7 +433,7 @@ export class LicenseManager {
       req.on('error', reject);
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Lemon Squeezy API request timed out'));
+        reject(new Error('Scandium Licensing Service request timed out'));
       });
 
       req.write(postData);
