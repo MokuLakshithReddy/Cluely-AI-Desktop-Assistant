@@ -6,7 +6,7 @@
  */
 
 import { redisCommand, getLicenseByHash } from './storage.js';
-import { maskLicenseKey, decryptLicenseKey } from './crypto.js';
+import { maskLicenseKey, decryptLicenseKey, encryptLicenseKey } from './crypto.js';
 
 /**
  * Dispatches transactional email via Resend, Postmark, or SendGrid.
@@ -185,11 +185,8 @@ export async function dispatchLicenseDelivery(env, {
 /**
  * Dispatches 6-digit claim verification code to customer email.
  */
-export async function dispatchClaimVerificationCode(env, { email, orderId, code }) {
-  if (!email || !code) return { sent: false, error: 'Missing email or verification code' };
-  const cleanEmail = email.toLowerCase().trim();
-
-  const html = `
+function buildClaimCodeEmailHtml({ orderId, code }) {
+  return `
     <!DOCTYPE html>
     <html>
     <head><meta charset="utf-8"></head>
@@ -197,43 +194,54 @@ export async function dispatchClaimVerificationCode(env, { email, orderId, code 
       <div style="max-width: 560px; margin: 0 auto; background: #0e1725; border: 1px solid rgba(153, 177, 207, 0.2); border-radius: 16px; padding: 32px;">
         <h1 style="margin: 0 0 16px; font-size: 22px; color: #64e6e1;">Your License Claim Verification Code</h1>
         <p style="color: #aab9cd; font-size: 14px; line-height: 1.6;">You requested to claim your Scandium Assistant license key for order reference <strong>${orderId}</strong>. Enter the verification code below on the claim portal:</p>
-        
         <div style="margin: 24px 0; padding: 20px; background: #142033; border: 2px dashed #64e6e1; border-radius: 8px; text-align: center;">
           <span style="font-family: monospace; font-size: 32px; font-weight: bold; color: #64e6e1; letter-spacing: 0.25em;">${code}</span>
         </div>
-
         <p style="color: #aab9cd; font-size: 13px; line-height: 1.6;">This code is valid for 15 minutes. If you did not request this claim, please ignore this email.</p>
       </div>
     </body>
     </html>
   `;
+}
 
+/**
+ * Sends the claim code and stores only encrypted retry material in the outbox.
+ */
+export async function dispatchClaimVerificationCode(env, { email, orderId, code }) {
+  if (!email || !code) return { sent: false, error: 'Missing email or verification code' };
+  const cleanEmail = email.toLowerCase().trim();
+  const html = buildClaimCodeEmailHtml({ orderId, code });
   const result = await sendEmail(env, {
     to: cleanEmail,
-    subject: `Scandium Verification Code: ${code}`,
+    subject: 'Scandium license claim verification code',
     html,
   });
+
+  let encryptedCode = null;
+  if (!result.sent) {
+    if (!env.SCANDIUM_LICENSE_ENCRYPTION_KEY?.trim()) {
+      return { sent: false, error: 'License encryption key is required to queue a claim-code retry' };
+    }
+    encryptedCode = await encryptLicenseKey(code, env.SCANDIUM_LICENSE_ENCRYPTION_KEY);
+  }
 
   const record = {
     type: 'claim_code',
     email: cleanEmail,
     orderId,
-    code,
+    encryptedCode,
     provider: result.provider,
     status: result.sent ? 'delivered' : 'pending',
     error: result.error || null,
+    retries: 0,
     dispatchedAt: new Date().toISOString(),
   };
 
-  try {
-    await redisCommand(env, [
-      'LPUSH',
-      'scandium:notifications:outbox',
-      JSON.stringify(record),
-    ]);
-  } catch (e) {
-    console.warn('[Notification] Failed to record code in Redis outbox:', e.message);
-  }
+  await redisCommand(env, [
+    'LPUSH',
+    'scandium:notifications:outbox',
+    JSON.stringify(record),
+  ]);
 
   return result;
 }
@@ -244,13 +252,21 @@ export async function dispatchClaimVerificationCode(env, { email, orderId, code 
  * attempts delivery via configured providers, and updates status.
  */
 export async function processOutbox(env, batchLimit = 10) {
-  const secretKey = env.SCANDIUM_LICENSING_PRIVATE_KEY;
+  const encryptionKey = env.SCANDIUM_LICENSE_ENCRYPTION_KEY;
+  const legacyEncryptionKey = env.SCANDIUM_LEGACY_LICENSE_ENCRYPTION_KEY ||
+    env.SCANDIUM_LICENSING_PRIVATE_KEY;
   let processed = 0;
   let delivered = 0;
   let failed = 0;
 
-  for (let i = 0; i < batchLimit; i++) {
-    const raw = await redisCommand(env, ['RPOP', 'scandium:notifications:outbox']);
+  // Snapshot queue depth so a failed item requeued during this pass is not retried
+  // repeatedly in the same invocation.
+  const queueKey = 'scandium:notifications:outbox';
+  const available = Number(await redisCommand(env, ['LLEN', queueKey])) || 0;
+  const itemsToProcess = Math.min(Math.max(0, batchLimit), available);
+
+  for (let i = 0; i < itemsToProcess; i++) {
+    const raw = await redisCommand(env, ['RPOP', queueKey]);
     if (!raw) break;
 
     let item;
@@ -261,60 +277,68 @@ export async function processOutbox(env, batchLimit = 10) {
     }
 
     processed++;
-
-    // If item is already marked delivered, archive it
     if (item.status === 'delivered') {
       delivered++;
+      await redisCommand(env, ['LPUSH', 'scandium:notifications:delivered', JSON.stringify(item)]);
       continue;
     }
 
-    // Attempt delivery for pending license deliveries
-    if (item.type === 'license_delivery' && item.licenseHash && secretKey) {
+    let sendResult = null;
+
+    if (item.type === 'license_delivery' && item.licenseHash) {
       const licenseRecord = await getLicenseByHash(env, item.licenseHash);
-      if (licenseRecord?.encryptedKey) {
-        const decryptedKey = await decryptLicenseKey(licenseRecord.encryptedKey, secretKey);
+      const keySecret = licenseRecord?.encryptionKeyVersion === 2
+        ? encryptionKey
+        : legacyEncryptionKey;
+      if (licenseRecord?.encryptedKey && keySecret) {
+        const decryptedKey = await decryptLicenseKey(licenseRecord.encryptedKey, keySecret);
         if (decryptedKey) {
           const planName = item.tier === 'pro' ? 'Scandium Pro' : 'Scandium Plus';
-          const html = buildLicenseEmailHtml({
-            planName,
-            licenseKey: decryptedKey,
-            transactionId: item.transactionId,
-            subscriptionId: item.subscriptionId,
-          });
-
-          const sendResult = await sendEmail(env, {
+          sendResult = await sendEmail(env, {
             to: item.email,
             subject: `Your ${planName} License Key`,
-            html,
+            html: buildLicenseEmailHtml({
+              planName,
+              licenseKey: decryptedKey,
+              transactionId: item.transactionId,
+              subscriptionId: item.subscriptionId,
+            }),
           });
-
-          if (sendResult.sent) {
-            item.status = 'delivered';
-            item.provider = sendResult.provider;
-            item.deliveredAt = new Date().toISOString();
-            delivered++;
-            await redisCommand(env, [
-              'LPUSH',
-              'scandium:notifications:delivered',
-              JSON.stringify(item),
-            ]);
-            continue;
-          }
         }
+      }
+    } else if (item.type === 'claim_code' && item.encryptedCode && encryptionKey) {
+      const code = await decryptLicenseKey(item.encryptedCode, encryptionKey);
+      if (code) {
+        sendResult = await sendEmail(env, {
+          to: item.email,
+          subject: 'Scandium license claim verification code',
+          html: buildClaimCodeEmailHtml({ orderId: item.orderId, code }),
+        });
       }
     }
 
-    // If delivery failed or could not be retried, requeue with incremented retry count (up to 5 retries)
-    failed++;
-    item.retries = (item.retries || 0) + 1;
-    if (item.retries < 5) {
+    if (sendResult?.sent) {
+      item.status = 'delivered';
+      item.provider = sendResult.provider;
+      item.deliveredAt = new Date().toISOString();
+      delete item.encryptedCode;
+      delivered++;
       await redisCommand(env, [
         'LPUSH',
-        'scandium:notifications:outbox',
+        'scandium:notifications:delivered',
         JSON.stringify(item),
       ]);
+      continue;
+    }
+
+    failed++;
+    item.retries = (item.retries || 0) + 1;
+    item.error = sendResult?.error || item.error || 'Delivery could not be retried';
+    if (item.retries < 5) {
+      await redisCommand(env, ['LPUSH', queueKey, JSON.stringify(item)]);
     } else {
       item.status = 'dead_letter';
+      delete item.encryptedCode;
       await redisCommand(env, [
         'LPUSH',
         'scandium:notifications:dead_letter',
