@@ -25,6 +25,7 @@ class MockRedisStore {
     this.store = new Map();
     this.lists = new Map();
     this.sentEmails = [];
+    this.failEmailDelivery = false;
   }
 
   handleCommand(cmd) {
@@ -57,6 +58,12 @@ class MockRedisStore {
       const keyCount = Number(cmd[2]);
       const keys = cmd.slice(3, 3 + keyCount);
       const args = cmd.slice(3 + keyCount);
+      if (script.includes('SCANDIUM_RATE_LIMIT_INCREMENT_V1')) {
+        const key = keys[0];
+        const current = Number(this.store.get(key) || 0) + 1;
+        this.store.set(key, String(current));
+        return [String(current), '900'];
+      }
       if (script.includes('SCANDIUM_EVENT_LOCK_ACQUIRE_V1')) {
         const [processedKey, lockKey] = keys;
         if (this.store.get(processedKey) === 'processed') return 'already_processed';
@@ -152,6 +159,9 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
       }
       if (urlStr.includes('api.sendgrid.com') || urlStr.includes('api.resend.com') || urlStr.includes('postmarkapp.com')) {
         mockRedis.sentEmails.push({ url: urlStr, body: JSON.parse(options.body || '{}') });
+        if (mockRedis.failEmailDelivery) {
+          return new Response(JSON.stringify({ error: 'temporary provider failure' }), { status: 503 });
+        }
         return new Response(JSON.stringify({ id: 'mock_msg_123' }), { status: 200 });
       }
       return new Response(JSON.stringify({ error: 'unhandled mock fetch' }), { status: 500 });
@@ -637,6 +647,35 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const successfulData = await successfulRes.json();
     const isSigValid = await verifyLicensePayload(successfulData.license, successfulData.signature, TEST_PUBLIC_KEY);
     assert.equal(isSigValid, true);
+  });
+
+  it('queues claim codes encrypted, retries them through the outbox, and never stores the raw code', async () => {
+    const { dispatchClaimVerificationCode } = await import('../src/notifications.js');
+    mockRedis.failEmailDelivery = true;
+
+    const dispatchResult = await dispatchClaimVerificationCode(env, {
+      email: 'retry-claim@example.com',
+      orderId: 'txn_retry_001',
+      code: '482913',
+    });
+    assert.equal(dispatchResult.sent, false);
+
+    const queued = (mockRedis.lists.get('scandium:notifications:outbox') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(queued);
+    assert.ok(queued.encryptedCode?.ciphertext);
+    assert.equal(queued.code, undefined);
+    assert.equal(queued.expiresAt !== undefined, true);
+
+    mockRedis.failEmailDelivery = false;
+    const retryResult = await processOutbox(env, 10);
+    assert.equal(retryResult.delivered, 1);
+    const delivered = (mockRedis.lists.get('scandium:notifications:delivered') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(delivered);
+    assert.equal(delivered.encryptedCode, undefined);
   });
 
   it('retries outbox delivery with SendGrid configuration', async () => {
