@@ -234,9 +234,14 @@ async function migrateCustomerIndexes() {
 
     const licenseHash = sha256Hex(String(raw));
     const licenseRecord = await getJson('scandium:license:hash:' + licenseHash);
-    if (!licenseRecord || !licenseRecord.encryptedKey || licenseRecord.encryptionKeyVersion !== 2) {
+    const isAlreadyMigrated = Boolean(
+      licenseRecord && licenseRecord.encryptedKey && licenseRecord.encryptionKeyVersion === 2
+    );
+    // During dry-run, a record may be scheduled for migration earlier in this pass
+    // but is intentionally not written yet.
+    if (!isAlreadyMigrated && !migratedHashes.has(licenseHash)) {
       counters.skipped++;
-      console.warn('A customer email index has no migrated license record; it was left unchanged.');
+      console.warn('A customer email index has no migratable license record; it was left unchanged.');
       continue;
     }
     if (apply) await redis(['SET', key, licenseHash]);
