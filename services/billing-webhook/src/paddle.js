@@ -74,29 +74,39 @@ export function parsePaddleEvent(parsed, env) {
   let subscriptionId;
   let transactionId;
   let adjustmentId;
+  let customerId;
 
   if (eventName.startsWith('subscription.')) {
     subscriptionId = String(data.id || '').trim() || undefined;
+    customerId = String(data.customer_id || '').trim() || undefined;
   } else if (eventName.startsWith('transaction.')) {
     transactionId = String(data.id || '').trim() || undefined;
+    customerId = String(data.customer_id || '').trim() || undefined;
     if (data.subscription_id) {
       subscriptionId = String(data.subscription_id).trim() || undefined;
     }
   } else if (eventName.startsWith('adjustment.')) {
     adjustmentId = String(data.id || '').trim() || undefined;
+    customerId = String(data.customer_id || '').trim() || undefined;
     if (data.transaction_id) {
       transactionId = String(data.transaction_id).trim() || undefined;
     }
     if (data.subscription_id) {
       subscriptionId = String(data.subscription_id).trim() || undefined;
     }
+  } else if (eventName.startsWith('customer.')) {
+    customerId = String(data.id || '').trim() || undefined;
   } else {
     // Generic fallback: check prefix
     const id = String(data.id || '').trim();
     if (id.startsWith('sub_')) subscriptionId = id;
     else if (id.startsWith('txn_')) transactionId = id;
     else if (id.startsWith('adj_')) adjustmentId = id;
+    else if (id.startsWith('ctm_')) customerId = id;
     else subscriptionId = id || undefined;
+    if (data.customer_id) {
+      customerId = String(data.customer_id).trim() || customerId;
+    }
   }
 
   // Extract price ID from line items or direct field
@@ -134,16 +144,21 @@ export function parsePaddleEvent(parsed, env) {
       ignoreReason = 'adjustment_rejected';
       entitlementState = 'active';
       effectiveTier = resolvedTier;
+    } else if (adjStatus === 'reversed' || action === 'chargeback_reverse' || action === 'chargeback_reversed') {
+      // Per Paddle docs, chargeback reversals carry status: 'reversed' (or action: 'chargeback_reverse')
+      // Dispute was resolved in merchant's favor; restore customer access
+      entitlementState = 'active';
+      effectiveTier = resolvedTier;
     } else if (adjStatus === 'approved') {
       if (action === 'refund' || action === 'credit' || action === 'chargeback') {
         entitlementState = 'refunded';
         effectiveTier = 'free';
-      } else if (action === 'chargeback_reverse') {
-        // Chargeback reversal: customer dispute resolved in merchant's favor; restore access
-        entitlementState = 'active';
-        effectiveTier = resolvedTier;
       }
     }
+  } else if (eventName.startsWith('customer.')) {
+    isIgnored = false;
+    entitlementState = 'customer_sync';
+    effectiveTier = 'free';
   } else if (
     eventName === 'subscription.past_due' ||
     eventName === 'transaction.payment_failed' ||
@@ -182,8 +197,8 @@ export function parsePaddleEvent(parsed, env) {
 
   const currentPeriod = data.current_billing_period || {};
   const expiresAt = currentPeriod.ends_at || data.next_billed_at || null;
-  const customerEmail = data.customer?.email || customData.email || undefined;
-  const customerName = data.customer?.name || customData.name || undefined;
+  const customerEmail = data.email || data.customer?.email || customData.email || undefined;
+  const customerName = data.name || data.customer?.name || customData.name || undefined;
 
   return {
     eventId,
@@ -194,6 +209,7 @@ export function parsePaddleEvent(parsed, env) {
     subscriptionId,
     transactionId,
     adjustmentId,
+    customerId,
     licenseKey,
     customerEmail,
     customerName,

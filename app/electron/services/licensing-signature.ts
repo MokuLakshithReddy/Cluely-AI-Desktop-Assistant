@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { getLicensingPublicKey } from '../config/licensing-keys';
+import { getLicensingPublicKey, isPublicKeyRevoked } from '../config/licensing-keys';
 
 /**
  * Returns a deterministic canonical JSON string with sorted keys.
@@ -36,6 +36,10 @@ export function verifySignedLicense(
     return false;
   }
   if (!publicKeyHex || !/^[a-f0-9]{88}$/i.test(publicKeyHex.trim())) {
+    return false;
+  }
+  if (isPublicKeyRevoked(publicKeyHex)) {
+    console.warn('[LicensingSignature] Signature verification failed: key is explicitly revoked');
     return false;
   }
 
