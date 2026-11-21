@@ -352,11 +352,12 @@ export default {
       }
 
       if (lockAcquisition.status === 'in_flight') {
+        // A non-2xx response asks Paddle to retry after the current lock expires.
         return jsonResponse({
           status: 'in_flight',
           eventId,
-          message: 'Event is currently being processed by another worker',
-        });
+          message: 'Event is currently being processed by another worker; retry this delivery.',
+        }, 503, { 'Retry-After': '5' });
       }
 
       // 2. Process event within lock boundary
