@@ -110,7 +110,7 @@ Checkout is intentionally disabled until genuine Scandium products and prices ex
    - Monitor pending and dead-letter counts; verify claim-code and license-delivery retries independently.
 6. **Migrate Existing License Records Before Switching Traffic**:
    - The prior webhook version stored recoverable license keys in Redis subscription, transaction, license, and customer-index records.
-   - Back up Redis first. Run the repository's legacy-license migration utility in dry-run mode, review the record counts, then run apply mode with `SCANDIUM_LICENSE_ENCRYPTION_KEY`.
+   - Back up Redis first. From the repository root, run `node services/billing-webhook/scripts/migrate-legacy-license-records.mjs` (dry-run by default), review the counts, then run `node services/billing-webhook/scripts/migrate-legacy-license-records.mjs --apply` with `SCANDIUM_LICENSE_ENCRYPTION_KEY` and any required `SCANDIUM_LEGACY_LICENSE_ENCRYPTION_KEY`.
    - Do not delete legacy records or the legacy decrypt key until every migrated record has been verified and activation/claim tests pass.
 7. **Verify Health Endpoint**:
    Check `https://scandium-billing-webhook.mokulakshithreddy.workers.dev/health` returns `{"status":"healthy","productionReady":true}` only after Redis, Paddle, signing key, encryption key, CRON secret, and email provider are configured.
