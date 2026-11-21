@@ -107,7 +107,7 @@ export async function tryAcquireEventLock(env, eventId, ttlSeconds = 600) {
  * A missing/expired lock is a hard failure; ownership is never inferred.
  */
 export async function finalizeEventProcessed(env, eventId, lockToken, ttlSeconds = 604800) {
-  if (!lockToken) return false;
+  if (!lockToken) throw new Error('Cannot finalize webhook event without its lock ownership token');
   const lockKey = `scandium:webhook:lock:${eventId}`;
   const processedKey = `scandium:webhook:event:${eventId}`;
   const script = `
@@ -120,7 +120,10 @@ export async function finalizeEventProcessed(env, eventId, lockToken, ttlSeconds
   const result = await redisCommand(env, [
     'EVAL', script, '2', lockKey, processedKey, lockToken, String(ttlSeconds),
   ]);
-  return result === 1 || result === '1';
+  if (result !== 1 && result !== '1') {
+    throw new Error(`Lost webhook lock ownership before finalizing event ${eventId}`);
+  }
+  return true;
 }
 
 /**
