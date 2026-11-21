@@ -46,7 +46,7 @@ export function getLicensingServiceUrl(): string {
       const parsed = new URL(envUrl);
       const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
       if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopback)) {
-        return parsed.toString().replace(/\\/+$/, '');
+        return parsed.toString().replace(/\/+$/, '');
       }
     } catch {}
   }
