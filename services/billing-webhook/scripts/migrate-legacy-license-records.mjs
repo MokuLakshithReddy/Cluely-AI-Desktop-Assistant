@@ -200,10 +200,19 @@ async function migrateOrderRecords(pattern, prefix) {
     if (record.licenseKey) {
       licenseHash = await ensureEncryptedLicense(record.licenseKey, record);
     } else if (licenseHash) {
-      migratedHashes.add(licenseHash);
+      // Only consider the order linked when the referenced canonical license record
+      // already exists in the new versioned encrypted schema.
+      const canonicalLicense = await getJson('scandium:license:hash:' + licenseHash);
+      if (canonicalLicense?.encryptedKey && canonicalLicense.encryptionKeyVersion === 2) {
+        migratedHashes.add(licenseHash);
+      }
     }
 
-    if (!licenseHash) continue;
+    if (!licenseHash || !migratedHashes.has(licenseHash)) {
+      counters.skipped++;
+      console.warn('Skipped an order record whose canonical license was not migrated.');
+      continue;
+    }
 
     if (record.licenseKey || record.licenseKeyMasked === undefined) {
       const updated = { ...record, licenseHash };
