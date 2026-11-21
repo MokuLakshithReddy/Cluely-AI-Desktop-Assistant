@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import worker from '../src/index.js';
 import { verifyLicensePayload, generateStrongLicenseKey } from '../src/crypto.js';
 import { processOutbox } from '../src/notifications.js';
+import { finalizeEventProcessed } from '../src/storage.js';
 
 // Ephemeral dynamic Ed25519 keypair generated in memory for unit test execution only.
 // Ensures zero hardcoded or shared secrets exist in source code or repositories.
@@ -23,6 +24,8 @@ class MockRedisStore {
   constructor() {
     this.store = new Map();
     this.lists = new Map();
+    this.sentEmails = [];
+    this.failEmailDelivery = false;
   }
 
   handleCommand(cmd) {
@@ -49,6 +52,72 @@ class MockRedisStore {
     }
     if (op === 'EXPIRE') return 1;
     if (op === 'TTL') return 900;
+    if (op === 'LLEN') return (this.lists.get(cmd[1]) || []).length;
+    if (op === 'EVAL') {
+      const script = cmd[1];
+      const keyCount = Number(cmd[2]);
+      const keys = cmd.slice(3, 3 + keyCount);
+      const args = cmd.slice(3 + keyCount);
+      if (script.includes('SCANDIUM_RATE_LIMIT_INCREMENT_V1')) {
+        const key = keys[0];
+        const current = Number(this.store.get(key) || 0) + 1;
+        this.store.set(key, String(current));
+        return [String(current), '900'];
+      }
+      if (script.includes('SCANDIUM_EVENT_LOCK_ACQUIRE_V1')) {
+        const [processedKey, lockKey] = keys;
+        if (this.store.get(processedKey) === 'processed') return 'already_processed';
+        if (this.store.has(lockKey)) return 'in_flight';
+        this.store.set(lockKey, args[0]);
+        return 'acquired';
+      }
+      if (script.includes('SCANDIUM_EVENT_LOCK_FINALIZE_V1')) {
+        const [lockKey, processedKey] = keys;
+        if (this.store.get(lockKey) !== args[0]) return 0;
+        this.store.set(processedKey, 'processed');
+        this.store.delete(lockKey);
+        return 1;
+      }
+      if (script.includes('SCANDIUM_EVENT_LOCK_RELEASE_V1')) {
+        if (this.store.get(keys[0]) !== args[0]) return 0;
+        this.store.delete(keys[0]);
+        return 1;
+      }
+      if (script.includes('SCANDIUM_DEVICE_REGISTER_V1')) {
+        const raw = this.store.get(keys[0]);
+        const devices = raw ? JSON.parse(raw) : [];
+        const existing = devices.find(d => d.hardwareFingerprint === args[0]);
+        if (existing) return ['reconnected', String(devices.length)];
+        if (devices.length >= Number(args[3])) return ['limit_reached', String(devices.length)];
+        devices.push({ hardwareFingerprint: args[0], instanceName: args[1], activatedAt: args[2] });
+        this.store.set(keys[0], JSON.stringify(devices));
+        return ['created', String(devices.length)];
+      }
+      if (script.includes('SCANDIUM_DEVICE_UNREGISTER_V1')) {
+        const raw = this.store.get(keys[0]);
+        const devices = raw ? JSON.parse(raw) : [];
+        const filtered = devices.filter(d => d.hardwareFingerprint !== args[0]);
+        this.store.set(keys[0], JSON.stringify(filtered));
+        return filtered.length;
+      }
+      if (script.includes('SCANDIUM_CLAIM_CODE_VERIFY_V1')) {
+        const raw = this.store.get(keys[0]);
+        if (!raw) return -1;
+        const record = JSON.parse(raw);
+        if (Number(record.attempts || 0) >= 3) {
+          this.store.delete(keys[0]);
+          return -2;
+        }
+        if (record.codeHash !== args[0]) {
+          record.attempts = Number(record.attempts || 0) + 1;
+          this.store.set(keys[0], JSON.stringify(record));
+          return -3;
+        }
+        this.store.delete(keys[0]);
+        return 1;
+      }
+      throw new Error('Unsupported EVAL script in test mock');
+    }
     if (op === 'LPUSH') {
       const listKey = cmd[1];
       const val = cmd[2];
@@ -89,6 +158,10 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
         });
       }
       if (urlStr.includes('api.sendgrid.com') || urlStr.includes('api.resend.com') || urlStr.includes('postmarkapp.com')) {
+        mockRedis.sentEmails.push({ url: urlStr, body: JSON.parse(options.body || '{}') });
+        if (mockRedis.failEmailDelivery) {
+          return new Response(JSON.stringify({ error: 'temporary provider failure' }), { status: 503 });
+        }
         return new Response(JSON.stringify({ id: 'mock_msg_123' }), { status: 200 });
       }
       return new Response(JSON.stringify({ error: 'unhandled mock fetch' }), { status: 500 });
@@ -99,6 +172,10 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
       UPSTASH_REDIS_REST_URL: 'https://mock-upstash.internal',
       UPSTASH_REDIS_REST_TOKEN: 'mock-token',
       SCANDIUM_LICENSING_PRIVATE_KEY: TEST_PRIVATE_KEY,
+      SCANDIUM_LICENSING_PUBLIC_KEY: TEST_PUBLIC_KEY,
+      SCANDIUM_LICENSE_ENCRYPTION_KEY: 'unit-test-encryption-key-32-bytes-minimum-0001',
+      CRON_SECRET: 'unit-test-outbox-cron-secret-0001',
+      RESEND_API_KEY: 're_test_mock_key',
       PADDLE_WEBHOOK_SECRET_KEY: TEST_PADDLE_SECRET,
       PADDLE_PLUS_PRICE_ID: 'pri_test_plus_100',
       PADDLE_PRO_PRICE_ID: 'pri_test_pro_200',
@@ -124,6 +201,10 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const data1 = await res1.json();
     assert.equal(data1.status, 'healthy');
     assert.equal(data1.subsystems.paddleWebhook, 'configured');
+    assert.equal(data1.subsystems.licenseEncryptionKey, 'configured');
+    assert.equal(data1.subsystems.licensingSigningKey, 'verified');
+    assert.equal(data1.subsystems.outboxCronSecret, 'configured');
+    assert.equal(data1.subsystems.emailProvider, 'configured');
 
     // 2. With alias PADDLE_WEBHOOK_SECRET
     const aliasEnv = {
@@ -137,6 +218,42 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const data2 = await res2.json();
     assert.equal(data2.status, 'healthy');
     assert.equal(data2.subsystems.paddleWebhook, 'configured');
+  });
+
+  it('fails closed on the internal outbox endpoint unless a dedicated Bearer secret is configured', async () => {
+    const url = 'https://worker.internal/api/v1/internal/outbox/process';
+    const noAuth = await worker.fetch(new Request(url, { method: 'POST' }), env);
+    assert.equal(noAuth.status, 401);
+
+    const badAuth = await worker.fetch(new Request(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer wrong-secret' },
+    }), env);
+    assert.equal(badAuth.status, 401);
+
+    const missingSecretEnv = { ...env, CRON_SECRET: undefined };
+    const noSecret = await worker.fetch(new Request(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer anything' },
+    }), missingSecretEnv);
+    assert.equal(noSecret.status, 503);
+
+    const authorized = await worker.fetch(new Request(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + env.CRON_SECRET },
+    }), env);
+    assert.equal(authorized.status, 200);
+  });
+
+  it('does not finalize a webhook event after lock ownership has expired or changed', async () => {
+    const eventId = 'evt_lock_owner_test';
+    mockRedis.store.set('scandium:webhook:lock:' + eventId, 'current-owner');
+    await assert.rejects(
+      () => finalizeEventProcessed(env, eventId, 'stale-owner'),
+      /Lost webhook lock ownership/
+    );
+    assert.notEqual(mockRedis.store.get('scandium:webhook:event:' + eventId), 'processed');
+    assert.equal(mockRedis.store.get('scandium:webhook:lock:' + eventId), 'current-owner');
   });
 
   it('rejects unauthenticated webhook requests with invalid or missing Paddle-Signature', async () => {
@@ -409,11 +526,23 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const step1Data = await step1Res.json();
     assert.equal(step1Data.verificationRequired, true);
 
-    // Retrieve generated code from outbox queue
-    const outboxItem = JSON.parse(mockRedis.lists.get('scandium:notifications:outbox')[0]);
-    assert.equal(outboxItem.type, 'claim_code');
-    const sentCode = outboxItem.code;
+    const otpKey = 'scandium:claim:code:alice.sec@example.com:txn_sec_777';
+    const storedOtp = JSON.parse(mockRedis.store.get(otpKey));
+    assert.ok(storedOtp.codeHash);
+    assert.equal(storedOtp.code, undefined);
+
+    // Read the code from the mocked email delivery, never from Redis.
+    const sentEmail = mockRedis.sentEmails.find(item =>
+      String(item.body.html || item.body.HtmlBody || '').includes('Your License Claim Verification Code')
+    );
+    assert.ok(sentEmail);
+    const emailHtml = sentEmail.body.html || sentEmail.body.HtmlBody;
+    const sentCode = emailHtml.match(/>(\d{6})<\/span>/)?.[1];
     assert.ok(/^\d{6}$/.test(sentCode));
+    const queuedClaimCode = (mockRedis.lists.get('scandium:notifications:outbox') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(!queuedClaimCode || !Object.hasOwn(queuedClaimCode, 'code'));
 
     // 5. Bad code rejected
     const badCodeReq = new Request('https://worker.internal/api/v1/license/claim', {
@@ -518,6 +647,64 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const successfulData = await successfulRes.json();
     const isSigValid = await verifyLicensePayload(successfulData.license, successfulData.signature, TEST_PUBLIC_KEY);
     assert.equal(isSigValid, true);
+  });
+
+  it('queues claim codes encrypted, retries them through the outbox, and never stores the raw code', async () => {
+    const { dispatchClaimVerificationCode } = await import('../src/notifications.js');
+    mockRedis.failEmailDelivery = true;
+
+    const dispatchResult = await dispatchClaimVerificationCode(env, {
+      email: 'retry-claim@example.com',
+      orderId: 'txn_retry_001',
+      code: '482913',
+    });
+    assert.equal(dispatchResult.sent, false);
+
+    const queued = (mockRedis.lists.get('scandium:notifications:outbox') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(queued);
+    assert.ok(queued.encryptedCode?.ciphertext);
+    assert.equal(queued.code, undefined);
+    assert.equal(queued.expiresAt !== undefined, true);
+
+    mockRedis.failEmailDelivery = false;
+    const retryResult = await processOutbox(env, 10);
+    assert.equal(retryResult.delivered, 1);
+    const delivered = (mockRedis.lists.get('scandium:notifications:delivered') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(delivered);
+    assert.equal(delivered.encryptedCode, undefined);
+  });
+
+  it('upgrades legacy plaintext claim-code outbox entries before delivery', async () => {
+    mockRedis.lists.set('scandium:notifications:outbox', [
+      JSON.stringify({
+        type: 'claim_code',
+        email: 'legacy-claim@example.com',
+        orderId: 'txn_legacy_claim_001',
+        code: '381942',
+        provider: 'outbox_queued',
+        status: 'pending',
+        retries: 0,
+        dispatchedAt: new Date().toISOString(),
+      }),
+    ]);
+
+    const result = await processOutbox(env, 10);
+    assert.equal(result.delivered, 1);
+
+    const delivered = (mockRedis.lists.get('scandium:notifications:delivered') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(delivered);
+    assert.equal(delivered.code, undefined);
+    assert.equal(delivered.encryptedCode, undefined);
+
+    const allQueued = (mockRedis.lists.get('scandium:notifications:outbox') || [])
+      .map(raw => JSON.parse(raw));
+    assert.ok(allQueued.every(item => item.type !== 'claim_code' || !Object.hasOwn(item, 'code')));
   });
 
   it('retries outbox delivery with SendGrid configuration', async () => {

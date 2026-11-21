@@ -19,6 +19,10 @@ import {
   generateStrongLicenseKey,
   encryptLicenseKey,
   maskLicenseKey,
+  decryptLicenseKey,
+  timingSafeEqual,
+  signLicensePayload,
+  verifyLicensePayload,
 } from './crypto.js';
 import { verifyPaddleSignature, parsePaddleEvent } from './paddle.js';
 import {
@@ -229,7 +233,38 @@ export default {
       const paddleSecret = getPaddleWebhookSecret(env);
       const paddleConfigured = Boolean(paddleSecret);
       const signingKeyConfigured = Boolean(env.SCANDIUM_LICENSING_PRIVATE_KEY?.trim());
-      const isHealthy = redisStatus === 'connected' && paddleConfigured && signingKeyConfigured;
+      const encryptionKeyConfigured = Boolean(env.SCANDIUM_LICENSE_ENCRYPTION_KEY?.trim());
+      const cronSecretConfigured = Boolean(env.CRON_SECRET?.trim());
+      const emailProviderConfigured = Boolean(
+        env.RESEND_API_KEY?.trim() || env.POSTMARK_SERVER_TOKEN?.trim() || env.SENDGRID_API_KEY?.trim()
+      );
+
+      // Verify that the deployed Ed25519 private key actually matches the public key
+      // trusted by packaged desktop clients. Presence alone is not sufficient.
+      let signingKeyStatus = 'unconfigured';
+      if (signingKeyConfigured && env.SCANDIUM_LICENSING_PUBLIC_KEY?.trim()) {
+        try {
+          const probe = { purpose: 'scandium-license-health-check', version: 1 };
+          const probeSignature = await signLicensePayload(
+            probe,
+            env.SCANDIUM_LICENSING_PRIVATE_KEY
+          );
+          const matchesClientKey = await verifyLicensePayload(
+            probe,
+            probeSignature,
+            env.SCANDIUM_LICENSING_PUBLIC_KEY
+          );
+          signingKeyStatus = matchesClientKey ? 'verified' : 'key_mismatch';
+        } catch {
+          signingKeyStatus = 'invalid';
+        }
+      }
+      const isHealthy = redisStatus === 'connected' &&
+        paddleConfigured &&
+        signingKeyStatus === 'verified' &&
+        encryptionKeyConfigured &&
+        cronSecretConfigured &&
+        emailProviderConfigured;
 
       return jsonResponse(
         {
@@ -239,7 +274,10 @@ export default {
           subsystems: {
             redis: redisStatus,
             paddleWebhook: paddleConfigured ? 'configured' : 'unconfigured',
-            licensingSigningKey: signingKeyConfigured ? 'configured' : 'unconfigured',
+            licensingSigningKey: signingKeyStatus,
+            licenseEncryptionKey: encryptionKeyConfigured ? 'configured' : 'unconfigured',
+            outboxCronSecret: cronSecretConfigured ? 'configured' : 'unconfigured',
+            emailProvider: emailProviderConfigured ? 'configured' : 'unconfigured',
           },
           productionReady: isHealthy,
         },
@@ -247,11 +285,14 @@ export default {
       );
     }
 
-    // Outbox processing endpoint
+    // Outbox processing endpoint. It must fail closed when its dedicated secret is absent.
     if (url.pathname === '/api/v1/internal/outbox/process' && request.method === 'POST') {
+      const cronSecret = env.CRON_SECRET?.trim();
+      if (!cronSecret) {
+        return jsonResponse({ success: false, error: 'Outbox processor is not configured' }, 503);
+      }
       const authHeader = request.headers.get('Authorization') || '';
-      const cronSecret = env.CRON_SECRET || env.SCANDIUM_LICENSING_PRIVATE_KEY;
-      if (cronSecret && !authHeader.includes(cronSecret.slice(0, 32))) {
+      if (!timingSafeEqual(authHeader, `Bearer ${cronSecret}`)) {
         return jsonResponse({ success: false, error: 'Unauthorized' }, 401);
       }
       const outboxRes = await processOutbox(env, 20);
@@ -311,11 +352,12 @@ export default {
       }
 
       if (lockAcquisition.status === 'in_flight') {
+        // A non-2xx response asks Paddle to retry after the current lock expires.
         return jsonResponse({
           status: 'in_flight',
           eventId,
-          message: 'Event is currently being processed by another worker',
-        });
+          message: 'Event is currently being processed by another worker; retry this delivery.',
+        }, 503, { 'Retry-After': '5' });
       }
 
       // 2. Process event within lock boundary
@@ -398,26 +440,73 @@ export default {
           }
         }
 
-        // Handle adjustments (e.g. approved refunds or chargeback reversals)
+        // Handle adjustments (refunds and chargeback reversals).
+        // Adjustment payloads frequently omit product price IDs. Preserve the paid tier
+        // from the original transaction/subscription rather than downgrading to Free.
         if (transition.adjustmentId) {
-          if (activeKeyHash) {
-            const lic = await getLicenseByHash(env, activeKeyHash);
+          const lic = activeKeyHash ? await getLicenseByHash(env, activeKeyHash) : null;
+          const sub = transition.subscriptionId
+            ? await getSubscription(env, transition.subscriptionId)
+            : null;
+          const txn = transition.transactionId
+            ? await getTransaction(env, transition.transactionId)
+            : null;
+
+          if (transition.entitlementState === 'refunded') {
+            const priorPaidTier = [
+              lic?.previousPaidTier, lic?.tier,
+              sub?.previousPaidTier, sub?.tier,
+              txn?.previousPaidTier, txn?.tier,
+            ].find(tier => tier === 'plus' || tier === 'pro');
+
             if (lic) {
-              lic.status = transition.entitlementState;
-              lic.tier = transition.tier;
+              if (priorPaidTier) lic.previousPaidTier = priorPaidTier;
+              lic.status = 'refunded';
+              lic.tier = 'free';
               lic.updatedAt = new Date().toISOString();
               await saveLicenseByHash(env, activeKeyHash, lic);
             }
-          }
-          if (transition.subscriptionId) {
-            const sub = await getSubscription(env, transition.subscriptionId);
             if (sub) {
-              sub.status = transition.entitlementState;
-              sub.tier = transition.tier;
+              if (priorPaidTier) sub.previousPaidTier = priorPaidTier;
+              sub.status = 'refunded';
+              sub.tier = 'free';
               sub.updatedAt = new Date().toISOString();
               await saveSubscription(env, transition.subscriptionId, sub);
             }
+          } else if (transition.entitlementState === 'active') {
+            const restoredTier = transition.tier === 'plus' || transition.tier === 'pro'
+              ? transition.tier
+              : [
+                  lic?.previousPaidTier, lic?.tier,
+                  txn?.previousPaidTier, txn?.tier,
+                  sub?.previousPaidTier, sub?.tier,
+                ].find(tier => tier === 'plus' || tier === 'pro');
+
+            // Never issue an active paid entitlement without recovering its original tier.
+            if (restoredTier) {
+              if (lic) {
+                lic.status = 'active';
+                lic.tier = restoredTier;
+                delete lic.previousPaidTier;
+                lic.updatedAt = new Date().toISOString();
+                await saveLicenseByHash(env, activeKeyHash, lic);
+              }
+              if (sub) {
+                sub.status = 'active';
+                sub.tier = restoredTier;
+                delete sub.previousPaidTier;
+                sub.updatedAt = new Date().toISOString();
+                await saveSubscription(env, transition.subscriptionId, sub);
+              }
+            } else {
+              console.error('[Billing] Cannot restore chargeback reversal: original paid tier is unavailable', {
+                adjustmentId: transition.adjustmentId,
+                subscriptionId: transition.subscriptionId,
+                transactionId: transition.transactionId,
+              });
+            }
           }
+
           await finalizeEventProcessed(env, eventId, lockToken);
           return jsonResponse({
             status: 'success',
@@ -434,6 +523,18 @@ export default {
           const existingLic = await getLicenseByHash(env, activeKeyHash);
           if (existingLic) {
             encryptedKey = existingLic.encryptedKey;
+            // Gradually migrate older ciphertexts to the independent encryption key.
+            if (existingLic.encryptedKey && existingLic.encryptionKeyVersion !== 2 &&
+                env.SCANDIUM_LICENSE_ENCRYPTION_KEY?.trim()) {
+              const legacySecret = env.SCANDIUM_LEGACY_LICENSE_ENCRYPTION_KEY ||
+                env.SCANDIUM_LICENSING_PRIVATE_KEY;
+              const legacyPlain = await decryptLicenseKey(existingLic.encryptedKey, legacySecret);
+              if (legacyPlain) {
+                encryptedKey = await encryptLicenseKey(legacyPlain, env.SCANDIUM_LICENSE_ENCRYPTION_KEY);
+                existingLic.encryptedKey = encryptedKey;
+                existingLic.encryptionKeyVersion = 2;
+              }
+            }
             // Existing license being updated
             existingLic.tier = transition.tier;
             existingLic.status = transition.entitlementState;
@@ -447,13 +548,17 @@ export default {
           plainKey = plainKey || generateStrongLicenseKey(transition.tier);
           activeKeyHash = await sha256Hex(plainKey);
 
-          // Encrypt key at rest with AES-256-GCM using server private key
-          encryptedKey = await encryptLicenseKey(plainKey, env.SCANDIUM_LICENSING_PRIVATE_KEY);
+          // Encrypt key at rest with a dedicated AES-256-GCM secret, independent of Ed25519 signing.
+          if (!env.SCANDIUM_LICENSE_ENCRYPTION_KEY?.trim()) {
+            throw new Error('SCANDIUM_LICENSE_ENCRYPTION_KEY is required before issuing licenses');
+          }
+          encryptedKey = await encryptLicenseKey(plainKey, env.SCANDIUM_LICENSE_ENCRYPTION_KEY);
 
           const licenseRecord = {
             licenseHash: activeKeyHash,
             licenseKeyMasked: maskLicenseKey(plainKey),
             encryptedKey,
+            encryptionKeyVersion: 2,
             subscriptionId: transition.subscriptionId || null,
             transactionId: transition.transactionId || null,
             customerId: transition.customerId || null,

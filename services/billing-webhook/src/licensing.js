@@ -8,7 +8,7 @@
 import {
   sha256Hex,
   signLicensePayload,
-  timingSafeEqual,
+  hmacSha256Hex,
   decryptLicenseKey,
   maskLicenseKey,
 } from './crypto.js';
@@ -32,6 +32,13 @@ function jsonResponse(data, status = 200, headers = {}) {
       ...headers,
     },
   });
+}
+
+function getClaimCodeHmacSecret(env) {
+  const rootSecret = env.SCANDIUM_LICENSE_ENCRYPTION_KEY?.trim();
+  if (!rootSecret) return null;
+  // Domain separation keeps claim-code HMAC use independent from AES-GCM key use.
+  return `scandium-claim-code-hmac:v1:${rootSecret}`;
 }
 
 export async function handleActivate(request, env) {
@@ -278,10 +285,26 @@ export async function handleClaim(request, env) {
     ? body.subscriptionId.trim()
     : '';
 
-  if (!email || !orderId) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !orderId ||
+      !/^(txn|sub)_[a-zA-Z0-9_-]+$/.test(orderId)) {
     return jsonResponse(
-      { success: false, error: 'Both email and orderId (transaction or subscription ID) are required.' },
+      { success: false, error: 'A valid purchase email and Paddle transaction/subscription ID are required.' },
       400
+    );
+  }
+
+  const claimCodeHmacSecret = getClaimCodeHmacSecret(env);
+  if (!claimCodeHmacSecret) {
+    return jsonResponse({ success: false, error: 'License encryption is not configured.' }, 503);
+  }
+
+  const targetId = await sha256Hex(`${email}:${orderId}`);
+  const targetRateLimit = await checkRateLimit(env, 'claim-target', targetId, 5, 900);
+  if (!targetRateLimit.allowed) {
+    return jsonResponse(
+      { success: false, error: 'Too many verification attempts for this purchase. Try again later.' },
+      429,
+      { 'Retry-After': String(targetRateLimit.resetSeconds) }
     );
   }
 
@@ -332,54 +355,68 @@ export async function handleClaim(request, env) {
     }
 
     const codeKey = `scandium:claim:code:${email}:${orderId}`;
-    const rawStored = await redisCommand(env, ['GET', codeKey]);
-    if (!rawStored) {
-      return jsonResponse(
-        {
-          success: false,
-          error: 'Verification code has expired or was not requested. Please request a new code.',
-        },
-        400
-      );
+    const submittedCodeHash = await hmacSha256Hex(
+      claimCodeHmacSecret,
+      submittedCode
+    );
+    const verifyScript = `
+      -- SCANDIUM_CLAIM_CODE_VERIFY_V1
+      local raw = redis.call('GET', KEYS[1])
+      if not raw then return -1 end
+      local ok, data = pcall(cjson.decode, raw)
+      if not ok or type(data) ~= 'table' then
+        redis.call('DEL', KEYS[1])
+        return -1
+      end
+      local attempts = tonumber(data.attempts or 0)
+      if attempts >= 3 then
+        redis.call('DEL', KEYS[1])
+        return -2
+      end
+      if data.codeHash ~= ARGV[1] then
+        data.attempts = attempts + 1
+        local ttl = redis.call('TTL', KEYS[1])
+        if ttl > 0 then
+          redis.call('SET', KEYS[1], cjson.encode(data), 'EX', ttl)
+        else
+          redis.call('DEL', KEYS[1])
+        end
+        return -3
+      end
+      redis.call('DEL', KEYS[1])
+      return 1
+    `;
+    const verificationResult = await redisCommand(env, [
+      'EVAL', verifyScript, '1', codeKey, submittedCodeHash,
+    ]);
+
+    if (verificationResult === -1) {
+      return jsonResponse({
+        success: false,
+        error: 'Verification code has expired or was not requested. Please request a new code.',
+      }, 400);
+    }
+    if (verificationResult === -2) {
+      return jsonResponse({
+        success: false,
+        error: 'Too many incorrect attempts. For security, please request a new verification code.',
+      }, 429);
+    }
+    if (verificationResult !== 1 && verificationResult !== '1') {
+      return jsonResponse({
+        success: false,
+        error: 'Incorrect or expired verification code.',
+      }, 400);
     }
 
-    let stored;
-    try {
-      stored = JSON.parse(rawStored);
-    } catch {
-      return jsonResponse({ success: false, error: 'Invalid verification state.' }, 500);
-    }
-
-    if (stored.attempts >= 3) {
-      await redisCommand(env, ['DEL', codeKey]);
-      return jsonResponse(
-        {
-          success: false,
-          error: 'Too many incorrect attempts. For security, please request a new verification code.',
-        },
-        429
-      );
-    }
-
-    if (!timingSafeEqual(String(stored.code).trim(), submittedCode)) {
-      stored.attempts = (stored.attempts || 0) + 1;
-      await redisCommand(env, ['SET', codeKey, JSON.stringify(stored), 'KEEPTTL']);
-      return jsonResponse(
-        {
-          success: false,
-          error: `Incorrect verification code (${3 - stored.attempts} attempts remaining).`,
-        },
-        400
-      );
-    }
-
-    // Code verified: delete one-time verification code from Redis
-    await redisCommand(env, ['DEL', codeKey]);
-
-    // Decrypt the high-entropy license key using the server private key
+    // Decrypt with the dedicated license-encryption secret; retain a legacy reader only
+    // for records explicitly created before encryption key versioning was introduced.
+    const encryptionSecret = licenseRecord.encryptionKeyVersion === 2
+      ? env.SCANDIUM_LICENSE_ENCRYPTION_KEY
+      : (env.SCANDIUM_LEGACY_LICENSE_ENCRYPTION_KEY || env.SCANDIUM_LICENSING_PRIVATE_KEY);
     let revealedKey = null;
-    if (licenseRecord.encryptedKey && env.SCANDIUM_LICENSING_PRIVATE_KEY) {
-      revealedKey = await decryptLicenseKey(licenseRecord.encryptedKey, env.SCANDIUM_LICENSING_PRIVATE_KEY);
+    if (licenseRecord.encryptedKey && encryptionSecret) {
+      revealedKey = await decryptLicenseKey(licenseRecord.encryptedKey, encryptionSecret);
     }
 
     if (!revealedKey) {
@@ -404,9 +441,12 @@ export async function handleClaim(request, env) {
 
   // Allow direct retrieval in automated test environment if directClaim is explicitly passed
   if (env.ENVIRONMENT === 'test' && body.directClaim === true) {
+    const encryptionSecret = licenseRecord.encryptionKeyVersion === 2
+      ? env.SCANDIUM_LICENSE_ENCRYPTION_KEY
+      : (env.SCANDIUM_LEGACY_LICENSE_ENCRYPTION_KEY || env.SCANDIUM_LICENSING_PRIVATE_KEY);
     let revealedKey = null;
-    if (licenseRecord.encryptedKey && env.SCANDIUM_LICENSING_PRIVATE_KEY) {
-      revealedKey = await decryptLicenseKey(licenseRecord.encryptedKey, env.SCANDIUM_LICENSING_PRIVATE_KEY);
+    if (licenseRecord.encryptedKey && encryptionSecret) {
+      revealedKey = await decryptLicenseKey(licenseRecord.encryptedKey, encryptionSecret);
     }
     return jsonResponse({
       success: true,
@@ -425,7 +465,7 @@ export async function handleClaim(request, env) {
   const code = String(100000 + (codeBuf[0] % 900000));
 
   const codeData = {
-    code,
+    codeHash: await hmacSha256Hex(claimCodeHmacSecret, code),
     licenseHash,
     attempts: 0,
     createdAt: new Date().toISOString(),
@@ -441,16 +481,27 @@ export async function handleClaim(request, env) {
   ]);
 
   // Dispatch code to purchaser's verified email
-  await dispatchClaimVerificationCode(env, {
+  const delivery = await dispatchClaimVerificationCode(env, {
     email,
     orderId,
     code,
   });
 
+  if (!delivery.sent && !env.SCANDIUM_LICENSE_ENCRYPTION_KEY?.trim()) {
+    await redisCommand(env, ['DEL', `scandium:claim:code:${email}:${orderId}`]);
+    return jsonResponse({
+      success: false,
+      error: 'Secure email delivery is not configured. Please contact support.',
+    }, 503);
+  }
+
   return jsonResponse({
     success: true,
     verificationRequired: true,
-    message: `A 6-digit verification code has been dispatched to ${email}. Enter the code to reveal your license key.`,
+    deliveryQueued: !delivery.sent,
+    message: delivery.sent
+      ? `A 6-digit verification code has been emailed to ${email}.`
+      : 'Your verification email is queued for secure retry. Check your inbox shortly.',
     maskedEmail: `${email.slice(0, 2)}***@${email.split('@')[1] || ''}`,
   });
 }

@@ -95,9 +95,23 @@ Checkout is intentionally disabled until genuine Scandium products and prices ex
 4. **Deploy Backend Worker Environment Variables**:
    Configure the following secrets on the Cloudflare Worker (`scandium-billing-webhook`):
    - `PADDLE_WEBHOOK_SECRET_KEY` (or `PADDLE_WEBHOOK_SECRET`): The webhook secret key from Paddle.
-   - `SCANDIUM_LICENSING_PRIVATE_KEY`: Active rotated Ed25519 PKCS8 DER private signing key (96 hex chars).
+   - `SCANDIUM_LICENSING_PRIVATE_KEY`: Active rotated Ed25519 PKCS8 DER private signing key. Never reuse the old compromised key.
+   - `SCANDIUM_LICENSING_PUBLIC_KEY`: The matching Ed25519 SPKI DER public key embedded in the packaged desktop build. `/health` cryptographically verifies that the private and public keys match.
+   - `SCANDIUM_LICENSE_ENCRYPTION_KEY`: A separately generated, high-entropy secret (at least 32 random bytes) used only for AES-256-GCM encryption and claim-code HMACs. Do not reuse the Ed25519 signing key.
+   - `CRON_SECRET`: A separate high-entropy secret used as `Authorization: Bearer <secret>` for the internal outbox retry endpoint. Do not reuse either cryptographic key.
    - `UPSTASH_REDIS_REST_URL`: Upstash Redis REST URL.
    - `UPSTASH_REDIS_REST_TOKEN`: Upstash Redis REST Token.
    - `PADDLE_PLUS_PRICE_ID`: Plus tier price ID.
    - `PADDLE_PRO_PRICE_ID`: Pro tier price ID.
-   - `RESEND_API_KEY` or `POSTMARK_SERVER_TOKEN` or `SENDGRID_API_KEY`: Transactional email API key for license delivery and claim codes.
+   - One of `RESEND_API_KEY`, `POSTMARK_SERVER_TOKEN`, or `SENDGRID_API_KEY`: A verified transactional email provider for licenses and claim codes.
+   - Optional `SCANDIUM_LEGACY_LICENSE_ENCRYPTION_KEY`: Only when migrating records encrypted by the previous key derivation. Keep it only until migration is verified.
+5. **Configure Outbox Retries**:
+   - Schedule authenticated POST requests to `/api/v1/internal/outbox/process`.
+   - Send exactly `Authorization: Bearer <CRON_SECRET>`. The endpoint fails closed when `CRON_SECRET` is absent.
+   - Monitor pending and dead-letter counts; verify claim-code and license-delivery retries independently.
+6. **Migrate Existing License Records Before Switching Traffic**:
+   - The prior webhook version stored recoverable license keys in Redis subscription, transaction, license, and customer-index records.
+   - Back up Redis first. From the repository root, run `node services/billing-webhook/scripts/migrate-legacy-license-records.mjs` (dry-run by default), review the counts, then run `node services/billing-webhook/scripts/migrate-legacy-license-records.mjs --apply` with `SCANDIUM_LICENSE_ENCRYPTION_KEY` and any required `SCANDIUM_LEGACY_LICENSE_ENCRYPTION_KEY`.
+   - Do not delete legacy records or the legacy decrypt key until every migrated record has been verified and activation/claim tests pass.
+7. **Verify Health Endpoint**:
+   Check `https://scandium-billing-webhook.mokulakshithreddy.workers.dev/health` returns `{"status":"healthy","productionReady":true}` only after Redis, Paddle, signing key, encryption key, CRON secret, and email provider are configured.
