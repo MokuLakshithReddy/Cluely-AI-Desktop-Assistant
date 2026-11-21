@@ -678,6 +678,35 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     assert.equal(delivered.encryptedCode, undefined);
   });
 
+  it('upgrades legacy plaintext claim-code outbox entries before delivery', async () => {
+    mockRedis.lists.set('scandium:notifications:outbox', [
+      JSON.stringify({
+        type: 'claim_code',
+        email: 'legacy-claim@example.com',
+        orderId: 'txn_legacy_claim_001',
+        code: '381942',
+        provider: 'outbox_queued',
+        status: 'pending',
+        retries: 0,
+        dispatchedAt: new Date().toISOString(),
+      }),
+    ]);
+
+    const result = await processOutbox(env, 10);
+    assert.equal(result.delivered, 1);
+
+    const delivered = (mockRedis.lists.get('scandium:notifications:delivered') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(delivered);
+    assert.equal(delivered.code, undefined);
+    assert.equal(delivered.encryptedCode, undefined);
+
+    const allQueued = (mockRedis.lists.get('scandium:notifications:outbox') || [])
+      .map(raw => JSON.parse(raw));
+    assert.ok(allQueued.every(item => item.type !== 'claim_code' || !Object.hasOwn(item, 'code')));
+  });
+
   it('retries outbox delivery with SendGrid configuration', async () => {
     const sendGridEnv = {
       ...env,
