@@ -96,6 +96,7 @@ Checkout is intentionally disabled until genuine Scandium products and prices ex
    Configure the following secrets on the Cloudflare Worker (`scandium-billing-webhook`):
    - `PADDLE_WEBHOOK_SECRET_KEY` (or `PADDLE_WEBHOOK_SECRET`): The webhook secret key from Paddle.
    - `SCANDIUM_LICENSING_PRIVATE_KEY`: Active rotated Ed25519 PKCS8 DER private signing key. Never reuse the old compromised key.
+   - `SCANDIUM_LICENSING_PUBLIC_KEY`: The matching Ed25519 SPKI DER public key embedded in the packaged desktop build. `/health` cryptographically verifies that the private and public keys match.
    - `SCANDIUM_LICENSE_ENCRYPTION_KEY`: A separately generated, high-entropy secret (at least 32 random bytes) used only for AES-256-GCM encryption and claim-code HMACs. Do not reuse the Ed25519 signing key.
    - `CRON_SECRET`: A separate high-entropy secret used as `Authorization: Bearer <secret>` for the internal outbox retry endpoint. Do not reuse either cryptographic key.
    - `UPSTASH_REDIS_REST_URL`: Upstash Redis REST URL.
