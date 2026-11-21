@@ -130,3 +130,70 @@ export function generateStrongLicenseKey(tier) {
   return `${prefix}-${chunks.join('-')}`;
 }
 
+/**
+ * Returns a masked version of the license key safe for display and logging.
+ */
+export function maskLicenseKey(key) {
+  if (!key || typeof key !== 'string') return '';
+  const clean = key.trim();
+  if (clean.length <= 16) return clean;
+  return `${clean.slice(0, 16)}...${clean.slice(-8)}`;
+}
+
+/**
+ * Encrypts a license key at rest using AES-256-GCM.
+ */
+export async function encryptLicenseKey(plainKey, secretString) {
+  if (!plainKey || !secretString) return null;
+  const enc = new TextEncoder();
+  const keyDigest = await crypto.subtle.digest('SHA-256', enc.encode(secretString.trim()));
+  const aesKey = await crypto.subtle.importKey(
+    'raw',
+    keyDigest,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt']
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encryptedBuf = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    aesKey,
+    enc.encode(plainKey)
+  );
+  return {
+    iv: bytesToHex(iv),
+    ciphertext: bytesToHex(new Uint8Array(encryptedBuf)),
+  };
+}
+
+/**
+ * Decrypts a license key from its AES-256-GCM encrypted payload.
+ */
+export async function decryptLicenseKey(encryptedObj, secretString) {
+  if (!encryptedObj || !encryptedObj.iv || !encryptedObj.ciphertext || !secretString) return null;
+  try {
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    const keyDigest = await crypto.subtle.digest('SHA-256', enc.encode(secretString.trim()));
+    const aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyDigest,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+    const iv = hexToBytes(encryptedObj.iv);
+    const ciphertext = hexToBytes(encryptedObj.ciphertext);
+    const decryptedBuf = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      aesKey,
+      ciphertext
+    );
+    return dec.decode(decryptedBuf);
+  } catch (err) {
+    console.warn('[Crypto] License key decryption failed:', err.message);
+    return null;
+  }
+}
+
+

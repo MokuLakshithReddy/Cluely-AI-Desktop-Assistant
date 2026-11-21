@@ -333,7 +333,7 @@ Generated test evidence: [TEST_RESULTS.md](docs/testing/TEST_RESULTS.md)
 | `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 7 |
 | `ipc-security.test.ts` | Sender validation, request identity and payload limits | 35 |
 | `knowledge-rag.test.ts` | Document ingestion, PDF extraction and retrieval | 12 |
-| `license-manager.test.ts` | Provider-Independent Licensing & Offline Grace Subsystem | 14 |
+| `license-manager.test.ts` | Provider-Independent Licensing & Offline Grace Subsystem | 15 |
 | `lifecycle-shutdown.test.ts` | Lifecycle Shutdown Coordinator & Application Lifecycle Guarantees | 8 |
 | `provider-models.test.ts` | Provider/model propagation and multi-turn serialization | 14 |
 | `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 19 |

@@ -7,22 +7,21 @@ import {
   parseVerifiedLemonSqueezyWebhook,
   WebhookEventDeduplicator,
 } from '../electron/services/billing-webhook';
-import { canonicalLicenseString } from '../electron/services/licensing-signature';
+import { canonicalLicenseString, verifySignedLicense } from '../electron/services/licensing-signature';
+import { isPublicKeyRevoked, REVOKED_LICENSING_PUBLIC_KEYS } from '../electron/config/licensing-keys';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-const TEST_PRIVATE_KEY = '302e020100300506032b657004220420c1825d15e4a70d9b8c730702ce385c9f80ec3e6cb610d79390a6a9cd550c2070';
-const privKeyObj = crypto.createPrivateKey({
-  key: Buffer.from(TEST_PRIVATE_KEY, 'hex'),
-  format: 'der',
-  type: 'pkcs8',
-});
+// Ephemeral test Ed25519 keypair generated dynamically in memory for test execution only.
+// Never shares keys with production, and no static private key is stored in source code.
+const { publicKey: testPublicKeyObj, privateKey: testPrivateKeyObj } = crypto.generateKeyPairSync('ed25519');
+const TEST_PUBLIC_KEY = testPublicKeyObj.export({ format: 'der', type: 'spki' }).toString('hex');
 
 function signTestLicense(lic: Record<string, any>): string {
   const canonical = canonicalLicenseString(lic);
-  return crypto.sign(null, Buffer.from(canonical, 'utf8'), privKeyObj).toString('hex');
+  return crypto.sign(null, Buffer.from(canonical, 'utf8'), testPrivateKeyObj).toString('hex');
 }
 
 describe('Scandium Provider-Independent Licensing & Offline Grace Subsystem', () => {
@@ -40,6 +39,7 @@ describe('Scandium Provider-Independent Licensing & Offline Grace Subsystem', ()
     manager = new LicenseManager();
     (manager as any).licenseFile = testLicenseFile;
     (manager as any).currentLicense = null;
+    vi.stubEnv('SCANDIUM_LICENSING_PUBLIC_KEY', TEST_PUBLIC_KEY);
   });
 
   afterEach(() => {
@@ -164,6 +164,16 @@ describe('Scandium Provider-Independent Licensing & Offline Grace Subsystem', ()
     );
     expect(fs.existsSync(testLicenseFile)).toBe(false);
     expect(manager.getCurrentTier()).toBe('free');
+  });
+
+  it('explicitly refuses to verify signatures using compromised and revoked public keys', () => {
+    const compromisedKey = '302a300506032b657003210008a1a2f9a9fd2d62d967c05d5ac47e5507876b44043332a18a5bbc14cc8ede31';
+    expect(isPublicKeyRevoked(compromisedKey)).toBe(true);
+
+    const payload = { licenseKey: 'REVOKED-TEST', tier: 'pro', status: 'active' };
+    const dummySig = 'a'.repeat(128);
+    const verified = verifySignedLicense(payload, dummySig, compromisedKey);
+    expect(verified).toBe(false);
   });
 
   it('rejects activation if response hardware fingerprint does not match local machine', async () => {

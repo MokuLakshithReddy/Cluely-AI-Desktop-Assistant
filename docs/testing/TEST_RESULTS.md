@@ -5,9 +5,9 @@
 **Test Framework**: Vitest JSON Reporter & Electron UI/IPC E2E Smoke Runner  
 **Test Status**: 297/297 Passing (100% Pass Rate)  
 **Evidence Source**: Generated directly from automated runner JSON output and process exit verification  
-**Source revision**: `6828a9296a79bf7215059fe8af68749efba0faed`  
+**Source revision**: `4a441f97f5bcaf842a33055c16e53ff355a274f6`  
 **Workflow run**: Local execution  
-**Verification Date**: 2026-11-18  
+**Verification Date**: 2026-11-21  
 
 ---
 
@@ -24,7 +24,7 @@
 | `hardware-detector.test.ts` | Hardware Compatibility Subsystem & Model Recommendation | 7 | 7 | 0 | **PASSED** |
 | `ipc-security.test.ts` | IPC Security & Origin Validation Subsystem | 35 | 35 | 0 | **PASSED** |
 | `knowledge-rag.test.ts` | Knowledge Base & Document Retrieval (RAG) Subsystem | 12 | 12 | 0 | **PASSED** |
-| `license-manager.test.ts` | Lemon Squeezy Licensing & Offline Grace Subsystem | 15 | 15 | 0 | **PASSED** |
+| `license-manager.test.ts` | Scandium Provider-Independent Licensing & Offline Grace Subsystem | 15 | 15 | 0 | **PASSED** |
 | `lifecycle-shutdown.test.ts` | Lifecycle Shutdown Coordinator & Application Lifecycle Guarantees | 8 | 8 | 0 | **PASSED** |
 | `provider-models.test.ts` | AI Provider Model Propagation and Multi-Turn Serialization (Mocked HTTP) | 14 | 14 | 0 | **PASSED** |
 | `realtime-stt.test.ts` | RealtimeSTT Local Speech-to-Text Subsystem ($0 Cost Local STT) | 19 | 19 | 0 | **PASSED** |
@@ -194,23 +194,23 @@
 ✓ ranks chunks using term frequency and inverse document frequency
 ```
 
-### 10. Lemon Squeezy Licensing & Offline Grace Subsystem (`tests/license-manager.test.ts`)
+### 10. Scandium Provider-Independent Licensing & Offline Grace Subsystem (`tests/license-manager.test.ts`)
 ```text
 ✓ generates a stable deterministic hardware fingerprint and anonymous instance name without hostname
 ✓ defaults to Free tier when no license is configured
-✓ fails closed to Free tier when IDs are missing or only product names match
-✓ grants paid tiers only for the exact configured product and variant ID pair
 ✓ expires license immediately if expiresAt date is in the past
-✓ activates a license and saves encrypted cache to disk
-✓ rejects activation when the license belongs to an unconfigured product
+✓ activates a license, verifies Ed25519 signature, and saves encrypted cache to disk
+✓ rejects activation when Ed25519 cryptographic signature is forged or invalid
+✓ explicitly refuses to verify signatures using compromised and revoked public keys
+✓ rejects activation if response hardware fingerprint does not match local machine
 ✓ engages 7-day offline grace period on network validation failure
 ✓ expires license when offline grace period exceeds 7 days
 ✓ deactivates license and purges local license cache file
 ✓ preserves cached license across restart and reloads via init() without losing Plus/Pro tier
 ✓ rejects a cached license record copied from a different machine instance
-✓ engages offline grace period on transient HTTP 429/503 errors rather than revoking active licenses
 ✓ fails closed on clock rollback and on disabled/expired remote license responses
-✓ verifies Lemon Squeezy HMAC-SHA256 webhook signatures, blocks replays, and maps subscription lifecycle transitions
+✓ verifies Paddle Billing HMAC-SHA256 webhook signatures, timestamp tolerance, and maps subscription events
+✓ retains backward compatibility for legacy Lemon Squeezy webhook signature verification
 ```
 
 ### 11. Lifecycle Shutdown Coordinator & Application Lifecycle Guarantees (`tests/lifecycle-shutdown.test.ts`)
