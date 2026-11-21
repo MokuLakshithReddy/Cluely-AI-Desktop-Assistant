@@ -34,6 +34,13 @@ function jsonResponse(data, status = 200, headers = {}) {
   });
 }
 
+function getClaimCodeHmacSecret(env) {
+  const rootSecret = env.SCANDIUM_LICENSE_ENCRYPTION_KEY?.trim();
+  if (!rootSecret) return null;
+  // Domain separation keeps claim-code HMAC use independent from AES-GCM key use.
+  return `scandium-claim-code-hmac:v1:${rootSecret}`;
+}
+
 export async function handleActivate(request, env) {
   const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
   const rl = await checkRateLimit(env, 'activate', clientIp, 10, 900);
@@ -286,6 +293,11 @@ export async function handleClaim(request, env) {
     );
   }
 
+  const claimCodeHmacSecret = getClaimCodeHmacSecret(env);
+  if (!claimCodeHmacSecret) {
+    return jsonResponse({ success: false, error: 'License encryption is not configured.' }, 503);
+  }
+
   const targetId = await sha256Hex(`${email}:${orderId}`);
   const targetRateLimit = await checkRateLimit(env, 'claim-target', targetId, 5, 900);
   if (!targetRateLimit.allowed) {
@@ -344,7 +356,7 @@ export async function handleClaim(request, env) {
 
     const codeKey = `scandium:claim:code:${email}:${orderId}`;
     const submittedCodeHash = await hmacSha256Hex(
-      env.SCANDIUM_LICENSE_ENCRYPTION_KEY,
+      claimCodeHmacSecret,
       submittedCode
     );
     const verifyScript = `
@@ -453,7 +465,7 @@ export async function handleClaim(request, env) {
   const code = String(100000 + (codeBuf[0] % 900000));
 
   const codeData = {
-    codeHash: await hmacSha256Hex(env.SCANDIUM_LICENSE_ENCRYPTION_KEY, code),
+    codeHash: await hmacSha256Hex(claimCodeHmacSecret, code),
     licenseHash,
     attempts: 0,
     createdAt: new Date().toISOString(),
