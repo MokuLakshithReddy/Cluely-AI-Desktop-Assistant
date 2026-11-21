@@ -80,97 +80,62 @@ export async function redisPipeline(env, commands) {
  * Uses a unique lock ownership token and Redis `SET ... EX ... NX` to eliminate race
  * conditions between simultaneous workers and avoid accidental lock theft.
  */
-export async function tryAcquireEventLock(env, eventId, ttlSeconds = 120) {
-  const lockToken = typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
+export async function tryAcquireEventLock(env, eventId, ttlSeconds = 600) {
+  const lockToken = crypto.randomUUID();
   const lockKey = `scandium:webhook:lock:${eventId}`;
   const processedKey = `scandium:webhook:event:${eventId}`;
-
-  // 1. Inspect if event was already finalized as processed
-  const processedVal = await redisCommand(env, ['GET', processedKey]);
-  if (processedVal === 'processed' || processedVal === '1') {
-    return new LockAcquisitionResult('already_processed', null);
-  }
-
-  // 2. Try to acquire exclusive lock using token and expiration
-  const setNxRes = await redisCommand(env, [
-    'SET',
-    lockKey,
-    lockToken,
-    'EX',
-    String(ttlSeconds),
-    'NX',
+  const script = `
+    -- SCANDIUM_EVENT_LOCK_ACQUIRE_V1
+    if redis.call('GET', KEYS[1]) == 'processed' then
+      return 'already_processed'
+    end
+    local result = redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[2], 'NX')
+    if result then return 'acquired' end
+    if redis.call('GET', KEYS[1]) == 'processed' then
+      return 'already_processed'
+    end
+    return 'in_flight'
+  `;
+  const status = await redisCommand(env, [
+    'EVAL', script, '2', processedKey, lockKey, lockToken, String(ttlSeconds),
   ]);
-
-  if (setNxRes === 'OK' || setNxRes === 1 || setNxRes === true) {
-    return new LockAcquisitionResult('acquired', lockToken);
-  }
-
-  // 3. Re-verify whether existing key indicates completed processing or in-flight lock
-  const recheckVal = await redisCommand(env, ['GET', processedKey]);
-  if (recheckVal === 'processed' || recheckVal === '1') {
-    return new LockAcquisitionResult('already_processed', null);
-  }
-
-  return new LockAcquisitionResult('in_flight', null);
+  return new LockAcquisitionResult(status, status === 'acquired' ? lockToken : null);
 }
 
 /**
- * Finalizes an event as successfully completed with the full retention TTL.
- * Strictly verifies lock ownership using lockToken to prevent delayed workers
- * from overwriting a lock that expired and was re-acquired by another worker.
+ * Atomically finalizes an event only while the caller still owns its lock.
+ * A missing/expired lock is a hard failure; ownership is never inferred.
  */
-export async function finalizeEventProcessed(env, eventId, lockToken = null, ttlSeconds = 604800) {
+export async function finalizeEventProcessed(env, eventId, lockToken, ttlSeconds = 604800) {
+  if (!lockToken) return false;
   const lockKey = `scandium:webhook:lock:${eventId}`;
   const processedKey = `scandium:webhook:event:${eventId}`;
-
-  // If a lock token was provided, verify that caller still holds the lock
-  if (lockToken) {
-    const currentHolder = await redisCommand(env, ['GET', lockKey]);
-    if (currentHolder && currentHolder !== lockToken) {
-      console.warn(`[Storage] Lock token mismatch on finalize for event ${eventId}. Lock was stolen or expired.`);
-      return false;
-    }
-  }
-
-  // Atomically mark event as processed
-  await redisCommand(env, [
-    'SET',
-    processedKey,
-    'processed',
-    'EX',
-    String(ttlSeconds),
+  const script = `
+    -- SCANDIUM_EVENT_LOCK_FINALIZE_V1
+    if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+    redis.call('SET', KEYS[2], 'processed', 'EX', ARGV[2])
+    redis.call('DEL', KEYS[1])
+    return 1
+  `;
+  const result = await redisCommand(env, [
+    'EVAL', script, '2', lockKey, processedKey, lockToken, String(ttlSeconds),
   ]);
-
-  // Clean up lock key if held by caller
-  if (lockToken) {
-    const holder = await redisCommand(env, ['GET', lockKey]);
-    if (holder === lockToken) {
-      await redisCommand(env, ['DEL', lockKey]);
-    }
-  } else {
-    await redisCommand(env, ['DEL', lockKey]);
-  }
-
-  return true;
+  return result === 1 || result === '1';
 }
 
 /**
- * Releases the processing lock on failure so Paddle retries can be processed.
- * Only deletes the lock if the caller's lockToken matches the current holder.
+ * Releases a webhook lock with one atomic compare-and-delete.
  */
-export async function releaseEventLock(env, eventId, lockToken = null) {
+export async function releaseEventLock(env, eventId, lockToken) {
+  if (!lockToken) return false;
   const lockKey = `scandium:webhook:lock:${eventId}`;
-  if (lockToken) {
-    const currentHolder = await redisCommand(env, ['GET', lockKey]);
-    if (currentHolder === lockToken) {
-      return await redisCommand(env, ['DEL', lockKey]);
-    }
-    return null;
-  }
-  return await redisCommand(env, ['DEL', lockKey]);
+  const script = `
+    -- SCANDIUM_EVENT_LOCK_RELEASE_V1
+    if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+    return redis.call('DEL', KEYS[1])
+  `;
+  const result = await redisCommand(env, ['EVAL', script, '1', lockKey, lockToken]);
+  return result === 1 || result === '1';
 }
 
 /**
@@ -185,7 +150,10 @@ export async function isEventProcessed(env, eventId) {
  * Backwards compatibility helper for tests.
  */
 export async function markEventProcessed(env, eventId, ttlSeconds = 604800) {
-  return await finalizeEventProcessed(env, eventId, null, ttlSeconds);
+  // Test/backwards-compatibility helper only; production webhook code always uses an owned lock.
+  return await redisCommand(env, [
+    'SET', `scandium:webhook:event:${eventId}`, 'processed', 'EX', String(ttlSeconds),
+  ]);
 }
 
 /**
@@ -332,64 +300,76 @@ export async function getActiveDevices(env, keyHash) {
  * TOCTOU race conditions where concurrent requests exceed max device limits.
  */
 export async function registerDevice(env, keyHash, hardwareFingerprint, instanceName, maxDevices) {
-  const lockKey = `scandium:lock:device:${keyHash}`;
-  const lockToken = typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}_${Math.random()}`;
-
-  // Acquire distributed lock on license device registration (up to 5 attempts with backoff)
-  let acquired = false;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const res = await redisCommand(env, ['SET', lockKey, lockToken, 'EX', '5', 'NX']);
-    if (res === 'OK' || res === 1 || res === true) {
-      acquired = true;
-      break;
-    }
-    await new Promise(r => setTimeout(r, 20 + Math.floor(Math.random() * 40)));
+  // A single Redis Lua execution makes read/check/append atomic across all Worker instances.
+  const script = `
+    -- SCANDIUM_DEVICE_REGISTER_V1
+    local raw = redis.call('GET', KEYS[1])
+    local devices = {}
+    if raw then
+      local ok, decoded = pcall(cjson.decode, raw)
+      if not ok or type(decoded) ~= 'table' then return {'invalid_state', '0'} end
+      devices = decoded
+    end
+    for _, device in ipairs(devices) do
+      if device.hardwareFingerprint == ARGV[1] then
+        return {'reconnected', tostring(#devices)}
+      end
+    end
+    if #devices >= tonumber(ARGV[4]) then
+      return {'limit_reached', tostring(#devices)}
+    end
+    table.insert(devices, {
+      hardwareFingerprint = ARGV[1],
+      instanceName = ARGV[2],
+      activatedAt = ARGV[3]
+    })
+    redis.call('SET', KEYS[1], cjson.encode(devices))
+    return {'created', tostring(#devices)}
+  `;
+  const result = await redisCommand(env, [
+    'EVAL',
+    script,
+    '1',
+    `scandium:devices:${keyHash}`,
+    hardwareFingerprint,
+    instanceName,
+    new Date().toISOString(),
+    String(maxDevices),
+  ]);
+  const status = Array.isArray(result) ? result[0] : 'invalid_state';
+  const count = Number(Array.isArray(result) ? result[1] : 0);
+  if (status === 'created' || status === 'reconnected') {
+    return { success: true, count, maxDevices, reconnected: status === 'reconnected' };
   }
-
-  try {
-    const devices = await getActiveDevices(env, keyHash);
-    const existing = devices.find(d => d.hardwareFingerprint === hardwareFingerprint);
-    if (existing) {
-      return { success: true, count: devices.length, maxDevices, reconnected: true };
-    }
-
-    if (devices.length >= maxDevices) {
-      return {
-        success: false,
-        reason: 'limit_reached',
-        count: devices.length,
-        maxDevices,
-      };
-    }
-
-    devices.push({
-      hardwareFingerprint,
-      instanceName,
-      activatedAt: new Date().toISOString(),
-    });
-
-    await redisCommand(env, ['SET', `scandium:devices:${keyHash}`, JSON.stringify(devices)]);
-    return { success: true, count: devices.length, maxDevices, reconnected: false };
-  } finally {
-    if (acquired) {
-      const holder = await redisCommand(env, ['GET', lockKey]);
-      if (holder === lockToken) {
-        await redisCommand(env, ['DEL', lockKey]);
-      }
-    }
+  if (status === 'limit_reached') {
+    return { success: false, reason: 'limit_reached', count, maxDevices };
   }
+  return { success: false, reason: 'storage_error', count, maxDevices };
 }
 
 /**
  * Unregisters a device fingerprint for a license.
  */
 export async function unregisterDevice(env, keyHash, hardwareFingerprint) {
-  const devices = await getActiveDevices(env, keyHash);
-  const filtered = devices.filter(d => d.hardwareFingerprint !== hardwareFingerprint);
-  await redisCommand(env, ['SET', `scandium:devices:${keyHash}`, JSON.stringify(filtered)]);
-  return { success: true, count: filtered.length };
+  const script = `
+    -- SCANDIUM_DEVICE_UNREGISTER_V1
+    local raw = redis.call('GET', KEYS[1])
+    if not raw then return 0 end
+    local ok, devices = pcall(cjson.decode, raw)
+    if not ok or type(devices) ~= 'table' then return redis.error_reply('invalid device state') end
+    local filtered = {}
+    for _, device in ipairs(devices) do
+      if device.hardwareFingerprint ~= ARGV[1] then
+        table.insert(filtered, device)
+      end
+    end
+    redis.call('SET', KEYS[1], cjson.encode(filtered))
+    return #filtered
+  `;
+  const count = await redisCommand(env, [
+    'EVAL', script, '1', `scandium:devices:${keyHash}`, hardwareFingerprint,
+  ]);
+  return { success: true, count: Number(count) || 0 };
 }
 
 /**
