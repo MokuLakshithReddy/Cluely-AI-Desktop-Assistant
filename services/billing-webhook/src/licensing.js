@@ -278,7 +278,7 @@ export async function handleClaim(request, env) {
     ? body.subscriptionId.trim()
     : '';
 
-  if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || !orderId ||
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !orderId ||
       !/^(txn|sub)_[a-zA-Z0-9_-]+$/.test(orderId)) {
     return jsonResponse(
       { success: false, error: 'A valid purchase email and Paddle transaction/subscription ID are required.' },
