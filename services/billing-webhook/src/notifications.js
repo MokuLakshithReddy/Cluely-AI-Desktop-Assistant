@@ -291,9 +291,33 @@ export async function processOutbox(env, batchLimit = 10) {
       continue;
     }
 
+    // Upgrade legacy claim-code queue records created before encrypted outbox payloads.
+    // Never requeue the plaintext code; encrypt it in memory or discard it if already expired.
+    if (item.type === 'claim_code' && typeof item.code === 'string' && !item.encryptedCode) {
+      const dispatchedAt = Date.parse(item.dispatchedAt || '');
+      const legacyExpiry = Number.isFinite(dispatchedAt)
+        ? dispatchedAt + 15 * 60 * 1000
+        : 0;
+      if (!encryptionKey || legacyExpiry <= Date.now()) {
+        item.status = 'expired_legacy';
+        delete item.code;
+        delete item.encryptedCode;
+        await redisCommand(env, [
+          'LPUSH',
+          'scandium:notifications:dead_letter',
+          JSON.stringify(item),
+        ]);
+        continue;
+      }
+      item.encryptedCode = await encryptLicenseKey(item.code, encryptionKey);
+      item.expiresAt = new Date(legacyExpiry).toISOString();
+      delete item.code;
+    }
+
     if (item.type === 'claim_code' && item.expiresAt && Date.parse(item.expiresAt) <= Date.now()) {
       item.status = 'expired';
       delete item.encryptedCode;
+      delete item.code;
       await redisCommand(env, ['LPUSH', 'scandium:notifications:dead_letter', JSON.stringify(item)]);
       continue;
     }
