@@ -162,6 +162,7 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
       UPSTASH_REDIS_REST_URL: 'https://mock-upstash.internal',
       UPSTASH_REDIS_REST_TOKEN: 'mock-token',
       SCANDIUM_LICENSING_PRIVATE_KEY: TEST_PRIVATE_KEY,
+      SCANDIUM_LICENSING_PUBLIC_KEY: TEST_PUBLIC_KEY,
       SCANDIUM_LICENSE_ENCRYPTION_KEY: 'unit-test-encryption-key-32-bytes-minimum-0001',
       CRON_SECRET: 'unit-test-outbox-cron-secret-0001',
       RESEND_API_KEY: 're_test_mock_key',
@@ -191,6 +192,7 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     assert.equal(data1.status, 'healthy');
     assert.equal(data1.subsystems.paddleWebhook, 'configured');
     assert.equal(data1.subsystems.licenseEncryptionKey, 'configured');
+    assert.equal(data1.subsystems.licensingSigningKey, 'verified');
     assert.equal(data1.subsystems.outboxCronSecret, 'configured');
     assert.equal(data1.subsystems.emailProvider, 'configured');
 
