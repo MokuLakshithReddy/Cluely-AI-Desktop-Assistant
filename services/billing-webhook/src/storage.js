@@ -390,13 +390,23 @@ export async function checkRateLimit(
   const cleanId = String(identifier).replace(/[^a-zA-Z0-9_\-]/g, '').slice(0, 64);
   const key = `scandium:ratelimit:${keyPrefix}:${cleanId}`;
 
-  const current = await redisCommand(env, ['INCR', key]);
-  if (current === 1) {
-    await redisCommand(env, ['EXPIRE', key, String(windowSeconds)]);
-  }
-
-  const ttl = await redisCommand(env, ['TTL', key]);
-  const resetSeconds = typeof ttl === 'number' && ttl > 0 ? ttl : windowSeconds;
+  // Keep increment and first-hit expiry in one Redis transaction so a failed
+  // request cannot leave a permanent, non-expiring rate-limit key.
+  const script = `
+    -- SCANDIUM_RATE_LIMIT_INCREMENT_V1
+    local current = redis.call('INCR', KEYS[1])
+    if current == 1 then
+      redis.call('EXPIRE', KEYS[1], ARGV[1])
+    end
+    local ttl = redis.call('TTL', KEYS[1])
+    return {tostring(current), tostring(ttl)}
+  `;
+  const result = await redisCommand(env, [
+    'EVAL', script, '1', key, String(windowSeconds),
+  ]);
+  const current = Number(Array.isArray(result) ? result[0] : 0);
+  const ttl = Number(Array.isArray(result) ? result[1] : windowSeconds);
+  const resetSeconds = ttl > 0 ? ttl : windowSeconds;
 
   if (current > maxAttempts) {
     return {
