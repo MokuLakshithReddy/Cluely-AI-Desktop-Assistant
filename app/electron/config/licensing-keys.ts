@@ -1,3 +1,5 @@
+import { app } from 'electron';
+
 /**
  * Scandium Licensing Cryptographic Keys & Service Configuration
  *
@@ -25,13 +27,26 @@ export function isPublicKeyRevoked(keyHex: string | undefined | null): boolean {
 export const DEFAULT_SCANDIUM_LICENSING_URL =
   'https://scandium-billing-webhook.mokulakshithreddy.workers.dev';
 
+function allowRuntimeLicensingOverrides(): boolean {
+  // Packaged clients must never accept an attacker-controlled trust anchor or server URL.
+  // Overrides remain available to unpackaged development and unit-test builds only.
+  try {
+    return app.isPackaged !== true && process.env.NODE_ENV !== 'production';
+  } catch {
+    return false;
+  }
+}
+
 export function getLicensingServiceUrl(): string {
+  if (!allowRuntimeLicensingOverrides()) return DEFAULT_SCANDIUM_LICENSING_URL;
+
   const envUrl = process.env.SCANDIUM_LICENSING_URL?.trim();
   if (envUrl) {
     try {
       const parsed = new URL(envUrl);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        return envUrl.replace(/\/+$/, '');
+      const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+      if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopback)) {
+        return parsed.toString().replace(/\\/+$/, '');
       }
     } catch {}
   }
@@ -39,6 +54,9 @@ export function getLicensingServiceUrl(): string {
 }
 
 export function getLicensingPublicKey(): string {
+  // The embedded production key is the only trust anchor in packaged builds.
+  if (!allowRuntimeLicensingOverrides()) return SCANDIUM_LICENSING_PUBLIC_KEY;
+
   const envKey = process.env.SCANDIUM_LICENSING_PUBLIC_KEY?.trim();
   if (envKey && /^[a-f0-9]{88}$/i.test(envKey)) {
     if (isPublicKeyRevoked(envKey)) {
