@@ -23,6 +23,7 @@ class MockRedisStore {
   constructor() {
     this.store = new Map();
     this.lists = new Map();
+    this.sentEmails = [];
   }
 
   handleCommand(cmd) {
@@ -49,6 +50,66 @@ class MockRedisStore {
     }
     if (op === 'EXPIRE') return 1;
     if (op === 'TTL') return 900;
+    if (op === 'LLEN') return (this.lists.get(cmd[1]) || []).length;
+    if (op === 'EVAL') {
+      const script = cmd[1];
+      const keyCount = Number(cmd[2]);
+      const keys = cmd.slice(3, 3 + keyCount);
+      const args = cmd.slice(3 + keyCount);
+      if (script.includes('SCANDIUM_EVENT_LOCK_ACQUIRE_V1')) {
+        const [processedKey, lockKey] = keys;
+        if (this.store.get(processedKey) === 'processed') return 'already_processed';
+        if (this.store.has(lockKey)) return 'in_flight';
+        this.store.set(lockKey, args[0]);
+        return 'acquired';
+      }
+      if (script.includes('SCANDIUM_EVENT_LOCK_FINALIZE_V1')) {
+        const [lockKey, processedKey] = keys;
+        if (this.store.get(lockKey) !== args[0]) return 0;
+        this.store.set(processedKey, 'processed');
+        this.store.delete(lockKey);
+        return 1;
+      }
+      if (script.includes('SCANDIUM_EVENT_LOCK_RELEASE_V1')) {
+        if (this.store.get(keys[0]) !== args[0]) return 0;
+        this.store.delete(keys[0]);
+        return 1;
+      }
+      if (script.includes('SCANDIUM_DEVICE_REGISTER_V1')) {
+        const raw = this.store.get(keys[0]);
+        const devices = raw ? JSON.parse(raw) : [];
+        const existing = devices.find(d => d.hardwareFingerprint === args[0]);
+        if (existing) return ['reconnected', String(devices.length)];
+        if (devices.length >= Number(args[3])) return ['limit_reached', String(devices.length)];
+        devices.push({ hardwareFingerprint: args[0], instanceName: args[1], activatedAt: args[2] });
+        this.store.set(keys[0], JSON.stringify(devices));
+        return ['created', String(devices.length)];
+      }
+      if (script.includes('SCANDIUM_DEVICE_UNREGISTER_V1')) {
+        const raw = this.store.get(keys[0]);
+        const devices = raw ? JSON.parse(raw) : [];
+        const filtered = devices.filter(d => d.hardwareFingerprint !== args[0]);
+        this.store.set(keys[0], JSON.stringify(filtered));
+        return filtered.length;
+      }
+      if (script.includes('SCANDIUM_CLAIM_CODE_VERIFY_V1')) {
+        const raw = this.store.get(keys[0]);
+        if (!raw) return -1;
+        const record = JSON.parse(raw);
+        if (Number(record.attempts || 0) >= 3) {
+          this.store.delete(keys[0]);
+          return -2;
+        }
+        if (record.codeHash !== args[0]) {
+          record.attempts = Number(record.attempts || 0) + 1;
+          this.store.set(keys[0], JSON.stringify(record));
+          return -3;
+        }
+        this.store.delete(keys[0]);
+        return 1;
+      }
+      throw new Error('Unsupported EVAL script in test mock');
+    }
     if (op === 'LPUSH') {
       const listKey = cmd[1];
       const val = cmd[2];
@@ -89,6 +150,7 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
         });
       }
       if (urlStr.includes('api.sendgrid.com') || urlStr.includes('api.resend.com') || urlStr.includes('postmarkapp.com')) {
+        mockRedis.sentEmails.push({ url: urlStr, body: JSON.parse(options.body || '{}') });
         return new Response(JSON.stringify({ id: 'mock_msg_123' }), { status: 200 });
       }
       return new Response(JSON.stringify({ error: 'unhandled mock fetch' }), { status: 500 });
@@ -99,6 +161,9 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
       UPSTASH_REDIS_REST_URL: 'https://mock-upstash.internal',
       UPSTASH_REDIS_REST_TOKEN: 'mock-token',
       SCANDIUM_LICENSING_PRIVATE_KEY: TEST_PRIVATE_KEY,
+      SCANDIUM_LICENSE_ENCRYPTION_KEY: 'unit-test-encryption-key-32-bytes-minimum-0001',
+      CRON_SECRET: 'unit-test-outbox-cron-secret-0001',
+      RESEND_API_KEY: 're_test_mock_key',
       PADDLE_WEBHOOK_SECRET_KEY: TEST_PADDLE_SECRET,
       PADDLE_PLUS_PRICE_ID: 'pri_test_plus_100',
       PADDLE_PRO_PRICE_ID: 'pri_test_pro_200',
@@ -409,11 +474,18 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const step1Data = await step1Res.json();
     assert.equal(step1Data.verificationRequired, true);
 
-    // Retrieve generated code from outbox queue
-    const outboxItem = JSON.parse(mockRedis.lists.get('scandium:notifications:outbox')[0]);
-    assert.equal(outboxItem.type, 'claim_code');
-    const sentCode = outboxItem.code;
+    // Read the code from the mocked email delivery, never from Redis.
+    const sentEmail = mockRedis.sentEmails.find(item =>
+      String(item.body.html || item.body.HtmlBody || '').includes('Your License Claim Verification Code')
+    );
+    assert.ok(sentEmail);
+    const emailHtml = sentEmail.body.html || sentEmail.body.HtmlBody;
+    const sentCode = emailHtml.match(/>(\d{6})<\\/span>/)?.[1];
     assert.ok(/^\d{6}$/.test(sentCode));
+    const queuedClaimCode = (mockRedis.lists.get('scandium:notifications:outbox') || [])
+      .map(raw => JSON.parse(raw))
+      .find(item => item.type === 'claim_code');
+    assert.ok(!queuedClaimCode || !Object.hasOwn(queuedClaimCode, 'code'));
 
     // 5. Bad code rejected
     const badCodeReq = new Request('https://worker.internal/api/v1/license/claim', {
