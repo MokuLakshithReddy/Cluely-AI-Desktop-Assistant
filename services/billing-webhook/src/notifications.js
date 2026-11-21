@@ -230,6 +230,7 @@ export async function dispatchClaimVerificationCode(env, { email, orderId, code 
     email: cleanEmail,
     orderId,
     encryptedCode,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     provider: result.provider,
     status: result.sent ? 'delivered' : 'pending',
     error: result.error || null,
@@ -258,6 +259,7 @@ export async function processOutbox(env, batchLimit = 10) {
   let processed = 0;
   let delivered = 0;
   let failed = 0;
+  let deferred = 0;
 
   // Snapshot queue depth so a failed item requeued during this pass is not retried
   // repeatedly in the same invocation.
@@ -280,6 +282,19 @@ export async function processOutbox(env, batchLimit = 10) {
     if (item.status === 'delivered') {
       delivered++;
       await redisCommand(env, ['LPUSH', 'scandium:notifications:delivered', JSON.stringify(item)]);
+      continue;
+    }
+
+    if (item.nextAttemptAt && Date.parse(item.nextAttemptAt) > Date.now()) {
+      deferred++;
+      await redisCommand(env, ['LPUSH', queueKey, JSON.stringify(item)]);
+      continue;
+    }
+
+    if (item.type === 'claim_code' && item.expiresAt && Date.parse(item.expiresAt) <= Date.now()) {
+      item.status = 'expired';
+      delete item.encryptedCode;
+      await redisCommand(env, ['LPUSH', 'scandium:notifications:dead_letter', JSON.stringify(item)]);
       continue;
     }
 
@@ -335,6 +350,8 @@ export async function processOutbox(env, batchLimit = 10) {
     item.retries = (item.retries || 0) + 1;
     item.error = sendResult?.error || item.error || 'Delivery could not be retried';
     if (item.retries < 5) {
+      const backoffMs = Math.min(60 * 60 * 1000, 30 * 1000 * (2 ** (item.retries - 1)));
+      item.nextAttemptAt = new Date(Date.now() + backoffMs).toISOString();
       await redisCommand(env, ['LPUSH', queueKey, JSON.stringify(item)]);
     } else {
       item.status = 'dead_letter';
@@ -347,5 +364,5 @@ export async function processOutbox(env, batchLimit = 10) {
     }
   }
 
-  return { processed, delivered, failed };
+  return { processed, delivered, failed, deferred };
 }
