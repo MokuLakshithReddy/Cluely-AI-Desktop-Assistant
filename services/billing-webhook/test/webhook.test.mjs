@@ -480,7 +480,7 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     );
     assert.ok(sentEmail);
     const emailHtml = sentEmail.body.html || sentEmail.body.HtmlBody;
-    const sentCode = emailHtml.match(/>(\d{6})<\\/span>/)?.[1];
+    const sentCode = emailHtml.match(/>(\d{6})<\/span>/)?.[1];
     assert.ok(/^\d{6}$/.test(sentCode));
     const queuedClaimCode = (mockRedis.lists.get('scandium:notifications:outbox') || [])
       .map(raw => JSON.parse(raw))
