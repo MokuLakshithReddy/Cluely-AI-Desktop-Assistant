@@ -21,6 +21,8 @@ import {
   maskLicenseKey,
   decryptLicenseKey,
   timingSafeEqual,
+  signLicensePayload,
+  verifyLicensePayload,
 } from './crypto.js';
 import { verifyPaddleSignature, parsePaddleEvent } from './paddle.js';
 import {
@@ -236,9 +238,30 @@ export default {
       const emailProviderConfigured = Boolean(
         env.RESEND_API_KEY?.trim() || env.POSTMARK_SERVER_TOKEN?.trim() || env.SENDGRID_API_KEY?.trim()
       );
+
+      // Verify that the deployed Ed25519 private key actually matches the public key
+      // trusted by packaged desktop clients. Presence alone is not sufficient.
+      let signingKeyStatus = 'unconfigured';
+      if (signingKeyConfigured && env.SCANDIUM_LICENSING_PUBLIC_KEY?.trim()) {
+        try {
+          const probe = { purpose: 'scandium-license-health-check', version: 1 };
+          const probeSignature = await signLicensePayload(
+            probe,
+            env.SCANDIUM_LICENSING_PRIVATE_KEY
+          );
+          const matchesClientKey = await verifyLicensePayload(
+            probe,
+            probeSignature,
+            env.SCANDIUM_LICENSING_PUBLIC_KEY
+          );
+          signingKeyStatus = matchesClientKey ? 'verified' : 'key_mismatch';
+        } catch {
+          signingKeyStatus = 'invalid';
+        }
+      }
       const isHealthy = redisStatus === 'connected' &&
         paddleConfigured &&
-        signingKeyConfigured &&
+        signingKeyStatus === 'verified' &&
         encryptionKeyConfigured &&
         cronSecretConfigured &&
         emailProviderConfigured;
@@ -251,7 +274,7 @@ export default {
           subsystems: {
             redis: redisStatus,
             paddleWebhook: paddleConfigured ? 'configured' : 'unconfigured',
-            licensingSigningKey: signingKeyConfigured ? 'configured' : 'unconfigured',
+            licensingSigningKey: signingKeyStatus,
             licenseEncryptionKey: encryptionKeyConfigured ? 'configured' : 'unconfigured',
             outboxCronSecret: cronSecretConfigured ? 'configured' : 'unconfigured',
             emailProvider: emailProviderConfigured ? 'configured' : 'unconfigured',
