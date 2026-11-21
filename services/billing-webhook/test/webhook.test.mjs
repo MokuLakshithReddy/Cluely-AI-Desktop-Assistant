@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import worker from '../src/index.js';
 import { verifyLicensePayload, generateStrongLicenseKey } from '../src/crypto.js';
 import { processOutbox } from '../src/notifications.js';
+import { finalizeEventProcessed } from '../src/storage.js';
 
 // Ephemeral dynamic Ed25519 keypair generated in memory for unit test execution only.
 // Ensures zero hardcoded or shared secrets exist in source code or repositories.
@@ -189,6 +190,9 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const data1 = await res1.json();
     assert.equal(data1.status, 'healthy');
     assert.equal(data1.subsystems.paddleWebhook, 'configured');
+    assert.equal(data1.subsystems.licenseEncryptionKey, 'configured');
+    assert.equal(data1.subsystems.outboxCronSecret, 'configured');
+    assert.equal(data1.subsystems.emailProvider, 'configured');
 
     // 2. With alias PADDLE_WEBHOOK_SECRET
     const aliasEnv = {
@@ -202,6 +206,42 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     const data2 = await res2.json();
     assert.equal(data2.status, 'healthy');
     assert.equal(data2.subsystems.paddleWebhook, 'configured');
+  });
+
+  it('fails closed on the internal outbox endpoint unless a dedicated Bearer secret is configured', async () => {
+    const url = 'https://worker.internal/api/v1/internal/outbox/process';
+    const noAuth = await worker.fetch(new Request(url, { method: 'POST' }), env);
+    assert.equal(noAuth.status, 401);
+
+    const badAuth = await worker.fetch(new Request(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer wrong-secret' },
+    }), env);
+    assert.equal(badAuth.status, 401);
+
+    const missingSecretEnv = { ...env, CRON_SECRET: undefined };
+    const noSecret = await worker.fetch(new Request(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer anything' },
+    }), missingSecretEnv);
+    assert.equal(noSecret.status, 503);
+
+    const authorized = await worker.fetch(new Request(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + env.CRON_SECRET },
+    }), env);
+    assert.equal(authorized.status, 200);
+  });
+
+  it('does not finalize a webhook event after lock ownership has expired or changed', async () => {
+    const eventId = 'evt_lock_owner_test';
+    mockRedis.store.set('scandium:webhook:lock:' + eventId, 'current-owner');
+    await assert.rejects(
+      () => finalizeEventProcessed(env, eventId, 'stale-owner'),
+      /Lost webhook lock ownership/
+    );
+    assert.notEqual(mockRedis.store.get('scandium:webhook:event:' + eventId), 'processed');
+    assert.equal(mockRedis.store.get('scandium:webhook:lock:' + eventId), 'current-owner');
   });
 
   it('rejects unauthenticated webhook requests with invalid or missing Paddle-Signature', async () => {
@@ -473,6 +513,11 @@ describe('Scandium Licensing & Paddle Webhook Backend', () => {
     assert.equal(step1Res.status, 200);
     const step1Data = await step1Res.json();
     assert.equal(step1Data.verificationRequired, true);
+
+    const otpKey = 'scandium:claim:code:alice.sec@example.com:txn_sec_777';
+    const storedOtp = JSON.parse(mockRedis.store.get(otpKey));
+    assert.ok(storedOtp.codeHash);
+    assert.equal(storedOtp.code, undefined);
 
     // Read the code from the mocked email delivery, never from Redis.
     const sentEmail = mockRedis.sentEmails.find(item =>
